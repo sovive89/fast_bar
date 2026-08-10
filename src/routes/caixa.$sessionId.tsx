@@ -1,0 +1,187 @@
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
+import { StatusBadge } from "@/components/shared/StatusBadge";
+import { TabItemList } from "@/components/shared/TabItemList";
+import { ProductPicker } from "@/features/register/components/ProductPicker";
+import { useLiveTab } from "@/hooks/use-live-tab";
+import { brl, elapsed, formatPhone, hhmm } from "@/lib/format";
+import {
+  addTabItem,
+  closeSession,
+  confirmSession,
+  registerPayment,
+  removeTabItem,
+  reopenSession,
+} from "@/lib/register.functions";
+import { fetchProducts } from "@/services/supabase/products";
+import { tabTotal } from "@/services/supabase/tabItems";
+import type { BarProduct } from "@/types/fastbar";
+
+export const Route = createFileRoute("/caixa/$sessionId")({
+  head: () => ({
+    meta: [
+      { title: "Detalhe da comanda | Caixa FastBar" },
+      {
+        name: "description",
+        content: "Lance bebidas, feche a comanda e registre o pagamento do cliente.",
+      },
+      { property: "og:title", content: "Detalhe da comanda | Caixa FastBar" },
+      {
+        property: "og:description",
+        content: "Lançamento de bebidas, fechamento e pagamento da comanda.",
+      },
+    ],
+  }),
+  component: RegisterTabDetail,
+});
+
+function RegisterTabDetail() {
+  const { sessionId } = Route.useParams();
+  const navigate = useNavigate();
+  const { session, items, loading, now, reload } = useLiveTab(sessionId, "register");
+  const [products, setProducts] = useState<BarProduct[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const add = useServerFn(addTabItem);
+  const remove = useServerFn(removeTabItem);
+  const close = useServerFn(closeSession);
+  const pay = useServerFn(registerPayment);
+  const reopen = useServerFn(reopenSession);
+  const confirm = useServerFn(confirmSession);
+
+  useEffect(() => {
+    void fetchProducts().then(setProducts);
+  }, []);
+
+  async function run(action: () => Promise<{ ok: boolean; message?: string }>) {
+    if (busy) return false;
+    setBusy(true);
+    setError(null);
+    const result = await action();
+    if (!result.ok) setError(result.message ?? "Ação não concluída.");
+    await reload();
+    setBusy(false);
+    return result.ok;
+  }
+
+  if (loading) {
+    return <p className="p-6 text-sm text-muted-foreground">Carregando comanda...</p>;
+  }
+
+  if (!session) {
+    return (
+      <main className="mx-auto max-w-2xl p-6">
+        <h1 className="text-2xl font-bold">Comanda não encontrada</h1>
+        <Link to="/caixa" className="mt-4 inline-block text-sm text-primary underline">
+          Voltar às comandas
+        </Link>
+      </main>
+    );
+  }
+
+  const isOpen = session.status === "open";
+  const isPending = session.status === "pending";
+
+  return (
+    <main className="mx-auto w-full max-w-2xl px-5 py-8">
+      <Link to="/caixa" className="text-sm text-muted-foreground underline underline-offset-4">
+        ← Voltar às comandas
+      </Link>
+
+      <div className="mt-4 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h1 className="truncate text-2xl font-bold">{session.customer_name}</h1>
+          <p className="text-xs text-muted-foreground">
+            {formatPhone(session.phone)}
+            {session.started_at ? ` · abertura ${hhmm(session.started_at)}` : ""} ·{" "}
+            {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
+          </p>
+        </div>
+        <StatusBadge status={session.status} />
+      </div>
+
+      <div className="mt-5 rounded-2xl border border-border bg-card p-5">
+        <p className="text-xs uppercase tracking-widest text-muted-foreground">Total da comanda</p>
+        <p className="mt-1 text-3xl font-bold">{brl(tabTotal(items))}</p>
+      </div>
+
+      {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+
+      {isOpen && (
+        <section className="mt-8">
+          <h2 className="text-lg font-semibold">Lançar bebidas</h2>
+          <div className="mt-3">
+            <ProductPicker
+              products={products}
+              disabled={busy}
+              onPick={(product) =>
+                void run(() => add({ data: { sessionId: session.id, productId: product.id } }))
+              }
+            />
+          </div>
+        </section>
+      )}
+
+      <section className="mt-8">
+        <h2 className="text-lg font-semibold">Itens da comanda</h2>
+        <div className="mt-3">
+          <TabItemList
+            items={items}
+            {...(isOpen
+              ? { onRemove: (itemId: string) => void run(() => remove({ data: { itemId } })) }
+              : {})}
+          />
+        </div>
+      </section>
+
+      <section className="mt-8 space-y-3">
+        {isPending && (
+          <button
+            onClick={() => void run(() => confirm({ data: { sessionId: session.id } }))}
+            disabled={busy}
+            className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
+          >
+            {busy ? "Confirmando..." : "Confirmar comanda"}
+          </button>
+        )}
+
+        {isOpen && (
+          <button
+            onClick={() => void run(() => close({ data: { sessionId: session.id } }))}
+            disabled={busy}
+            className="h-12 w-full rounded-xl border border-border text-base font-semibold disabled:opacity-60"
+          >
+            Fechar comanda
+          </button>
+        )}
+
+        {!isPending && session.status !== "paid" && (
+          <button
+            onClick={async () => {
+              const ok = await run(() =>
+                pay({ data: { sessionId: session.id, method: "presencial" } }),
+              );
+              if (ok) await navigate({ to: "/caixa" });
+            }}
+            disabled={busy}
+            className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
+          >
+            Registrar pagamento
+          </button>
+        )}
+
+        {!isPending && !isOpen && session.status !== "paid" && (
+          <button
+            onClick={() => void run(() => reopen({ data: { sessionId: session.id } }))}
+            disabled={busy}
+            className="h-12 w-full rounded-xl border border-border text-sm font-medium text-muted-foreground disabled:opacity-60"
+          >
+            Reabrir comanda
+          </button>
+        )}
+      </section>
+    </main>
+  );
+}
