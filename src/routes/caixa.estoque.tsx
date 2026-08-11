@@ -477,6 +477,9 @@ type StockComponent = {
   current_stock: number;
   min_stock: number;
   average_cost: number;
+  purchase_unit: string | null;
+  units_per_pack: number;
+  content_amount: number;
   doses: Array<{ productName: string; doses: number }>;
 };
 
@@ -487,15 +490,22 @@ function ComponentStockTab(props: {
   title: string;
   units: string[];
   createFn: (input: {
-    data: { name: string; unit: string; minStock?: number };
+    data: {
+      name: string;
+      unit: string;
+      minStock?: number | undefined;
+      purchaseUnit?: string | undefined;
+      unitsPerPack?: number | undefined;
+      contentAmount?: number | undefined;
+    };
   }) => Promise<{ ok: boolean; message?: string }>;
   entryFn: (input: {
     data: {
       id: string;
-      quantity: number;
-      unitCost?: number;
-      supplierId?: string;
-      note?: string;
+      packs: number;
+      purchaseCost?: number | undefined;
+      supplierId?: string | undefined;
+      note?: string | undefined;
     };
   }) => Promise<{ ok: boolean; message?: string }>;
 }) {
@@ -505,12 +515,15 @@ function ComponentStockTab(props: {
   const [name, setName] = useState("");
   const [unit, setUnit] = useState(props.units[0]);
   const [minStock, setMinStock] = useState("");
+  const [purchaseUnit, setPurchaseUnit] = useState("");
+  const [unitsPerPack, setUnitsPerPack] = useState("1");
+  const [contentAmount, setContentAmount] = useState("1");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
-  const [entryQuantity, setEntryQuantity] = useState("");
-  const [entryCost, setEntryCost] = useState("");
+  const [entryPacks, setEntryPacks] = useState("");
+  const [entryPurchaseCost, setEntryPurchaseCost] = useState("");
   const [entrySupplierId, setEntrySupplierId] = useState("");
   const [entryBusy, setEntryBusy] = useState(false);
 
@@ -537,33 +550,43 @@ function ComponentStockTab(props: {
     if (name.trim().length < 2) return setError("Digite o nome.");
     setSaving(true);
     const result = await props.createFn({
-      data: { name, unit, minStock: minStock ? Number(minStock) : undefined },
+      data: {
+        name,
+        unit,
+        minStock: minStock ? Number(minStock) : undefined,
+        purchaseUnit: purchaseUnit || undefined,
+        unitsPerPack: unitsPerPack ? Number(unitsPerPack) : undefined,
+        contentAmount: contentAmount ? Number(contentAmount) : undefined,
+      },
     });
     setSaving(false);
     if (!result.ok) return setError(result.message ?? "Não foi possível salvar.");
     setName("");
     setMinStock("");
+    setPurchaseUnit("");
+    setUnitsPerPack("1");
+    setContentAmount("1");
     setShowForm(false);
     await load();
   }
 
-  async function submitEntry(id: string) {
-    const quantity = Number(entryQuantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) return;
+  async function submitEntry(item: StockComponent) {
+    const packs = Number(entryPacks);
+    if (!Number.isFinite(packs) || packs <= 0) return;
     setEntryBusy(true);
     const result = await props.entryFn({
       data: {
-        id,
-        quantity,
-        unitCost: entryCost ? Number(entryCost.replace(",", ".")) : undefined,
+        id: item.id,
+        packs,
+        purchaseCost: entryPurchaseCost ? Number(entryPurchaseCost.replace(",", ".")) : undefined,
         supplierId: entrySupplierId || undefined,
       },
     });
     setEntryBusy(false);
     if (result.ok) {
       setOpenEntryId(null);
-      setEntryQuantity("");
-      setEntryCost("");
+      setEntryPacks("");
+      setEntryPurchaseCost("");
       setEntrySupplierId("");
       await load();
     }
@@ -603,6 +626,40 @@ function ComponentStockTab(props: {
               placeholder="0"
               type="number"
             />
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-xs font-medium">Como você compra</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                O custo por {unit} é calculado a partir daqui — você nunca digita ele na mão.
+              </p>
+              <div className="mt-3 space-y-3">
+                <TextField
+                  label="Unidade de compra"
+                  value={purchaseUnit}
+                  onChange={setPurchaseUnit}
+                  placeholder="garrafa, caixa, fardo..."
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <TextField
+                    label="Itens por embalagem"
+                    value={unitsPerPack}
+                    onChange={setUnitsPerPack}
+                    placeholder="1"
+                    type="number"
+                  />
+                  <TextField
+                    label={`Conteúdo por item (${unit})`}
+                    value={contentAmount}
+                    onChange={setContentAmount}
+                    placeholder="1"
+                    type="number"
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Ex.: caixa com 12 latas de 350 ml → 12 itens, 350 de conteúdo. Garrafa de 1L → 1
+                item, 1000 de conteúdo.
+              </p>
+            </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
             <PrimaryButton onClick={submitNew} disabled={saving}>
               {saving ? "Salvando..." : "Salvar"}
@@ -627,6 +684,9 @@ function ComponentStockTab(props: {
                     <p className="truncate font-semibold">{item.name}</p>
                     <p className="text-xs text-muted-foreground">
                       Custo médio: {brl(item.average_cost)} / {item.unit}
+                      {item.purchase_unit
+                        ? ` · comprado em ${item.purchase_unit} (${item.units_per_pack} × ${item.content_amount}${item.unit})`
+                        : ""}
                     </p>
                     {item.doses.length > 0 && (
                       <p className="mt-1 text-xs text-muted-foreground">
@@ -641,8 +701,8 @@ function ComponentStockTab(props: {
                     <button
                       onClick={() => {
                         setOpenEntryId(isOpen ? null : item.id);
-                        setEntryQuantity("");
-                        setEntryCost("");
+                        setEntryPacks("");
+                        setEntryPurchaseCost("");
                         setEntrySupplierId("");
                       }}
                       className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -659,21 +719,35 @@ function ComponentStockTab(props: {
                         type="number"
                         inputMode="decimal"
                         min={1}
-                        value={entryQuantity}
-                        onChange={(event) => setEntryQuantity(event.target.value)}
-                        placeholder={`Quantidade (${item.unit})`}
+                        value={entryPacks}
+                        onChange={(event) => setEntryPacks(event.target.value)}
+                        placeholder={`Quantas ${item.purchase_unit ?? "embalagens"}`}
                         autoFocus
                         className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
                       />
                       <input
                         type="text"
                         inputMode="decimal"
-                        value={entryCost}
-                        onChange={(event) => setEntryCost(event.target.value)}
-                        placeholder={`Custo pago / ${item.unit}`}
+                        value={entryPurchaseCost}
+                        onChange={(event) => setEntryPurchaseCost(event.target.value)}
+                        placeholder="Total pago (R$)"
                         className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
                       />
                     </div>
+                    {entryPacks && Number(entryPacks) > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        Entra {Number(entryPacks) * item.units_per_pack * Number(item.content_amount)}{" "}
+                        {item.unit} no estoque
+                        {entryPurchaseCost && Number(entryPurchaseCost.replace(",", ".")) > 0
+                          ? ` · ${brl(
+                              Number(entryPurchaseCost.replace(",", ".")) /
+                                (Number(entryPacks) *
+                                  item.units_per_pack *
+                                  Number(item.content_amount)),
+                            )} por ${item.unit}`
+                          : ""}
+                      </p>
+                    )}
                     <select
                       value={entrySupplierId}
                       onChange={(event) => setEntrySupplierId(event.target.value)}
@@ -687,8 +761,8 @@ function ComponentStockTab(props: {
                       ))}
                     </select>
                     <button
-                      onClick={() => submitEntry(item.id)}
-                      disabled={entryBusy || !entryQuantity}
+                      onClick={() => submitEntry(item)}
+                      disabled={entryBusy || !entryPacks}
                       className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
                     >
                       {entryBusy ? "Salvando..." : "Confirmar entrada"}
@@ -718,6 +792,9 @@ function BebidasBaseTab() {
             name: input.data.name,
             unit: input.data.unit as "ml" | "un",
             minStock: input.data.minStock,
+            purchaseUnit: input.data.purchaseUnit,
+            unitsPerPack: input.data.unitsPerPack,
+            contentAmount: input.data.contentAmount,
           },
         })
       }
@@ -725,8 +802,8 @@ function BebidasBaseTab() {
         entryFn({
           data: {
             baseDrinkId: input.data.id,
-            quantity: input.data.quantity,
-            unitCost: input.data.unitCost,
+            packs: input.data.packs,
+            purchaseCost: input.data.purchaseCost,
             supplierId: input.data.supplierId,
             note: input.data.note,
           },
@@ -750,6 +827,9 @@ function IngredientesTab() {
             name: input.data.name,
             unit: input.data.unit as "ml" | "un" | "g",
             minStock: input.data.minStock,
+            purchaseUnit: input.data.purchaseUnit,
+            unitsPerPack: input.data.unitsPerPack,
+            contentAmount: input.data.contentAmount,
           },
         })
       }
@@ -757,8 +837,8 @@ function IngredientesTab() {
         entryFn({
           data: {
             ingredientId: input.data.id,
-            quantity: input.data.quantity,
-            unitCost: input.data.unitCost,
+            packs: input.data.packs,
+            purchaseCost: input.data.purchaseCost,
             supplierId: input.data.supplierId,
             note: input.data.note,
           },
