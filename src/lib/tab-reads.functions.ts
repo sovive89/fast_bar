@@ -42,7 +42,7 @@ export const getRegisterOverview = createServerFn({ method: "POST" }).handler(as
     admin()
       .from("fastbar_sessions")
       .select(SESSION_COLUMNS)
-      .in("status", ["open", "closed", "paid"])
+      .in("status", ["pending", "open", "closed", "paid"])
       .order("created_at", { ascending: false })
       .limit(200),
     admin().from("fastbar_tab_items").select("id, session_id, unit_price, quantity"),
