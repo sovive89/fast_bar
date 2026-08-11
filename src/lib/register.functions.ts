@@ -68,13 +68,19 @@ export const closeSession = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+const PAYMENT_METHODS = ["dinheiro", "cartao", "pix"] as const;
+export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
+
 export const registerPayment = createServerFn({ method: "POST" })
-  .inputValidator((data: { sessionId: string; method: string }) => data)
+  .inputValidator((data: { sessionId: string; method: PaymentMethod }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess, registerCustomerSpend } = await import(
       "./fastbar.server"
     );
     await assertRegisterAccess();
+    if (!PAYMENT_METHODS.includes(data.method)) {
+      return { ok: false as const, message: "Forma de pagamento inválida." };
+    }
     const nowIso = new Date().toISOString();
     const { data: session } = await admin()
       .from("fastbar_sessions")
@@ -90,6 +96,7 @@ export const registerPayment = createServerFn({ method: "POST" })
         status: "paid",
         closed_at: session.closed_at ?? nowIso,
         paid_at: nowIso,
+        payment_method: data.method,
       })
       .eq("id", session.id);
     if (error) return { ok: false as const, message: "Não foi possível registrar o pagamento." };

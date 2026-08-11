@@ -25,7 +25,9 @@ function RegisterLayout() {
     ? "estoque"
     : pathname.startsWith("/caixa/clientes")
       ? "clientes"
-      : "comandas";
+      : pathname.startsWith("/caixa/relatorios")
+        ? "relatorios"
+        : "comandas";
 
   const tabClass = (tab: string) =>
     `rounded-full px-4 py-1.5 text-sm font-medium ${active === tab ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`;
@@ -33,7 +35,7 @@ function RegisterLayout() {
   return (
     <div>
       <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-4 px-5 pt-5">
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto">
           <Link to="/caixa" className={tabClass("comandas")}>
             Comandas
           </Link>
@@ -43,13 +45,16 @@ function RegisterLayout() {
           <Link to="/caixa/clientes" className={tabClass("clientes")}>
             Clientes
           </Link>
+          <Link to="/caixa/relatorios" className={tabClass("relatorios")}>
+            Relatórios
+          </Link>
         </div>
         <button
           onClick={async () => {
             await lock();
             await navigate({ to: "/equipe", replace: true });
           }}
-          className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
           Sair do caixa
         </button>

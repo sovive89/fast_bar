@@ -108,6 +108,7 @@ export type Database = {
           id: string
           last_seen_at: string
           name: string
+          notes: string | null
           phone: string
           total_spent: number
           total_visits: number
@@ -118,6 +119,7 @@ export type Database = {
           id?: string
           last_seen_at?: string
           name: string
+          notes?: string | null
           phone: string
           total_spent?: number
           total_visits?: number
@@ -128,6 +130,7 @@ export type Database = {
           id?: string
           last_seen_at?: string
           name?: string
+          notes?: string | null
           phone?: string
           total_spent?: number
           total_visits?: number
@@ -229,8 +232,10 @@ export type Database = {
           image_url: string | null
           is_active: boolean
           name: string
+          package_type: string | null
           price: number
           stock_quantity: number
+          unit: string
           updated_at: string
         }
         Insert: {
@@ -240,8 +245,10 @@ export type Database = {
           image_url?: string | null
           is_active?: boolean
           name: string
+          package_type?: string | null
           price?: number
           stock_quantity?: number
+          unit?: string
           updated_at?: string
         }
         Update: {
@@ -251,8 +258,10 @@ export type Database = {
           image_url?: string | null
           is_active?: boolean
           name?: string
+          package_type?: string | null
           price?: number
           stock_quantity?: number
+          unit?: string
           updated_at?: string
         }
         Relationships: []
@@ -311,6 +320,7 @@ export type Database = {
           customer_name: string
           id: string
           paid_at: string | null
+          payment_method: string | null
           phone: string
           started_at: string | null
           status: string
@@ -323,6 +333,7 @@ export type Database = {
           customer_name: string
           id?: string
           paid_at?: string | null
+          payment_method?: string | null
           phone: string
           started_at?: string | null
           status?: string
@@ -335,6 +346,7 @@ export type Database = {
           customer_name?: string
           id?: string
           paid_at?: string | null
+          payment_method?: string | null
           phone?: string
           started_at?: string | null
           status?: string

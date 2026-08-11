@@ -5,7 +5,7 @@ export const getStockOverview = createServerFn({ method: "POST" }).handler(async
   await assertRegisterAccess();
   const { data: products } = await admin()
     .from("fastbar_products")
-    .select("id, name, category, price, is_active, stock_quantity, image_url")
+    .select("id, name, category, price, unit, package_type, is_active, stock_quantity, image_url")
     .order("category")
     .order("name");
   return { products: products ?? [] };

@@ -9,6 +9,7 @@ export type BarSession = {
   started_at: string | null;
   closed_at: string | null;
   paid_at: string | null;
+  payment_method?: string | null;
 };
 
 export type BarTabItem = {

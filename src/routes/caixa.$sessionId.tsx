@@ -13,6 +13,7 @@ import {
   registerPayment,
   removeTabItem,
   reopenSession,
+  type PaymentMethod,
 } from "@/lib/register.functions";
 import { fetchProducts } from "@/services/supabase/products";
 import { tabTotal } from "@/services/supabase/tabItems";
@@ -43,6 +44,7 @@ function RegisterTabDetail() {
   const [products, setProducts] = useState<BarProduct[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
 
   const add = useServerFn(addTabItem);
   const remove = useServerFn(removeTabItem);
@@ -158,18 +160,42 @@ function RegisterTabDetail() {
         )}
 
         {!isPending && session.status !== "paid" && (
-          <button
-            onClick={async () => {
-              const ok = await run(() =>
-                pay({ data: { sessionId: session.id, method: "presencial" } }),
-              );
-              if (ok) await navigate({ to: "/caixa" });
-            }}
-            disabled={busy}
-            className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
-          >
-            Registrar pagamento
-          </button>
+          <>
+            <div className="flex gap-2">
+              {(
+                [
+                  ["dinheiro", "Dinheiro"],
+                  ["cartao", "Cartão"],
+                  ["pix", "Pix"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setPaymentMethod(value)}
+                  disabled={busy}
+                  className={`h-10 flex-1 rounded-xl text-sm font-medium disabled:opacity-60 ${
+                    paymentMethod === value
+                      ? "bg-primary text-primary-foreground"
+                      : "border border-border text-muted-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={async () => {
+                const ok = await run(() =>
+                  pay({ data: { sessionId: session.id, method: paymentMethod } }),
+                );
+                if (ok) await navigate({ to: "/caixa" });
+              }}
+              disabled={busy}
+              className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
+            >
+              Registrar pagamento
+            </button>
+          </>
         )}
 
         {!isPending && !isOpen && session.status !== "paid" && (

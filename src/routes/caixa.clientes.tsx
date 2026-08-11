@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { brl, digits, formatPhone } from "@/lib/format";
@@ -83,25 +83,28 @@ function CustomersOverview() {
       ) : (
         <ul className="mt-5 space-y-3">
           {filtered.map((customer) => (
-            <li
-              key={customer.id}
-              className="rounded-2xl border border-border bg-card p-4"
-            >
-              <div className="flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <p className="truncate font-semibold">{customer.name}</p>
-                  <p className="text-xs text-muted-foreground">{formatPhone(customer.phone)}</p>
+            <li key={customer.id}>
+              <Link
+                to="/caixa/clientes/$customerId"
+                params={{ customerId: customer.id }}
+                className="block rounded-2xl border border-border bg-card p-4 transition-colors hover:border-ring"
+              >
+                <div className="flex items-center justify-between gap-4">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{customer.name}</p>
+                    <p className="text-xs text-muted-foreground">{formatPhone(customer.phone)}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold">{brl(customer.total_spent)}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {customer.total_visits} {customer.total_visits === 1 ? "visita" : "visitas"}
+                    </p>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <p className="font-bold">{brl(customer.total_spent)}</p>
-                  <p className="text-xs text-muted-foreground">
-                    {customer.total_visits} {customer.total_visits === 1 ? "visita" : "visitas"}
-                  </p>
-                </div>
-              </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Última visita: {formatDate(customer.last_seen_at)}
-              </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Última visita: {formatDate(customer.last_seen_at)}
+                </p>
+              </Link>
             </li>
           ))}
         </ul>

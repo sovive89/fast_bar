@@ -16,6 +16,8 @@ import {
   listSuppliers,
   setRecipeItems,
   uploadProductPhoto,
+  PRODUCT_UNITS,
+  PRODUCT_PACKAGE_TYPES,
 } from "@/lib/base-drinks.functions";
 
 export const Route = createFileRoute("/caixa/estoque")({
@@ -179,6 +181,8 @@ type Product = {
   name: string;
   category: string;
   price: number;
+  unit: string;
+  package_type: string | null;
   is_active: boolean;
   stock_quantity: number;
   image_url: string | null;
@@ -196,6 +200,8 @@ function ProdutosTab() {
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Bebidas");
   const [price, setPrice] = useState("");
+  const [unit, setUnit] = useState<(typeof PRODUCT_UNITS)[number]>("un");
+  const [packageType, setPackageType] = useState<(typeof PRODUCT_PACKAGE_TYPES)[number]>("Lata");
   const [stockQuantity, setStockQuantity] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
@@ -268,6 +274,8 @@ function ProdutosTab() {
         name,
         category,
         price: priceNumber,
+        unit,
+        packageType,
         imageUrl,
         stockQuantity: stockQuantity ? Number(stockQuantity) : undefined,
       },
@@ -278,6 +286,8 @@ function ProdutosTab() {
     setName("");
     setCategory("Bebidas");
     setPrice("");
+    setUnit("un");
+    setPackageType("Lata");
     setStockQuantity("");
     setPhotoFile(null);
     setShowForm(false);
@@ -309,6 +319,38 @@ function ProdutosTab() {
             <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
             <TextField label="Categoria" value={category} onChange={setCategory} placeholder="Drinks" />
             <TextField label="Preço (R$)" value={price} onChange={setPrice} placeholder="18,00" />
+            <div className="grid grid-cols-2 gap-3">
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Unidade de medida</span>
+                <select
+                  value={unit}
+                  onChange={(event) => setUnit(event.target.value as (typeof PRODUCT_UNITS)[number])}
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                >
+                  {PRODUCT_UNITS.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="block">
+                <span className="text-xs font-medium text-muted-foreground">Tipo</span>
+                <select
+                  value={packageType}
+                  onChange={(event) =>
+                    setPackageType(event.target.value as (typeof PRODUCT_PACKAGE_TYPES)[number])
+                  }
+                  className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                >
+                  {PRODUCT_PACKAGE_TYPES.map((option) => (
+                    <option key={option} value={option}>
+                      {option}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
             <TextField
               label="Estoque inicial (só se NÃO tiver ficha técnica, ex.: cerveja lata)"
               value={stockQuantity}
@@ -368,7 +410,11 @@ function ProdutosTab() {
                           )}
                           <div className="min-w-0">
                             <p className="truncate font-semibold">{product.name}</p>
-                            <p className="text-xs text-muted-foreground">{brl(product.price)}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {brl(product.price)}
+                              {product.package_type ? ` · ${product.package_type}` : ""}
+                              {product.unit ? ` (${product.unit})` : ""}
+                            </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-3">

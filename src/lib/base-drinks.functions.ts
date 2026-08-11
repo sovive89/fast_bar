@@ -231,12 +231,25 @@ export const listAllProducts = createServerFn({ method: "POST" }).handler(async 
   return { products: data ?? [] };
 });
 
+export const PRODUCT_UNITS = ["un", "ml", "L", "g", "kg"] as const;
+export const PRODUCT_PACKAGE_TYPES = [
+  "Lata",
+  "Garrafa",
+  "Dose",
+  "Barril",
+  "Copo",
+  "Porção",
+  "Outro",
+] as const;
+
 export const createProduct = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
       name: string;
       price: number;
       category: string;
+      unit: string;
+      packageType?: string;
       imageUrl?: string;
       stockQuantity?: number;
     }) => data,
@@ -248,6 +261,9 @@ export const createProduct = createServerFn({ method: "POST" })
     const name = data.name.trim();
     const category = data.category.trim() || "Bebidas";
     const price = Number(data.price);
+    const unit = PRODUCT_UNITS.includes(data.unit as (typeof PRODUCT_UNITS)[number])
+      ? data.unit
+      : "un";
     if (name.length < 2) return { ok: false as const, message: "Nome do produto inválido." };
     if (!Number.isFinite(price) || price < 0) {
       return { ok: false as const, message: "Preço inválido." };
@@ -259,6 +275,8 @@ export const createProduct = createServerFn({ method: "POST" })
         name,
         category,
         price,
+        unit,
+        package_type: data.packageType?.trim() || null,
         image_url: data.imageUrl?.trim() || null,
         stock_quantity: data.stockQuantity && data.stockQuantity > 0 ? data.stockQuantity : 0,
       })
