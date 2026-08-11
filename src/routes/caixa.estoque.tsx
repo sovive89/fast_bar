@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { brl, parseAmount } from "@/lib/format";
 import { getStockOverview, restockProduct } from "@/lib/stock.functions";
+import { deleteProduct } from "@/lib/register.functions";
 import {
   addBaseDrinkEntry,
   addIngredientEntry,
@@ -198,6 +199,8 @@ function ProdutosTab() {
   const [openRestockId, setOpenRestockId] = useState<string | null>(null);
   const [restockAmount, setRestockAmount] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Bebidas");
@@ -212,6 +215,7 @@ function ProdutosTab() {
 
   const loadOverview = useServerFn(getStockOverview);
   const restock = useServerFn(restockProduct);
+  const removeProduct = useServerFn(deleteProduct);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
 
@@ -238,6 +242,16 @@ function ProdutosTab() {
       setRestockAmount("");
       await load();
     }
+  }
+
+  async function confirmDelete(productId: string) {
+    setDeleteError(null);
+    setBusyId(productId);
+    const result = await removeProduct({ data: { productId } });
+    setBusyId(null);
+    if (!result.ok) return setDeleteError(result.message ?? "Não foi possível apagar.");
+    setDeletingId(null);
+    await load();
   }
 
   async function submitNewProduct() {
@@ -397,6 +411,7 @@ function ProdutosTab() {
                 {items.map((product) => {
                   const low = product.stock_quantity < LOW_STOCK_THRESHOLD;
                   const isOpen = openRestockId === product.id;
+                  const isDeleting = deletingId === product.id;
                   return (
                     <li key={product.id} className="rounded-2xl border border-border bg-card p-4">
                       <div className="flex items-center justify-between gap-4">
@@ -427,13 +442,51 @@ function ProdutosTab() {
                             onClick={() => {
                               setOpenRestockId(isOpen ? null : product.id);
                               setRestockAmount("");
+                              setDeletingId(null);
                             }}
                             className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                           >
                             {isOpen ? "Cancelar" : "+ Repor"}
                           </button>
+                          <button
+                            onClick={() => {
+                              setDeletingId(isDeleting ? null : product.id);
+                              setOpenRestockId(null);
+                              setDeleteError(null);
+                            }}
+                            className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                          >
+                            Apagar
+                          </button>
                         </div>
                       </div>
+
+                      {isDeleting && (
+                        <div className="mt-3 rounded-xl border border-destructive/40 bg-destructive/5 p-3">
+                          <p className="text-xs">
+                            Apagar “{product.name}” de vez? As vendas já feitas continuam no
+                            histórico com nome e preço próprios.
+                          </p>
+                          {deleteError && (
+                            <p className="mt-2 text-xs text-destructive">{deleteError}</p>
+                          )}
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              onClick={() => confirmDelete(product.id)}
+                              disabled={busyId === product.id}
+                              className="rounded-full bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground disabled:opacity-60"
+                            >
+                              {busyId === product.id ? "Apagando..." : "Apagar"}
+                            </button>
+                            <button
+                              onClick={() => setDeletingId(null)}
+                              className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {isOpen && (
                         <div className="mt-3 flex gap-2">

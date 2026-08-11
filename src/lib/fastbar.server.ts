@@ -57,6 +57,37 @@ export async function registerStockMovement(
   await deductRecipeComponentsForSale(productId, quantity);
 }
 
+/**
+ * Devolve ao estoque o que um lançamento tinha consumido. Usado quando a equipe cancela um item
+ * lançado por engano — sem isso o produto sairia do estoque e nunca voltaria.
+ */
+export async function revertStockMovement(
+  productId: string | null,
+  sessionId: string,
+  quantity: number,
+) {
+  if (!productId) return;
+  await supabaseAdmin.from("fastbar_stock_movements").insert({
+    product_id: productId,
+    session_id: sessionId,
+    quantity,
+    movement_type: "in",
+    note: "Cancelamento de lançamento",
+  });
+  const { data: product } = await supabaseAdmin
+    .from("fastbar_products")
+    .select("stock_quantity")
+    .eq("id", productId)
+    .maybeSingle();
+  if (product) {
+    await supabaseAdmin
+      .from("fastbar_products")
+      .update({ stock_quantity: product.stock_quantity + quantity })
+      .eq("id", productId);
+  }
+  await restoreRecipeComponents(productId, quantity);
+}
+
 /** Baixa automática: 1 venda do produto consome os componentes (bebidas base + ingredientes) da ficha técnica. */
 export async function deductRecipeComponentsForSale(productId: string, saleQuantity: number) {
   const { data: recipeItems } = await supabaseAdmin
@@ -108,6 +139,62 @@ export async function deductRecipeComponentsForSale(productId: string, saleQuant
       await supabaseAdmin
         .from("fastbar_drink_ingredients")
         .update({ current_stock: Math.max(0, Number(ingredient.current_stock) - consumed) })
+        .eq("id", ingredient.id);
+    }
+  }
+}
+
+/** Inverso de deductRecipeComponentsForSale: devolve os componentes da ficha técnica ao estoque. */
+export async function restoreRecipeComponents(productId: string, saleQuantity: number) {
+  const { data: recipeItems } = await supabaseAdmin
+    .from("fastbar_recipe_items")
+    .select("base_drink_id, ingredient_id, quantity")
+    .eq("product_id", productId);
+  if (!recipeItems || recipeItems.length === 0) return;
+
+  for (const item of recipeItems) {
+    const restored = Number(item.quantity) * saleQuantity;
+
+    if (item.base_drink_id) {
+      const { data: baseDrink } = await supabaseAdmin
+        .from("fastbar_base_drinks")
+        .select("id, current_stock")
+        .eq("id", item.base_drink_id)
+        .maybeSingle();
+      if (!baseDrink) continue;
+
+      await supabaseAdmin.from("fastbar_base_drink_movements").insert({
+        base_drink_id: baseDrink.id,
+        type: "entrada",
+        quantity: restored,
+        reason: "cancelamento",
+        note: "Estorno por cancelamento de lançamento",
+      });
+      await supabaseAdmin
+        .from("fastbar_base_drinks")
+        .update({ current_stock: Number(baseDrink.current_stock) + restored })
+        .eq("id", baseDrink.id);
+      continue;
+    }
+
+    if (item.ingredient_id) {
+      const { data: ingredient } = await supabaseAdmin
+        .from("fastbar_drink_ingredients")
+        .select("id, current_stock")
+        .eq("id", item.ingredient_id)
+        .maybeSingle();
+      if (!ingredient) continue;
+
+      await supabaseAdmin.from("fastbar_drink_ingredient_movements").insert({
+        ingredient_id: ingredient.id,
+        type: "entrada",
+        quantity: restored,
+        reason: "cancelamento",
+        note: "Estorno por cancelamento de lançamento",
+      });
+      await supabaseAdmin
+        .from("fastbar_drink_ingredients")
+        .update({ current_stock: Number(ingredient.current_stock) + restored })
         .eq("id", ingredient.id);
     }
   }
