@@ -44,7 +44,11 @@ export const addTabItem = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
-/** Cancela um lançamento feito por engano, devolvendo ao estoque o que ele tinha consumido. */
+/**
+ * Cancela um lançamento feito por engano, devolvendo ao estoque o que ele tinha consumido.
+ * Só em comanda aberta — depois de fechada/paga, o valor já está no faturamento e mexer aqui
+ * desalinharia estoque, faturamento e o total já somado ao cliente no CRM.
+ */
 export const removeTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { itemId: string }) => data)
   .handler(async ({ data }) => {
@@ -53,42 +57,65 @@ export const removeTabItem = createServerFn({ method: "POST" })
 
     const { data: item } = await admin()
       .from("fastbar_tab_items")
-      .select("id, product_id, quantity, session_id")
+      .select("id, product_id, quantity, session_id, fastbar_sessions(status)")
       .eq("id", data.itemId)
       .maybeSingle();
     if (!item) return { ok: false as const, message: "Item não encontrado." };
+    const session = item.fastbar_sessions as { status: string } | { status: string }[] | null;
+    const status = Array.isArray(session) ? session[0]?.status : session?.status;
+    if (status !== "open") {
+      return { ok: false as const, message: "Comanda não está aberta." };
+    }
+
+    // Devolve o estoque antes de apagar o item: se o cancelamento cair no meio, o pior caso é
+    // repetir o estorno (idempotente na prática) em vez de o item sumir com o estoque ainda baixado.
+    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
+    if (!reverted.ok) {
+      return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
+    }
 
     const { error } = await admin().from("fastbar_tab_items").delete().eq("id", item.id);
     if (error) return { ok: false as const, message: "Não foi possível remover o item." };
-
-    await revertStockMovement(item.product_id, item.session_id, item.quantity);
     return { ok: true as const };
   });
 
-/** Desfaz o último lançamento da comanda — atalho pro erro mais comum no balcão. */
+/** Desfaz o último lançamento da comanda — atalho pro erro mais comum no balcão. Só em comanda aberta. */
 export const undoLastTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
     await assertRegisterAccess();
 
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("id, status")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
+    if (session.status !== "open") {
+      return { ok: false as const, message: "Comanda não está aberta." };
+    }
+
     const { data: item } = await admin()
       .from("fastbar_tab_items")
       .select("id, product_id, quantity, session_id")
-      .eq("session_id", data.sessionId)
+      .eq("session_id", session.id)
       .order("added_at", { ascending: false })
       .limit(1)
       .maybeSingle();
     if (!item) return { ok: false as const, message: "Não há lançamentos para desfazer." };
 
+    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
+    if (!reverted.ok) {
+      return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
+    }
+
     const { error } = await admin().from("fastbar_tab_items").delete().eq("id", item.id);
     if (error) return { ok: false as const, message: "Não foi possível desfazer o lançamento." };
-
-    await revertStockMovement(item.product_id, item.session_id, item.quantity);
     return { ok: true as const };
   });
 
-/** Remove todos os lançamentos da comanda, devolvendo tudo ao estoque. A comanda continua aberta. */
+/** Remove todos os lançamentos da comanda, devolvendo tudo ao estoque. Só em comanda aberta. */
 export const clearTabItems = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string }) => data)
   .handler(async ({ data }) => {
@@ -101,8 +128,8 @@ export const clearTabItems = createServerFn({ method: "POST" })
       .eq("id", data.sessionId)
       .maybeSingle();
     if (!session) return { ok: false as const, message: "Comanda não encontrada." };
-    if (session.status === "paid") {
-      return { ok: false as const, message: "Comanda já paga — reabra antes de zerar." };
+    if (session.status !== "open") {
+      return { ok: false as const, message: "Só dá pra zerar comanda aberta." };
     }
 
     const { data: items } = await admin()
@@ -111,12 +138,15 @@ export const clearTabItems = createServerFn({ method: "POST" })
       .eq("session_id", session.id);
     if (!items || items.length === 0) return { ok: true as const, removed: 0 };
 
+    for (const item of items) {
+      const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
+      if (!reverted.ok) {
+        return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
+      }
+    }
+
     const { error } = await admin().from("fastbar_tab_items").delete().eq("session_id", session.id);
     if (error) return { ok: false as const, message: "Não foi possível zerar a comanda." };
-
-    for (const item of items) {
-      await revertStockMovement(item.product_id, item.session_id, item.quantity);
-    }
     return { ok: true as const, removed: items.length };
   });
 

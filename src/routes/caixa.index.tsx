@@ -133,11 +133,16 @@ function RegisterList() {
   async function run(action: () => Promise<{ ok: boolean; message?: string }>) {
     setError(null);
     setBusy(true);
-    const result = await action();
-    setBusy(false);
-    setConfirming(null);
-    if (!result.ok) return setError(result.message ?? "Não foi possível concluir.");
-    await load();
+    try {
+      const result = await action();
+      if (!result.ok) return setError(result.message ?? "Não foi possível concluir.");
+      setConfirming(null);
+      await load();
+    } catch {
+      setError("Não foi possível concluir — tente de novo.");
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -209,6 +214,7 @@ function RegisterList() {
             const sessionItems = itemsBySession.get(session.id) ?? [];
             const code = shortId(session.customer_id ?? session.id);
             const isPaid = session.status === "paid";
+            const isOpen = session.status === "open";
             const isArchived = Boolean(session.archived_at);
             const canArchive = !isArchived && (session.status === "closed" || isPaid);
 
@@ -267,7 +273,7 @@ function RegisterList() {
                               <span className="font-semibold">
                                 {brl(Number(item.unit_price) * item.quantity)}
                               </span>
-                              {!isPaid && (
+                              {isOpen && (
                                 <button
                                   onClick={() => run(() => removeItem({ data: { itemId: item.id } }))}
                                   disabled={busy}
@@ -300,7 +306,7 @@ function RegisterList() {
                         >
                           Abrir comanda
                         </Link>
-                        {!isPaid && sessionItems.length > 0 && (
+                        {isOpen && sessionItems.length > 0 && (
                           <>
                             <button
                               onClick={() => run(() => undoLast({ data: { sessionId: session.id } }))}

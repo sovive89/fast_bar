@@ -48,9 +48,12 @@ export async function registerStockMovement(
     .eq("id", productId)
     .maybeSingle();
   if (product) {
+    // Sem clamp em zero de propósito: venda além do estoque físico deixa o saldo negativo, visível
+    // pra equipe corrigir, em vez de perder silenciosamente quanto foi vendido a mais. Um cancelamento
+    // depois soma de volta exatamente o que este lançamento tirou, sem gerar estoque fantasma.
     await supabaseAdmin
       .from("fastbar_products")
-      .update({ stock_quantity: Math.max(0, product.stock_quantity - quantity) })
+      .update({ stock_quantity: product.stock_quantity - quantity })
       .eq("id", productId);
   }
   // Se o produto tem ficha técnica (ex.: "Caipirinha"), desconta os componentes em ml/un.
@@ -59,33 +62,37 @@ export async function registerStockMovement(
 
 /**
  * Devolve ao estoque o que um lançamento tinha consumido. Usado quando a equipe cancela um item
- * lançado por engano — sem isso o produto sairia do estoque e nunca voltaria.
+ * lançado por engano — sem isso o produto sairia do estoque e nunca voltaria. Reporta falha em vez
+ * de engolir o erro, pra quem chama não apagar o lançamento como se o estorno tivesse funcionado.
  */
 export async function revertStockMovement(
   productId: string | null,
   sessionId: string,
   quantity: number,
-) {
-  if (!productId) return;
-  await supabaseAdmin.from("fastbar_stock_movements").insert({
+): Promise<{ ok: boolean }> {
+  if (!productId) return { ok: true };
+  const { error: movementError } = await supabaseAdmin.from("fastbar_stock_movements").insert({
     product_id: productId,
     session_id: sessionId,
     quantity,
     movement_type: "in",
     note: "Cancelamento de lançamento",
   });
+  if (movementError) return { ok: false };
+
   const { data: product } = await supabaseAdmin
     .from("fastbar_products")
     .select("stock_quantity")
     .eq("id", productId)
     .maybeSingle();
   if (product) {
-    await supabaseAdmin
+    const { error: updateError } = await supabaseAdmin
       .from("fastbar_products")
       .update({ stock_quantity: product.stock_quantity + quantity })
       .eq("id", productId);
+    if (updateError) return { ok: false };
   }
-  await restoreRecipeComponents(productId, quantity);
+  return restoreRecipeComponents(productId, quantity);
 }
 
 /** Baixa automática: 1 venda do produto consome os componentes (bebidas base + ingredientes) da ficha técnica. */
@@ -116,7 +123,7 @@ export async function deductRecipeComponentsForSale(productId: string, saleQuant
       });
       await supabaseAdmin
         .from("fastbar_base_drinks")
-        .update({ current_stock: Math.max(0, Number(baseDrink.current_stock) - consumed) })
+        .update({ current_stock: Number(baseDrink.current_stock) - consumed })
         .eq("id", baseDrink.id);
       continue;
     }
@@ -138,19 +145,22 @@ export async function deductRecipeComponentsForSale(productId: string, saleQuant
       });
       await supabaseAdmin
         .from("fastbar_drink_ingredients")
-        .update({ current_stock: Math.max(0, Number(ingredient.current_stock) - consumed) })
+        .update({ current_stock: Number(ingredient.current_stock) - consumed })
         .eq("id", ingredient.id);
     }
   }
 }
 
 /** Inverso de deductRecipeComponentsForSale: devolve os componentes da ficha técnica ao estoque. */
-export async function restoreRecipeComponents(productId: string, saleQuantity: number) {
+export async function restoreRecipeComponents(
+  productId: string,
+  saleQuantity: number,
+): Promise<{ ok: boolean }> {
   const { data: recipeItems } = await supabaseAdmin
     .from("fastbar_recipe_items")
     .select("base_drink_id, ingredient_id, quantity")
     .eq("product_id", productId);
-  if (!recipeItems || recipeItems.length === 0) return;
+  if (!recipeItems || recipeItems.length === 0) return { ok: true };
 
   for (const item of recipeItems) {
     const restored = Number(item.quantity) * saleQuantity;
@@ -163,17 +173,21 @@ export async function restoreRecipeComponents(productId: string, saleQuantity: n
         .maybeSingle();
       if (!baseDrink) continue;
 
-      await supabaseAdmin.from("fastbar_base_drink_movements").insert({
-        base_drink_id: baseDrink.id,
-        type: "entrada",
-        quantity: restored,
-        reason: "cancelamento",
-        note: "Estorno por cancelamento de lançamento",
-      });
-      await supabaseAdmin
+      const { error: movementError } = await supabaseAdmin
+        .from("fastbar_base_drink_movements")
+        .insert({
+          base_drink_id: baseDrink.id,
+          type: "entrada",
+          quantity: restored,
+          reason: "cancelamento",
+          note: "Estorno por cancelamento de lançamento",
+        });
+      if (movementError) return { ok: false };
+      const { error: updateError } = await supabaseAdmin
         .from("fastbar_base_drinks")
         .update({ current_stock: Number(baseDrink.current_stock) + restored })
         .eq("id", baseDrink.id);
+      if (updateError) return { ok: false };
       continue;
     }
 
@@ -185,19 +199,24 @@ export async function restoreRecipeComponents(productId: string, saleQuantity: n
         .maybeSingle();
       if (!ingredient) continue;
 
-      await supabaseAdmin.from("fastbar_drink_ingredient_movements").insert({
-        ingredient_id: ingredient.id,
-        type: "entrada",
-        quantity: restored,
-        reason: "cancelamento",
-        note: "Estorno por cancelamento de lançamento",
-      });
-      await supabaseAdmin
+      const { error: movementError } = await supabaseAdmin
+        .from("fastbar_drink_ingredient_movements")
+        .insert({
+          ingredient_id: ingredient.id,
+          type: "entrada",
+          quantity: restored,
+          reason: "cancelamento",
+          note: "Estorno por cancelamento de lançamento",
+        });
+      if (movementError) return { ok: false };
+      const { error: updateError } = await supabaseAdmin
         .from("fastbar_drink_ingredients")
         .update({ current_stock: Number(ingredient.current_stock) + restored })
         .eq("id", ingredient.id);
+      if (updateError) return { ok: false };
     }
   }
+  return { ok: true };
 }
 
 /** Cria o cliente na primeira visita, ou atualiza nome/última visita/contagem numa nova visita. */

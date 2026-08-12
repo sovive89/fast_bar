@@ -1,11 +1,16 @@
 import { createServerFn } from "@tanstack/react-start";
 
-type PackagingInput = { unitsPerPack?: number | undefined; contentAmount?: number | undefined };
+type PackagingInput = {
+  purchaseUnit?: string | undefined;
+  unitsPerPack?: number | undefined;
+  contentAmount?: number | undefined;
+};
 
 /**
  * Valida a embalagem de compra. Recusa valor inválido em vez de normalizar em silêncio: salvar
  * uma embalagem diferente da que a pessoa digitou faria toda entrada futura calcular quantidade e
- * custo errados.
+ * custo errados. units_per_pack/content_amount só podem fugir de 1×1 se houver purchase_unit —
+ * sem isso a tela de entrada mostra "direto em ml/g/un" e multiplicaria pela embalagem escondida.
  */
 function readPackaging(data: PackagingInput) {
   const unitsPerPack = data.unitsPerPack ?? 1;
@@ -13,8 +18,14 @@ function readPackaging(data: PackagingInput) {
   if (!Number.isInteger(unitsPerPack) || unitsPerPack <= 0) {
     return { ok: false as const, message: "Itens por embalagem deve ser um número inteiro maior que zero." };
   }
-  if (!Number.isFinite(contentAmount) || contentAmount <= 0) {
+  if (!Number.isFinite(contentAmount) || contentAmount <= 0 || contentAmount >= 1000000) {
     return { ok: false as const, message: "Conteúdo por item deve ser maior que zero." };
+  }
+  if (!data.purchaseUnit?.trim() && (unitsPerPack !== 1 || contentAmount !== 1)) {
+    return {
+      ok: false as const,
+      message: "Informe a unidade de compra (garrafa, caixa...) antes de mudar a embalagem.",
+    };
   }
   return { ok: true as const, unitsPerPack, contentAmount };
 }
