@@ -3,7 +3,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { brl, parseAmount } from "@/lib/format";
 import { getStockOverview, restockProduct } from "@/lib/stock.functions";
-import { deleteProduct } from "@/lib/register.functions";
+import { deactivateProduct } from "@/lib/register.functions";
 import {
   addBaseDrinkEntry,
   addIngredientEntry,
@@ -215,7 +215,7 @@ function ProdutosTab() {
 
   const loadOverview = useServerFn(getStockOverview);
   const restock = useServerFn(restockProduct);
-  const removeProduct = useServerFn(deleteProduct);
+  const removeProduct = useServerFn(deactivateProduct);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
 
@@ -454,18 +454,18 @@ function ProdutosTab() {
                               setOpenRestockId(null);
                               setDeleteError(null);
                             }}
-                            className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                            className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                           >
-                            Apagar
+                            Remover
                           </button>
                         </div>
                       </div>
 
                       {isDeleting && (
-                        <div className="mt-3 rounded-xl border border-destructive/40 bg-destructive/5 p-3">
+                        <div className="mt-3 rounded-xl border border-border bg-muted/40 p-3">
                           <p className="text-xs">
-                            Apagar “{product.name}” de vez? As vendas já feitas continuam no
-                            histórico com nome e preço próprios.
+                            Tirar “{product.name}” do cardápio? O cadastro e o histórico de vendas
+                            continuam guardados — o item só deixa de aparecer para lançamento.
                           </p>
                           {deleteError && (
                             <p className="mt-2 text-xs text-destructive">{deleteError}</p>
@@ -474,9 +474,9 @@ function ProdutosTab() {
                             <button
                               onClick={() => confirmDelete(product.id)}
                               disabled={busyId === product.id}
-                              className="rounded-full bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground disabled:opacity-60"
+                              className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-60"
                             >
-                              {busyId === product.id ? "Apagando..." : "Apagar"}
+                              {busyId === product.id ? "Removendo..." : "Remover"}
                             </button>
                             <button
                               onClick={() => setDeletingId(null)}

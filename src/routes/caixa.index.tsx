@@ -5,10 +5,11 @@ import { brl, digits, elapsed, formatPhone, hhmm } from "@/lib/format";
 import { useServerFn } from "@tanstack/react-start";
 import { getRegisterOverview } from "@/lib/tab-reads.functions";
 import {
+  archiveClosedSessions,
+  archiveSession,
   clearTabItems,
-  deleteSession,
-  purgeClosedSessions,
   removeTabItem,
+  unarchiveSession,
   undoLastTabItem,
 } from "@/lib/register.functions";
 import type { BarSession } from "@/types/fastbar";
@@ -50,7 +51,7 @@ function RegisterList() {
   const [sessions, setSessions] = useState<BarSession[]>([]);
   const [items, setItems] = useState<OverviewItem[]>([]);
   const [search, setSearch] = useState("");
-  const [showAll, setShowAll] = useState(false);
+  const [view, setView] = useState<"open" | "all" | "archived">("open");
   const [now, setNow] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{ kind: string; sessionId?: string } | null>(null);
@@ -61,8 +62,9 @@ function RegisterList() {
   const undoLast = useServerFn(undoLastTabItem);
   const removeItem = useServerFn(removeTabItem);
   const clearItems = useServerFn(clearTabItems);
-  const removeSession = useServerFn(deleteSession);
-  const purgeClosed = useServerFn(purgeClosedSessions);
+  const archiveOne = useServerFn(archiveSession);
+  const unarchiveOne = useServerFn(unarchiveSession);
+  const archiveClosed = useServerFn(archiveClosedSessions);
 
   async function load() {
     const result = await loadOverview();
@@ -106,7 +108,12 @@ function RegisterList() {
     const term = search.trim().toLowerCase();
     const termDigits = digits(search);
     return sessions
-      .filter((session) => (showAll ? true : session.status !== "paid"))
+      .filter((session) => {
+        const archived = Boolean(session.archived_at);
+        if (view === "archived") return archived;
+        if (archived) return false;
+        return view === "all" ? true : session.status !== "paid";
+      })
       .filter((session) => {
         if (!term) return true;
         return (
@@ -114,12 +121,13 @@ function RegisterList() {
           (termDigits.length > 0 && session.phone.includes(termDigits))
         );
       });
-  }, [sessions, search, showAll]);
+  }, [sessions, search, view]);
 
   const openSessions = sessions.filter((session) => session.status === "open");
   const openTotal = openSessions.reduce((sum, session) => sum + (totals.get(session.id) ?? 0), 0);
-  const closedCount = sessions.filter(
-    (session) => session.status === "closed" || session.status === "paid",
+  const archivableCount = sessions.filter(
+    (session) =>
+      !session.archived_at && (session.status === "closed" || session.status === "paid"),
   ).length;
 
   async function run(action: () => Promise<{ ok: boolean; message?: string }>) {
@@ -153,36 +161,40 @@ function RegisterList() {
       />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          onClick={() => setShowAll(false)}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium ${!showAll ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
-        >
-          Em aberto
-        </button>
-        <button
-          onClick={() => setShowAll(true)}
-          className={`rounded-full px-4 py-1.5 text-sm font-medium ${showAll ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
-        >
-          Todas
-        </button>
-        {showAll && closedCount > 0 && (
+        {(
+          [
+            { id: "open", label: "Em aberto" },
+            { id: "all", label: "Todas" },
+            { id: "archived", label: "Arquivadas" },
+          ] as const
+        ).map((option) => (
           <button
-            onClick={() => setConfirming({ kind: "purge" })}
-            className="ml-auto rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+            key={option.id}
+            onClick={() => setView(option.id)}
+            className={`rounded-full px-4 py-1.5 text-sm font-medium ${view === option.id ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
           >
-            Limpar fechadas ({closedCount})
+            {option.label}
+          </button>
+        ))}
+        {view === "all" && archivableCount > 0 && (
+          <button
+            onClick={() => setConfirming({ kind: "archiveAll" })}
+            className="ml-auto rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Arquivar fechadas ({archivableCount})
           </button>
         )}
       </div>
 
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
 
-      {confirming?.kind === "purge" && (
+      {confirming?.kind === "archiveAll" && (
         <ConfirmBar
-          message={`Apagar ${closedCount} comandas fechadas/pagas de vez? Elas somem do faturamento e dos relatórios.`}
+          message={`Tirar ${archivableCount} comandas fechadas/pagas da lista? Nada é apagado — elas continuam no faturamento e você pode revê-las em "Arquivadas".`}
+          confirmLabel="Arquivar"
           busy={busy}
           onCancel={() => setConfirming(null)}
-          onConfirm={() => run(() => purgeClosed({ data: {} }))}
+          onConfirm={() => run(() => archiveClosed({ data: {} }))}
         />
       )}
 
@@ -197,33 +209,48 @@ function RegisterList() {
             const sessionItems = itemsBySession.get(session.id) ?? [];
             const code = shortId(session.customer_id ?? session.id);
             const isPaid = session.status === "paid";
+            const isArchived = Boolean(session.archived_at);
+            const canArchive = !isArchived && (session.status === "closed" || isPaid);
 
             return (
               <li key={session.id} className="rounded-2xl border border-border bg-card">
-                <button
-                  onClick={() => setExpandedId(isExpanded ? null : session.id)}
-                  className="flex w-full items-center justify-between gap-4 p-4 text-left"
-                >
-                  <div className="min-w-0">
-                    <p className="truncate font-semibold">
-                      {session.customer_name}
-                      {code && (
-                        <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
-                          #{code}
-                        </span>
-                      )}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {formatPhone(session.phone)}
-                      {session.started_at ? ` · ${hhmm(session.started_at)}` : ""} ·{" "}
-                      {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
-                    </p>
-                  </div>
-                  <div className="flex flex-col items-end gap-1">
-                    <p className="font-bold">{brl(totals.get(session.id) ?? 0)}</p>
-                    <StatusBadge status={session.status} />
-                  </div>
-                </button>
+                <div className="flex items-start gap-1 p-4">
+                  <button
+                    onClick={() => setExpandedId(isExpanded ? null : session.id)}
+                    className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold">
+                        {session.customer_name}
+                        {code && (
+                          <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
+                            #{code}
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {formatPhone(session.phone)}
+                        {session.started_at ? ` · ${hhmm(session.started_at)}` : ""} ·{" "}
+                        {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
+                      </p>
+                    </div>
+                    <div className="flex flex-col items-end gap-1">
+                      <p className="font-bold">{brl(totals.get(session.id) ?? 0)}</p>
+                      <StatusBadge status={session.status} />
+                    </div>
+                  </button>
+                  {canArchive && (
+                    <button
+                      onClick={() => run(() => archiveOne({ data: { sessionId: session.id } }))}
+                      disabled={busy}
+                      title="Tirar da lista (não apaga)"
+                      aria-label="Tirar da lista"
+                      className="-mr-1 shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                    >
+                      ×
+                    </button>
+                  )}
+                </div>
 
                 {isExpanded && (
                   <div className="border-t border-border p-4">
@@ -258,20 +285,11 @@ function RegisterList() {
 
                     {confirming?.sessionId === session.id ? (
                       <ConfirmBar
-                        message={
-                          confirming.kind === "clear"
-                            ? "Zerar todos os lançamentos? A comanda continua aberta e o estoque volta."
-                            : "Apagar esta comanda de vez? Não dá pra desfazer."
-                        }
+                        message="Zerar todos os lançamentos? A comanda continua aberta e o estoque volta."
+                        confirmLabel="Zerar"
                         busy={busy}
                         onCancel={() => setConfirming(null)}
-                        onConfirm={() =>
-                          run(() =>
-                            confirming.kind === "clear"
-                              ? clearItems({ data: { sessionId: session.id } })
-                              : removeSession({ data: { sessionId: session.id } }),
-                          )
-                        }
+                        onConfirm={() => run(() => clearItems({ data: { sessionId: session.id } }))}
                       />
                     ) : (
                       <div className="mt-4 flex flex-wrap gap-2">
@@ -299,12 +317,15 @@ function RegisterList() {
                             </button>
                           </>
                         )}
-                        <button
-                          onClick={() => setConfirming({ kind: "delete", sessionId: session.id })}
-                          className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
-                        >
-                          Apagar
-                        </button>
+                        {isArchived && (
+                          <button
+                            onClick={() => run(() => unarchiveOne({ data: { sessionId: session.id } }))}
+                            disabled={busy}
+                            className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                          >
+                            Restaurar
+                          </button>
+                        )}
                       </div>
                     )}
                   </div>
@@ -320,20 +341,21 @@ function RegisterList() {
 
 function ConfirmBar(props: {
   message: string;
+  confirmLabel: string;
   busy: boolean;
   onCancel: () => void;
   onConfirm: () => void;
 }) {
   return (
-    <div className="mt-4 rounded-xl border border-destructive/40 bg-destructive/5 p-3">
+    <div className="mt-4 rounded-xl border border-border bg-muted/40 p-3">
       <p className="text-xs text-foreground">{props.message}</p>
       <div className="mt-3 flex gap-2">
         <button
           onClick={props.onConfirm}
           disabled={props.busy}
-          className="rounded-full bg-destructive px-4 py-1.5 text-xs font-semibold text-destructive-foreground disabled:opacity-60"
+          className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-60"
         >
-          {props.busy ? "Apagando..." : "Confirmar"}
+          {props.busy ? "Salvando..." : props.confirmLabel}
         </button>
         <button
           onClick={props.onCancel}

@@ -332,6 +332,7 @@ export type Database = {
       }
       fastbar_sessions: {
         Row: {
+          archived_at: string | null
           closed_at: string | null
           created_at: string
           customer_id: string | null
@@ -345,6 +346,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
           closed_at?: string | null
           created_at?: string
           customer_id?: string | null
@@ -358,6 +360,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
           closed_at?: string | null
           created_at?: string
           customer_id?: string | null

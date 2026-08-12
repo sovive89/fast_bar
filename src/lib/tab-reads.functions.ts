@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
 const SESSION_COLUMNS =
-  "id, customer_name, phone, status, started_at, closed_at, paid_at, customer_id";
+  "id, customer_name, phone, status, started_at, closed_at, paid_at, customer_id, archived_at";
 
 /** Customer view: readable only with the unguessable comanda link, never sensitive columns. */
 export const getCustomerTab = createServerFn({ method: "POST" })
