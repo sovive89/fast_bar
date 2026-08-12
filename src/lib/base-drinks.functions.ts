@@ -1,5 +1,33 @@
 import { createServerFn } from "@tanstack/react-start";
 
+type PackagingInput = { unitsPerPack?: number | undefined; contentAmount?: number | undefined };
+
+/**
+ * Valida a embalagem de compra. Recusa valor inválido em vez de normalizar em silêncio: salvar
+ * uma embalagem diferente da que a pessoa digitou faria toda entrada futura calcular quantidade e
+ * custo errados.
+ */
+function readPackaging(data: PackagingInput) {
+  const unitsPerPack = data.unitsPerPack ?? 1;
+  const contentAmount = data.contentAmount ?? 1;
+  if (!Number.isInteger(unitsPerPack) || unitsPerPack <= 0) {
+    return { ok: false as const, message: "Itens por embalagem deve ser um número inteiro maior que zero." };
+  }
+  if (!Number.isFinite(contentAmount) || contentAmount <= 0) {
+    return { ok: false as const, message: "Conteúdo por item deve ser maior que zero." };
+  }
+  return { ok: true as const, unitsPerPack, contentAmount };
+}
+
+/** Lê o total pago de uma entrada. `undefined` = entrada sem custo informado (permitido). */
+function readPurchaseCost(value: number | undefined) {
+  if (value === undefined) return { ok: true as const, purchaseCost: null };
+  if (!Number.isFinite(value) || value < 0) {
+    return { ok: false as const, message: "Valor pago inválido." };
+  }
+  return { ok: true as const, purchaseCost: value > 0 ? value : null };
+}
+
 // ============ FORNECEDORES ============
 
 export const listSuppliers = createServerFn({ method: "POST" }).handler(async () => {
@@ -37,14 +65,25 @@ export const listBaseDrinks = createServerFn({ method: "POST" }).handler(async (
   await assertRegisterAccess();
   const { data } = await admin()
     .from("fastbar_base_drinks")
-    .select("id, name, unit, current_stock, min_stock, average_cost, active")
+    .select(
+      "id, name, unit, current_stock, min_stock, average_cost, active, purchase_unit, units_per_pack, content_amount",
+    )
     .eq("active", true)
     .order("name");
   return { baseDrinks: data ?? [] };
 });
 
 export const createBaseDrink = createServerFn({ method: "POST" })
-  .inputValidator((data: { name: string; unit: "ml" | "un"; minStock?: number }) => data)
+  .inputValidator(
+    (data: {
+      name: string;
+      unit: "ml" | "un";
+      minStock?: number | undefined;
+      purchaseUnit?: string | undefined;
+      unitsPerPack?: number | undefined;
+      contentAmount?: number | undefined;
+    }) => data,
+  )
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
@@ -53,43 +92,90 @@ export const createBaseDrink = createServerFn({ method: "POST" })
     if (data.unit !== "ml" && data.unit !== "un") {
       return { ok: false as const, message: "Unidade inválida." };
     }
+    const packaging = readPackaging(data);
+    if (!packaging.ok) return packaging;
     const { error } = await admin().from("fastbar_base_drinks").insert({
       name,
       unit: data.unit,
       min_stock: data.minStock && data.minStock > 0 ? data.minStock : 0,
+      purchase_unit: data.purchaseUnit?.trim() || null,
+      units_per_pack: packaging.unitsPerPack,
+      content_amount: packaging.contentAmount,
     });
     if (error) return { ok: false as const, message: "Não foi possível salvar a bebida base." };
     return { ok: true as const };
   });
 
-/** Dá entrada de estoque numa bebida base (compra) — registra fornecedor + custo pago e atualiza o custo médio. */
+/**
+ * Ajusta a embalagem de compra de uma bebida base já cadastrada. Necessário porque insumos criados
+ * antes desse campo existir ficam em 1×1, o que faria a entrada de estoque pedir "embalagens" e
+ * somar a quantidade errada.
+ */
+export const updateBaseDrinkPackaging = createServerFn({ method: "POST" })
+  .inputValidator(
+    (data: {
+      baseDrinkId: string;
+      purchaseUnit?: string | undefined;
+      unitsPerPack?: number | undefined;
+      contentAmount?: number | undefined;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const packaging = readPackaging(data);
+    if (!packaging.ok) return packaging;
+    const { error } = await admin()
+      .from("fastbar_base_drinks")
+      .update({
+        purchase_unit: data.purchaseUnit?.trim() || null,
+        units_per_pack: packaging.unitsPerPack,
+        content_amount: packaging.contentAmount,
+      })
+      .eq("id", data.baseDrinkId);
+    if (error) return { ok: false as const, message: "Não foi possível salvar a embalagem." };
+    return { ok: true as const };
+  });
+
+/**
+ * Dá entrada de estoque numa bebida base (compra). A equipe informa quantas embalagens de compra
+ * (ex.: garrafas, caixas) e o custo total pago — a quantidade em `unit` e o custo por `unit` são
+ * sempre calculados a partir de units_per_pack/content_amount, nunca digitados diretamente.
+ */
 export const addBaseDrinkEntry = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
       baseDrinkId: string;
-      quantity: number;
-      unitCost?: number;
-      supplierId?: string;
-      note?: string;
+      packs: number;
+      purchaseCost?: number | undefined;
+      supplierId?: string | undefined;
+      note?: string | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
 
-    const quantity = Number(data.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      return { ok: false as const, message: "Informe uma quantidade válida." };
+    const packs = Number(data.packs);
+    if (!Number.isInteger(packs) || packs <= 0) {
+      return { ok: false as const, message: "Informe uma quantidade de embalagens válida." };
     }
+
+    const cost = readPurchaseCost(data.purchaseCost);
+    if (!cost.ok) return cost;
 
     const { data: material } = await admin()
       .from("fastbar_base_drinks")
-      .select("id, current_stock, average_cost")
+      .select("id, current_stock, average_cost, units_per_pack, content_amount")
       .eq("id", data.baseDrinkId)
       .maybeSingle();
     if (!material) return { ok: false as const, message: "Bebida base não encontrada." };
 
-    const unitCost = data.unitCost && data.unitCost > 0 ? Number(data.unitCost) : null;
+    const quantity = packs * material.units_per_pack * Number(material.content_amount);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return { ok: false as const, message: "Embalagem mal configurada — revise o cadastro." };
+    }
+    const unitCost = cost.purchaseCost !== null ? cost.purchaseCost / quantity : null;
 
     const { error: movementError } = await admin().from("fastbar_base_drink_movements").insert({
       base_drink_id: material.id,
@@ -132,14 +218,25 @@ export const listIngredients = createServerFn({ method: "POST" }).handler(async 
   await assertRegisterAccess();
   const { data } = await admin()
     .from("fastbar_drink_ingredients")
-    .select("id, name, unit, current_stock, min_stock, average_cost, active")
+    .select(
+      "id, name, unit, current_stock, min_stock, average_cost, active, purchase_unit, units_per_pack, content_amount",
+    )
     .eq("active", true)
     .order("name");
   return { ingredients: data ?? [] };
 });
 
 export const createIngredient = createServerFn({ method: "POST" })
-  .inputValidator((data: { name: string; unit: "ml" | "un" | "g"; minStock?: number }) => data)
+  .inputValidator(
+    (data: {
+      name: string;
+      unit: "ml" | "un" | "g";
+      minStock?: number | undefined;
+      purchaseUnit?: string | undefined;
+      unitsPerPack?: number | undefined;
+      contentAmount?: number | undefined;
+    }) => data,
+  )
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
@@ -148,43 +245,85 @@ export const createIngredient = createServerFn({ method: "POST" })
     if (!["ml", "un", "g"].includes(data.unit)) {
       return { ok: false as const, message: "Unidade inválida." };
     }
+    const packaging = readPackaging(data);
+    if (!packaging.ok) return packaging;
     const { error } = await admin().from("fastbar_drink_ingredients").insert({
       name,
       unit: data.unit,
       min_stock: data.minStock && data.minStock > 0 ? data.minStock : 0,
+      purchase_unit: data.purchaseUnit?.trim() || null,
+      units_per_pack: packaging.unitsPerPack,
+      content_amount: packaging.contentAmount,
     });
     if (error) return { ok: false as const, message: "Não foi possível salvar o ingrediente." };
     return { ok: true as const };
   });
 
-/** Dá entrada de estoque num ingrediente (compra) — mesmo padrão da bebida base. */
+/** Ajusta a embalagem de compra de um ingrediente já cadastrado — mesmo motivo da bebida base. */
+export const updateIngredientPackaging = createServerFn({ method: "POST" })
+  .inputValidator(
+    (data: {
+      ingredientId: string;
+      purchaseUnit?: string | undefined;
+      unitsPerPack?: number | undefined;
+      contentAmount?: number | undefined;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const packaging = readPackaging(data);
+    if (!packaging.ok) return packaging;
+    const { error } = await admin()
+      .from("fastbar_drink_ingredients")
+      .update({
+        purchase_unit: data.purchaseUnit?.trim() || null,
+        units_per_pack: packaging.unitsPerPack,
+        content_amount: packaging.contentAmount,
+      })
+      .eq("id", data.ingredientId);
+    if (error) return { ok: false as const, message: "Não foi possível salvar a embalagem." };
+    return { ok: true as const };
+  });
+
+/**
+ * Dá entrada de estoque num ingrediente (compra) — mesmo padrão da bebida base: embalagens de
+ * compra + custo total pago, com quantidade e custo por `unit` sempre calculados.
+ */
 export const addIngredientEntry = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
       ingredientId: string;
-      quantity: number;
-      unitCost?: number;
-      supplierId?: string;
-      note?: string;
+      packs: number;
+      purchaseCost?: number | undefined;
+      supplierId?: string | undefined;
+      note?: string | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
 
-    const quantity = Number(data.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      return { ok: false as const, message: "Informe uma quantidade válida." };
+    const packs = Number(data.packs);
+    if (!Number.isInteger(packs) || packs <= 0) {
+      return { ok: false as const, message: "Informe uma quantidade de embalagens válida." };
     }
+
+    const cost = readPurchaseCost(data.purchaseCost);
+    if (!cost.ok) return cost;
 
     const { data: ingredient } = await admin()
       .from("fastbar_drink_ingredients")
-      .select("id, current_stock, average_cost")
+      .select("id, current_stock, average_cost, units_per_pack, content_amount")
       .eq("id", data.ingredientId)
       .maybeSingle();
     if (!ingredient) return { ok: false as const, message: "Ingrediente não encontrado." };
 
-    const unitCost = data.unitCost && data.unitCost > 0 ? Number(data.unitCost) : null;
+    const quantity = packs * ingredient.units_per_pack * Number(ingredient.content_amount);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return { ok: false as const, message: "Embalagem mal configurada — revise o cadastro." };
+    }
+    const unitCost = cost.purchaseCost !== null ? cost.purchaseCost / quantity : null;
 
     const { error: movementError } = await admin().from("fastbar_drink_ingredient_movements").insert({
       ingredient_id: ingredient.id,
@@ -384,12 +523,16 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
   const [{ data: baseDrinks }, { data: ingredients }, { data: recipes }] = await Promise.all([
     admin()
       .from("fastbar_base_drinks")
-      .select("id, name, unit, current_stock, min_stock, average_cost")
+      .select(
+        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount",
+      )
       .eq("active", true)
       .order("name"),
     admin()
       .from("fastbar_drink_ingredients")
-      .select("id, name, unit, current_stock, min_stock, average_cost")
+      .select(
+        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount",
+      )
       .eq("active", true)
       .order("name"),
     admin()

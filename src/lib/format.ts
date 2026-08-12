@@ -6,6 +6,23 @@ export const hhmm = (iso: string) =>
 
 export const digits = (value: string) => value.replace(/\D/g, "");
 
+/**
+ * Lê um número digitado no formato pt-BR ("1.234,56", "12,50", "1234"). Retorna null se não der
+ * pra ler um número — quem chama decide o que fazer, em vez de virar NaN silenciosamente.
+ * Com os dois separadores, o ponto é milhar e a vírgula é decimal. Sozinho, o ponto é decimal
+ * (é o que sai do teclado numérico do celular).
+ */
+export function parseAmount(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const normalized =
+    trimmed.includes(",") && trimmed.includes(".")
+      ? trimmed.replace(/\./g, "").replace(",", ".")
+      : trimmed.replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 export function formatPhone(value: string) {
   const d = digits(value).slice(0, 11);
   if (d.length <= 2) return d;

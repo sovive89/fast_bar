@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { brl } from "@/lib/format";
+import { brl, parseAmount } from "@/lib/format";
 import { getStockOverview, restockProduct } from "@/lib/stock.functions";
+import { deactivateProduct } from "@/lib/register.functions";
 import {
   addBaseDrinkEntry,
   addIngredientEntry,
@@ -15,6 +16,8 @@ import {
   listAllProducts,
   listSuppliers,
   setRecipeItems,
+  updateBaseDrinkPackaging,
+  updateIngredientPackaging,
   uploadProductPhoto,
   PRODUCT_UNITS,
   PRODUCT_PACKAGE_TYPES,
@@ -196,6 +199,8 @@ function ProdutosTab() {
   const [openRestockId, setOpenRestockId] = useState<string | null>(null);
   const [restockAmount, setRestockAmount] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Bebidas");
@@ -210,6 +215,7 @@ function ProdutosTab() {
 
   const loadOverview = useServerFn(getStockOverview);
   const restock = useServerFn(restockProduct);
+  const removeProduct = useServerFn(deactivateProduct);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
 
@@ -236,6 +242,16 @@ function ProdutosTab() {
       setRestockAmount("");
       await load();
     }
+  }
+
+  async function confirmDelete(productId: string) {
+    setDeleteError(null);
+    setBusyId(productId);
+    const result = await removeProduct({ data: { productId } });
+    setBusyId(null);
+    if (!result.ok) return setDeleteError(result.message ?? "Não foi possível apagar.");
+    setDeletingId(null);
+    await load();
   }
 
   async function submitNewProduct() {
@@ -395,6 +411,7 @@ function ProdutosTab() {
                 {items.map((product) => {
                   const low = product.stock_quantity < LOW_STOCK_THRESHOLD;
                   const isOpen = openRestockId === product.id;
+                  const isDeleting = deletingId === product.id;
                   return (
                     <li key={product.id} className="rounded-2xl border border-border bg-card p-4">
                       <div className="flex items-center justify-between gap-4">
@@ -425,13 +442,51 @@ function ProdutosTab() {
                             onClick={() => {
                               setOpenRestockId(isOpen ? null : product.id);
                               setRestockAmount("");
+                              setDeletingId(null);
                             }}
                             className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                           >
                             {isOpen ? "Cancelar" : "+ Repor"}
                           </button>
+                          <button
+                            onClick={() => {
+                              setDeletingId(isDeleting ? null : product.id);
+                              setOpenRestockId(null);
+                              setDeleteError(null);
+                            }}
+                            className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                          >
+                            Remover
+                          </button>
                         </div>
                       </div>
+
+                      {isDeleting && (
+                        <div className="mt-3 rounded-xl border border-border bg-muted/40 p-3">
+                          <p className="text-xs">
+                            Tirar “{product.name}” do cardápio? O cadastro e o histórico de vendas
+                            continuam guardados — o item só deixa de aparecer para lançamento.
+                          </p>
+                          {deleteError && (
+                            <p className="mt-2 text-xs text-destructive">{deleteError}</p>
+                          )}
+                          <div className="mt-3 flex gap-2">
+                            <button
+                              onClick={() => confirmDelete(product.id)}
+                              disabled={busyId === product.id}
+                              className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-60"
+                            >
+                              {busyId === product.id ? "Removendo..." : "Remover"}
+                            </button>
+                            <button
+                              onClick={() => setDeletingId(null)}
+                              className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground"
+                            >
+                              Cancelar
+                            </button>
+                          </div>
+                        </div>
+                      )}
 
                       {isOpen && (
                         <div className="mt-3 flex gap-2">
@@ -477,6 +532,9 @@ type StockComponent = {
   current_stock: number;
   min_stock: number;
   average_cost: number;
+  purchase_unit: string | null;
+  units_per_pack: number;
+  content_amount: number;
   doses: Array<{ productName: string; doses: number }>;
 };
 
@@ -487,15 +545,30 @@ function ComponentStockTab(props: {
   title: string;
   units: string[];
   createFn: (input: {
-    data: { name: string; unit: string; minStock?: number };
+    data: {
+      name: string;
+      unit: string;
+      minStock?: number | undefined;
+      purchaseUnit?: string | undefined;
+      unitsPerPack?: number | undefined;
+      contentAmount?: number | undefined;
+    };
   }) => Promise<{ ok: boolean; message?: string }>;
   entryFn: (input: {
     data: {
       id: string;
-      quantity: number;
-      unitCost?: number;
-      supplierId?: string;
-      note?: string;
+      packs: number;
+      purchaseCost?: number | undefined;
+      supplierId?: string | undefined;
+      note?: string | undefined;
+    };
+  }) => Promise<{ ok: boolean; message?: string }>;
+  updatePackagingFn: (input: {
+    data: {
+      id: string;
+      purchaseUnit?: string | undefined;
+      unitsPerPack?: number | undefined;
+      contentAmount?: number | undefined;
     };
   }) => Promise<{ ok: boolean; message?: string }>;
 }) {
@@ -505,14 +578,25 @@ function ComponentStockTab(props: {
   const [name, setName] = useState("");
   const [unit, setUnit] = useState(props.units[0]);
   const [minStock, setMinStock] = useState("");
+  const [purchaseUnit, setPurchaseUnit] = useState("");
+  const [unitsPerPack, setUnitsPerPack] = useState("1");
+  const [contentAmount, setContentAmount] = useState("1");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
-  const [entryQuantity, setEntryQuantity] = useState("");
-  const [entryCost, setEntryCost] = useState("");
+  const [entryPacks, setEntryPacks] = useState("");
+  const [entryPurchaseCost, setEntryPurchaseCost] = useState("");
   const [entrySupplierId, setEntrySupplierId] = useState("");
+  const [entryError, setEntryError] = useState<string | null>(null);
   const [entryBusy, setEntryBusy] = useState(false);
+
+  const [openPackagingId, setOpenPackagingId] = useState<string | null>(null);
+  const [editPurchaseUnit, setEditPurchaseUnit] = useState("");
+  const [editUnitsPerPack, setEditUnitsPerPack] = useState("1");
+  const [editContentAmount, setEditContentAmount] = useState("1");
+  const [packagingError, setPackagingError] = useState<string | null>(null);
+  const [packagingBusy, setPackagingBusy] = useState(false);
 
   const overview = useServerFn(getBaseDrinksOverview);
   const listSup = useServerFn(listSuppliers);
@@ -535,38 +619,103 @@ function ComponentStockTab(props: {
   async function submitNew() {
     setError(null);
     if (name.trim().length < 2) return setError("Digite o nome.");
+
+    const packsPerPackValue = unitsPerPack ? parseAmount(unitsPerPack) : 1;
+    if (packsPerPackValue === null || !Number.isInteger(packsPerPackValue) || packsPerPackValue <= 0) {
+      return setError("Itens por embalagem deve ser um número inteiro maior que zero.");
+    }
+    const contentValue = contentAmount ? parseAmount(contentAmount) : 1;
+    if (contentValue === null || contentValue <= 0) {
+      return setError("Conteúdo por item deve ser maior que zero.");
+    }
+
     setSaving(true);
     const result = await props.createFn({
-      data: { name, unit, minStock: minStock ? Number(minStock) : undefined },
+      data: {
+        name,
+        unit,
+        minStock: minStock ? Number(minStock) : undefined,
+        purchaseUnit: purchaseUnit || undefined,
+        unitsPerPack: packsPerPackValue,
+        contentAmount: contentValue,
+      },
     });
     setSaving(false);
     if (!result.ok) return setError(result.message ?? "Não foi possível salvar.");
     setName("");
     setMinStock("");
+    setPurchaseUnit("");
+    setUnitsPerPack("1");
+    setContentAmount("1");
     setShowForm(false);
     await load();
   }
 
-  async function submitEntry(id: string) {
-    const quantity = Number(entryQuantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) return;
+  async function submitEntry(item: StockComponent) {
+    setEntryError(null);
+    const packs = parseAmount(entryPacks);
+    if (packs === null || !Number.isInteger(packs) || packs <= 0) {
+      return setEntryError("Informe um número inteiro de embalagens.");
+    }
+
+    let purchaseCost: number | undefined;
+    if (entryPurchaseCost.trim()) {
+      const parsed = parseAmount(entryPurchaseCost);
+      if (parsed === null || parsed < 0) return setEntryError("Valor pago inválido.");
+      purchaseCost = parsed;
+    }
+
     setEntryBusy(true);
     const result = await props.entryFn({
       data: {
-        id,
-        quantity,
-        unitCost: entryCost ? Number(entryCost.replace(",", ".")) : undefined,
+        id: item.id,
+        packs,
+        purchaseCost,
         supplierId: entrySupplierId || undefined,
       },
     });
     setEntryBusy(false);
-    if (result.ok) {
-      setOpenEntryId(null);
-      setEntryQuantity("");
-      setEntryCost("");
-      setEntrySupplierId("");
-      await load();
+    if (!result.ok) return setEntryError(result.message ?? "Não foi possível registrar a entrada.");
+    setOpenEntryId(null);
+    setEntryPacks("");
+    setEntryPurchaseCost("");
+    setEntrySupplierId("");
+    await load();
+  }
+
+  function openPackagingEditor(item: StockComponent) {
+    setOpenPackagingId(item.id);
+    setOpenEntryId(null);
+    setPackagingError(null);
+    setEditPurchaseUnit(item.purchase_unit ?? "");
+    setEditUnitsPerPack(String(item.units_per_pack));
+    setEditContentAmount(String(item.content_amount));
+  }
+
+  async function submitPackaging(item: StockComponent) {
+    setPackagingError(null);
+    const perPack = parseAmount(editUnitsPerPack);
+    if (perPack === null || !Number.isInteger(perPack) || perPack <= 0) {
+      return setPackagingError("Itens por embalagem deve ser um número inteiro maior que zero.");
     }
+    const content = parseAmount(editContentAmount);
+    if (content === null || content <= 0) {
+      return setPackagingError("Conteúdo por item deve ser maior que zero.");
+    }
+
+    setPackagingBusy(true);
+    const result = await props.updatePackagingFn({
+      data: {
+        id: item.id,
+        purchaseUnit: editPurchaseUnit || undefined,
+        unitsPerPack: perPack,
+        contentAmount: content,
+      },
+    });
+    setPackagingBusy(false);
+    if (!result.ok) return setPackagingError(result.message ?? "Não foi possível salvar.");
+    setOpenPackagingId(null);
+    await load();
   }
 
   return (
@@ -603,6 +752,40 @@ function ComponentStockTab(props: {
               placeholder="0"
               type="number"
             />
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-xs font-medium">Como você compra</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                O custo por {unit} é calculado a partir daqui — você nunca digita ele na mão.
+              </p>
+              <div className="mt-3 space-y-3">
+                <TextField
+                  label="Unidade de compra"
+                  value={purchaseUnit}
+                  onChange={setPurchaseUnit}
+                  placeholder="garrafa, caixa, fardo..."
+                />
+                <div className="grid grid-cols-2 gap-3">
+                  <TextField
+                    label="Itens por embalagem"
+                    value={unitsPerPack}
+                    onChange={setUnitsPerPack}
+                    placeholder="1"
+                    type="number"
+                  />
+                  <TextField
+                    label={`Conteúdo por item (${unit})`}
+                    value={contentAmount}
+                    onChange={setContentAmount}
+                    placeholder="1"
+                    type="number"
+                  />
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Ex.: caixa com 12 latas de 350 ml → 12 itens, 350 de conteúdo. Garrafa de 1L → 1
+                item, 1000 de conteúdo.
+              </p>
+            </div>
             {error && <p className="text-xs text-destructive">{error}</p>}
             <PrimaryButton onClick={submitNew} disabled={saving}>
               {saving ? "Salvando..." : "Salvar"}
@@ -620,6 +803,7 @@ function ComponentStockTab(props: {
           {items.map((item) => {
             const low = item.current_stock < item.min_stock;
             const isOpen = openEntryId === item.id;
+            const isPackagingOpen = openPackagingId === item.id;
             return (
               <li key={item.id} className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
@@ -627,6 +811,9 @@ function ComponentStockTab(props: {
                     <p className="truncate font-semibold">{item.name}</p>
                     <p className="text-xs text-muted-foreground">
                       Custo médio: {brl(item.average_cost)} / {item.unit}
+                      {item.purchase_unit
+                        ? ` · comprado em ${item.purchase_unit} (${item.units_per_pack} × ${item.content_amount}${item.unit})`
+                        : ""}
                     </p>
                     {item.doses.length > 0 && (
                       <p className="mt-1 text-xs text-muted-foreground">
@@ -639,11 +826,21 @@ function ComponentStockTab(props: {
                       {item.current_stock} {item.unit}
                     </span>
                     <button
+                      onClick={() =>
+                        isPackagingOpen ? setOpenPackagingId(null) : openPackagingEditor(item)
+                      }
+                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {isPackagingOpen ? "Cancelar" : "Embalagem"}
+                    </button>
+                    <button
                       onClick={() => {
                         setOpenEntryId(isOpen ? null : item.id);
-                        setEntryQuantity("");
-                        setEntryCost("");
+                        setOpenPackagingId(null);
+                        setEntryPacks("");
+                        setEntryPurchaseCost("");
                         setEntrySupplierId("");
+                        setEntryError(null);
                       }}
                       className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                     >
@@ -652,28 +849,92 @@ function ComponentStockTab(props: {
                   </div>
                 </div>
 
+                {!item.purchase_unit && (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Embalagem de compra não configurada — a entrada é feita direto em {item.unit}.
+                  </p>
+                )}
+
+                {isPackagingOpen && (
+                  <div className="mt-3 space-y-3 rounded-xl border border-border p-3">
+                    <TextField
+                      label="Unidade de compra"
+                      value={editPurchaseUnit}
+                      onChange={setEditPurchaseUnit}
+                      placeholder="garrafa, caixa, fardo..."
+                    />
+                    <div className="grid grid-cols-2 gap-3">
+                      <TextField
+                        label="Itens por embalagem"
+                        value={editUnitsPerPack}
+                        onChange={setEditUnitsPerPack}
+                        placeholder="1"
+                        type="number"
+                      />
+                      <TextField
+                        label={`Conteúdo por item (${item.unit})`}
+                        value={editContentAmount}
+                        onChange={setEditContentAmount}
+                        placeholder="1"
+                        type="number"
+                      />
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Vale para as próximas entradas. O estoque e o custo médio atuais não mudam.
+                    </p>
+                    {packagingError && <p className="text-xs text-destructive">{packagingError}</p>}
+                    <button
+                      onClick={() => submitPackaging(item)}
+                      disabled={packagingBusy}
+                      className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                    >
+                      {packagingBusy ? "Salvando..." : "Salvar embalagem"}
+                    </button>
+                  </div>
+                )}
+
                 {isOpen && (
                   <div className="mt-3 space-y-2">
                     <div className="flex gap-2">
                       <input
                         type="number"
-                        inputMode="decimal"
+                        inputMode="numeric"
+                        step={1}
                         min={1}
-                        value={entryQuantity}
-                        onChange={(event) => setEntryQuantity(event.target.value)}
-                        placeholder={`Quantidade (${item.unit})`}
+                        value={entryPacks}
+                        onChange={(event) => setEntryPacks(event.target.value)}
+                        placeholder={
+                          item.purchase_unit
+                            ? `Quantas ${item.purchase_unit}`
+                            : `Quantidade (${item.unit})`
+                        }
                         autoFocus
                         className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
                       />
                       <input
                         type="text"
                         inputMode="decimal"
-                        value={entryCost}
-                        onChange={(event) => setEntryCost(event.target.value)}
-                        placeholder={`Custo pago / ${item.unit}`}
+                        value={entryPurchaseCost}
+                        onChange={(event) => setEntryPurchaseCost(event.target.value)}
+                        placeholder="Total pago (R$)"
                         className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
                       />
                     </div>
+                    {(() => {
+                      const packs = parseAmount(entryPacks);
+                      if (packs === null || packs <= 0) return null;
+                      const quantity = packs * item.units_per_pack * Number(item.content_amount);
+                      const cost = entryPurchaseCost.trim() ? parseAmount(entryPurchaseCost) : null;
+                      return (
+                        <p className="text-xs text-muted-foreground">
+                          Entra {quantity} {item.unit} no estoque
+                          {cost !== null && cost > 0 && quantity > 0
+                            ? ` · ${brl(cost / quantity)} por ${item.unit}`
+                            : ""}
+                        </p>
+                      );
+                    })()}
+                    {entryError && <p className="text-xs text-destructive">{entryError}</p>}
                     <select
                       value={entrySupplierId}
                       onChange={(event) => setEntrySupplierId(event.target.value)}
@@ -687,8 +948,8 @@ function ComponentStockTab(props: {
                       ))}
                     </select>
                     <button
-                      onClick={() => submitEntry(item.id)}
-                      disabled={entryBusy || !entryQuantity}
+                      onClick={() => submitEntry(item)}
+                      disabled={entryBusy || !entryPacks}
                       className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
                     >
                       {entryBusy ? "Salvando..." : "Confirmar entrada"}
@@ -707,6 +968,7 @@ function ComponentStockTab(props: {
 function BebidasBaseTab() {
   const createFn = useServerFn(createBaseDrink);
   const entryFn = useServerFn(addBaseDrinkEntry);
+  const updatePackagingFn = useServerFn(updateBaseDrinkPackaging);
   return (
     <ComponentStockTab
       kind="base_drink"
@@ -718,6 +980,9 @@ function BebidasBaseTab() {
             name: input.data.name,
             unit: input.data.unit as "ml" | "un",
             minStock: input.data.minStock,
+            purchaseUnit: input.data.purchaseUnit,
+            unitsPerPack: input.data.unitsPerPack,
+            contentAmount: input.data.contentAmount,
           },
         })
       }
@@ -725,10 +990,20 @@ function BebidasBaseTab() {
         entryFn({
           data: {
             baseDrinkId: input.data.id,
-            quantity: input.data.quantity,
-            unitCost: input.data.unitCost,
+            packs: input.data.packs,
+            purchaseCost: input.data.purchaseCost,
             supplierId: input.data.supplierId,
             note: input.data.note,
+          },
+        })
+      }
+      updatePackagingFn={(input) =>
+        updatePackagingFn({
+          data: {
+            baseDrinkId: input.data.id,
+            purchaseUnit: input.data.purchaseUnit,
+            unitsPerPack: input.data.unitsPerPack,
+            contentAmount: input.data.contentAmount,
           },
         })
       }
@@ -739,6 +1014,7 @@ function BebidasBaseTab() {
 function IngredientesTab() {
   const createFn = useServerFn(createIngredient);
   const entryFn = useServerFn(addIngredientEntry);
+  const updatePackagingFn = useServerFn(updateIngredientPackaging);
   return (
     <ComponentStockTab
       kind="ingredient"
@@ -750,6 +1026,9 @@ function IngredientesTab() {
             name: input.data.name,
             unit: input.data.unit as "ml" | "un" | "g",
             minStock: input.data.minStock,
+            purchaseUnit: input.data.purchaseUnit,
+            unitsPerPack: input.data.unitsPerPack,
+            contentAmount: input.data.contentAmount,
           },
         })
       }
@@ -757,10 +1036,20 @@ function IngredientesTab() {
         entryFn({
           data: {
             ingredientId: input.data.id,
-            quantity: input.data.quantity,
-            unitCost: input.data.unitCost,
+            packs: input.data.packs,
+            purchaseCost: input.data.purchaseCost,
             supplierId: input.data.supplierId,
             note: input.data.note,
+          },
+        })
+      }
+      updatePackagingFn={(input) =>
+        updatePackagingFn({
+          data: {
+            ingredientId: input.data.id,
+            purchaseUnit: input.data.purchaseUnit,
+            unitsPerPack: input.data.unitsPerPack,
+            contentAmount: input.data.contentAmount,
           },
         })
       }

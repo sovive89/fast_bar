@@ -69,34 +69,43 @@ export type Database = {
         Row: {
           active: boolean
           average_cost: number
+          content_amount: number
           created_at: string
           current_stock: number
           id: string
           min_stock: number
           name: string
+          purchase_unit: string | null
           unit: string
+          units_per_pack: number
           updated_at: string
         }
         Insert: {
           active?: boolean
           average_cost?: number
+          content_amount?: number
           created_at?: string
           current_stock?: number
           id?: string
           min_stock?: number
           name: string
+          purchase_unit?: string | null
           unit?: string
+          units_per_pack?: number
           updated_at?: string
         }
         Update: {
           active?: boolean
           average_cost?: number
+          content_amount?: number
           created_at?: string
           current_stock?: number
           id?: string
           min_stock?: number
           name?: string
+          purchase_unit?: string | null
           unit?: string
+          units_per_pack?: number
           updated_at?: string
         }
         Relationships: []
@@ -192,34 +201,43 @@ export type Database = {
         Row: {
           active: boolean
           average_cost: number
+          content_amount: number
           created_at: string
           current_stock: number
           id: string
           min_stock: number
           name: string
+          purchase_unit: string | null
           unit: string
+          units_per_pack: number
           updated_at: string
         }
         Insert: {
           active?: boolean
           average_cost?: number
+          content_amount?: number
           created_at?: string
           current_stock?: number
           id?: string
           min_stock?: number
           name: string
+          purchase_unit?: string | null
           unit?: string
+          units_per_pack?: number
           updated_at?: string
         }
         Update: {
           active?: boolean
           average_cost?: number
+          content_amount?: number
           created_at?: string
           current_stock?: number
           id?: string
           min_stock?: number
           name?: string
+          purchase_unit?: string | null
           unit?: string
+          units_per_pack?: number
           updated_at?: string
         }
         Relationships: []
@@ -314,6 +332,7 @@ export type Database = {
       }
       fastbar_sessions: {
         Row: {
+          archived_at: string | null
           closed_at: string | null
           created_at: string
           customer_id: string | null
@@ -327,6 +346,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived_at?: string | null
           closed_at?: string | null
           created_at?: string
           customer_id?: string | null
@@ -340,6 +360,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived_at?: string | null
           closed_at?: string | null
           created_at?: string
           customer_id?: string | null

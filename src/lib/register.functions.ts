@@ -44,13 +44,107 @@ export const addTabItem = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/** Cancela um lançamento feito por engano, devolvendo ao estoque o que ele tinha consumido. */
 export const removeTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { itemId: string }) => data)
   .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    const { data: item } = await admin()
+      .from("fastbar_tab_items")
+      .select("id, product_id, quantity, session_id")
+      .eq("id", data.itemId)
+      .maybeSingle();
+    if (!item) return { ok: false as const, message: "Item não encontrado." };
+
+    const { error } = await admin().from("fastbar_tab_items").delete().eq("id", item.id);
+    if (error) return { ok: false as const, message: "Não foi possível remover o item." };
+
+    await revertStockMovement(item.product_id, item.session_id, item.quantity);
+    return { ok: true as const };
+  });
+
+/** Desfaz o último lançamento da comanda — atalho pro erro mais comum no balcão. */
+export const undoLastTabItem = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    const { data: item } = await admin()
+      .from("fastbar_tab_items")
+      .select("id, product_id, quantity, session_id")
+      .eq("session_id", data.sessionId)
+      .order("added_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (!item) return { ok: false as const, message: "Não há lançamentos para desfazer." };
+
+    const { error } = await admin().from("fastbar_tab_items").delete().eq("id", item.id);
+    if (error) return { ok: false as const, message: "Não foi possível desfazer o lançamento." };
+
+    await revertStockMovement(item.product_id, item.session_id, item.quantity);
+    return { ok: true as const };
+  });
+
+/** Remove todos os lançamentos da comanda, devolvendo tudo ao estoque. A comanda continua aberta. */
+export const clearTabItems = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("id, status")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
+    if (session.status === "paid") {
+      return { ok: false as const, message: "Comanda já paga — reabra antes de zerar." };
+    }
+
+    const { data: items } = await admin()
+      .from("fastbar_tab_items")
+      .select("id, product_id, quantity, session_id")
+      .eq("session_id", session.id);
+    if (!items || items.length === 0) return { ok: true as const, removed: 0 };
+
+    const { error } = await admin().from("fastbar_tab_items").delete().eq("session_id", session.id);
+    if (error) return { ok: false as const, message: "Não foi possível zerar a comanda." };
+
+    for (const item of items) {
+      await revertStockMovement(item.product_id, item.session_id, item.quantity);
+    }
+    return { ok: true as const, removed: items.length };
+  });
+
+/**
+ * Tira a comanda da lista do caixa sem apagar nada — o histórico continua contando no faturamento
+ * e nos relatórios. Só vale para comanda já fechada/paga: comanda aberta ainda está em uso.
+ */
+export const archiveSession = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
-    const { error } = await admin().from("fastbar_tab_items").delete().eq("id", data.itemId);
-    if (error) return { ok: false as const, message: "Não foi possível remover o item." };
+
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("id, status")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
+    if (session.status !== "closed" && session.status !== "paid") {
+      return { ok: false as const, message: "Só dá pra arquivar comanda já fechada ou paga." };
+    }
+
+    const { error } = await admin()
+      .from("fastbar_sessions")
+      .update({ archived_at: new Date().toISOString() })
+      .eq("id", session.id);
+    if (error) return { ok: false as const, message: "Não foi possível arquivar a comanda." };
     return { ok: true as const };
   });
 
@@ -101,6 +195,66 @@ export const registerPayment = createServerFn({ method: "POST" })
       .eq("id", session.id);
     if (error) return { ok: false as const, message: "Não foi possível registrar o pagamento." };
     await registerCustomerSpend(session.id);
+    return { ok: true as const };
+  });
+
+/**
+ * Limpa a tela arquivando de uma vez todas as comandas já fechadas/pagas. Nada é apagado: os
+ * valores continuam no faturamento e nos relatórios. Comanda aberta nunca é tocada.
+ */
+export const archiveClosedSessions = createServerFn({ method: "POST" })
+  .inputValidator((data: { before?: string | undefined }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    let query = admin()
+      .from("fastbar_sessions")
+      .select("id")
+      .in("status", ["closed", "paid"])
+      .is("archived_at", null);
+    if (data.before) query = query.lt("closed_at", data.before);
+
+    const { data: sessions } = await query;
+    if (!sessions || sessions.length === 0) return { ok: true as const, archived: 0 };
+
+    const ids = sessions.map((session) => session.id);
+    const { error } = await admin()
+      .from("fastbar_sessions")
+      .update({ archived_at: new Date().toISOString() })
+      .in("id", ids);
+    if (error) return { ok: false as const, message: "Não foi possível limpar a lista." };
+    return { ok: true as const, archived: ids.length };
+  });
+
+/** Traz de volta uma comanda arquivada para a lista do caixa. */
+export const unarchiveSession = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { error } = await admin()
+      .from("fastbar_sessions")
+      .update({ archived_at: null })
+      .eq("id", data.sessionId);
+    if (error) return { ok: false as const, message: "Não foi possível restaurar a comanda." };
+    return { ok: true as const };
+  });
+
+/**
+ * Tira o produto do cardápio sem apagar o cadastro: o histórico de vendas e a ficha técnica
+ * continuam intactos, o item só deixa de aparecer para lançamento.
+ */
+export const deactivateProduct = createServerFn({ method: "POST" })
+  .inputValidator((data: { productId: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { error } = await admin()
+      .from("fastbar_products")
+      .update({ is_active: false })
+      .eq("id", data.productId);
+    if (error) return { ok: false as const, message: "Não foi possível remover o produto." };
     return { ok: true as const };
   });
 

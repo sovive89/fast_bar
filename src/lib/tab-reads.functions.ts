@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 
-const SESSION_COLUMNS = "id, customer_name, phone, status, started_at, closed_at, paid_at";
+const SESSION_COLUMNS =
+  "id, customer_name, phone, status, started_at, closed_at, paid_at, customer_id, archived_at";
 
 /** Customer view: readable only with the unguessable comanda link, never sensitive columns. */
 export const getCustomerTab = createServerFn({ method: "POST" })
@@ -45,7 +46,10 @@ export const getRegisterOverview = createServerFn({ method: "POST" }).handler(as
       .in("status", ["pending", "open", "closed", "paid"])
       .order("created_at", { ascending: false })
       .limit(200),
-    admin().from("fastbar_tab_items").select("id, session_id, unit_price, quantity"),
+    admin()
+      .from("fastbar_tab_items")
+      .select("id, session_id, name, unit_price, quantity, added_at")
+      .order("added_at"),
   ]);
   return { sessions: sessions ?? [], items: items ?? [] };
 });
