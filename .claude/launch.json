@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "C:\\Users\\Homem\\bin\\pnpm.cmd",
+      "runtimeArgs": [
+        "run",
+        "dev"
+      ],
+      "port": 8080
+    }
+  ]
+}

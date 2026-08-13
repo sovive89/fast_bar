@@ -7,20 +7,24 @@ export const hhmm = (iso: string) =>
 export const digits = (value: string) => value.replace(/\D/g, "");
 
 /**
- * Lê um número digitado no formato pt-BR ("1.234,56", "12,50", "1234"). Retorna null se não der
- * pra ler um número — quem chama decide o que fazer, em vez de virar NaN silenciosamente.
- * Com os dois separadores, o ponto é milhar e a vírgula é decimal. Sozinho, o ponto é decimal
- * (é o que sai do teclado numérico do celular).
+ * Lê um número digitado no formato pt-BR ("1.234,56", "12,50", "1234"). Retorna null se o texto
+ * não bater com um formato válido — nunca tenta "salvar" algo malformado, porque isso já causou
+ * custo errado sendo gravado sem aviso (ex.: "1.234.56" virando um número qualquer).
+ * Regra: ponto como separador de milhar só conta em grupos de 3 dígitos (ex.: 1.234); um único
+ * ponto seguido de 1-2 dígitos é decimal (o que sai do teclado numérico do celular).
  */
 export function parseAmount(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  const normalized =
-    trimmed.includes(",") && trimmed.includes(".")
-      ? trimmed.replace(/\./g, "").replace(",", ".")
-      : trimmed.replace(",", ".");
-  const parsed = Number(normalized);
-  return Number.isFinite(parsed) ? parsed : null;
+
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  if (/^\d+,\d+$/.test(trimmed)) return Number(trimmed.replace(",", "."));
+  if (/^\d+\.\d{1,2}$/.test(trimmed)) return Number(trimmed);
+  if (/^\d{1,3}(\.\d{3})+$/.test(trimmed)) return Number(trimmed.replace(/\./g, ""));
+  if (/^\d{1,3}(\.\d{3})+,\d+$/.test(trimmed)) {
+    return Number(trimmed.replace(/\./g, "").replace(",", "."));
+  }
+  return null;
 }
 
 export function formatPhone(value: string) {
