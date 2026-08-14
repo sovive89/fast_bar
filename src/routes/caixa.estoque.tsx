@@ -195,7 +195,11 @@ function ComponentStockTab(props: {
     if (newPacks.trim()) {
       const parsed = parseAmount(newPacks);
       if (parsed === null || !Number.isInteger(parsed) || parsed <= 0) {
-        return setError("Informe um número inteiro de embalagens.");
+        return setError(
+          purchaseUnit.trim()
+            ? "Informe um número inteiro de embalagens."
+            : "Informe uma quantidade inteira maior que zero.",
+        );
       }
       packs = parsed;
     }
@@ -204,6 +208,12 @@ function ComponentStockTab(props: {
       const parsed = parseAmount(newPurchaseCost);
       if (parsed === null || parsed < 0) return setError("Valor pago inválido.");
       purchaseCost = parsed;
+    }
+
+    // Valor pago ou fornecedor sem quantidade significa entrada esquecida pela metade. Salvar
+    // assim descartaria o que foi digitado sem avisar ninguém.
+    if (packs === undefined && (purchaseCost !== undefined || newSupplierId)) {
+      return setError("Informe a quantidade que chegou, ou limpe o valor pago e o fornecedor.");
     }
 
     setSaving(true);
@@ -400,7 +410,11 @@ function ComponentStockTab(props: {
               </p>
               <div className="mt-3 grid grid-cols-2 gap-3">
                 <TextField
-                  label={`Quantas ${purchaseUnit.trim() || "embalagens"}`}
+                  // Sem unidade de compra definida, a embalagem é 1×1 e o número digitado é a
+                  // própria quantidade — pedir "embalagens" aqui faria a equipe informar outra coisa.
+                  label={
+                    purchaseUnit.trim() ? `Quantas ${purchaseUnit.trim()}` : `Quantidade (${unit})`
+                  }
                   value={newPacks}
                   onChange={setNewPacks}
                   placeholder="0"
@@ -413,20 +427,24 @@ function ComponentStockTab(props: {
                   placeholder="0,00"
                 />
               </div>
-              {newPacks.trim() && Number(newPacks) > 0 && (
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Entra {Number(newPacks) * (Number(unitsPerPack) || 1) * (Number(contentAmount) || 1)}{" "}
-                  {unit} no estoque
-                  {newPurchaseCost.trim() && (parseAmount(newPurchaseCost) ?? 0) > 0
-                    ? ` · ${brl(
-                        (parseAmount(newPurchaseCost) ?? 0) /
-                          (Number(newPacks) *
-                            (Number(unitsPerPack) || 1) *
-                            (Number(contentAmount) || 1)),
-                      )} por ${unit}`
-                    : ""}
-                </p>
-              )}
+              {/* A prévia lê os campos com parseAmount, o mesmo que o salvamento usa: com Number,
+                  digitar "1.000" mostrava um total aqui e gravava outro no estoque. */}
+              {(() => {
+                const packs = parseAmount(newPacks);
+                const perPack = parseAmount(unitsPerPack) ?? 1;
+                const content = parseAmount(contentAmount) ?? 1;
+                if (packs === null || packs <= 0) return null;
+                const total = packs * perPack * content;
+                const cost = newPurchaseCost.trim() ? parseAmount(newPurchaseCost) : null;
+                return (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Entra {total} {unit} no estoque
+                    {cost !== null && cost > 0 && total > 0
+                      ? ` · ${brl(cost / total)} por ${unit}`
+                      : ""}
+                  </p>
+                );
+              })()}
               <select
                 value={newSupplierId}
                 onChange={(event) => setNewSupplierId(event.target.value)}
