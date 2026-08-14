@@ -430,10 +430,16 @@ function ComponentStockTab(props: {
               {/* A prévia lê os campos com parseAmount, o mesmo que o salvamento usa: com Number,
                   digitar "1.000" mostrava um total aqui e gravava outro no estoque. */}
               {(() => {
+                // A prévia só descreve entradas que o salvamento aceitaria: quantidade inteira e
+                // embalagem positiva. Descrever um total que vai ser recusado é pior que não
+                // mostrar nada.
                 const packs = parseAmount(newPacks);
-                const perPack = parseAmount(unitsPerPack) ?? 1;
-                const content = parseAmount(contentAmount) ?? 1;
-                if (packs === null || packs <= 0) return null;
+                if (packs === null || !Number.isInteger(packs) || packs <= 0) return null;
+                const perPack = parseAmount(unitsPerPack);
+                const content = parseAmount(contentAmount);
+                if (perPack === null || perPack <= 0 || content === null || content <= 0) {
+                  return null;
+                }
                 const total = packs * perPack * content;
                 const cost = newPurchaseCost.trim() ? parseAmount(newPurchaseCost) : null;
                 return (
