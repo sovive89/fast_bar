@@ -3,12 +3,18 @@ import { createServerFn } from "@tanstack/react-start";
 export const getStockOverview = createServerFn({ method: "POST" }).handler(async () => {
   const { admin, assertRegisterAccess } = await import("./fastbar.server");
   await assertRegisterAccess();
-  const { data: products } = await admin()
-    .from("fastbar_products")
-    .select("id, name, category, price, unit, package_type, is_active, stock_quantity, image_url")
-    .order("category")
-    .order("name");
-  return { products: products ?? [] };
+  const [{ data: products }, { data: recipeLinks }] = await Promise.all([
+    admin()
+      .from("fastbar_products")
+      .select("id, name, category, price, unit, package_type, is_active, stock_quantity, image_url")
+      .order("category")
+      .order("name"),
+    admin().from("fastbar_recipe_items").select("product_id"),
+  ]);
+  // Produtos com ficha técnica não têm stock_quantity próprio confiável — quem controla
+  // disponibilidade pra eles é o estoque dos componentes (bebidas base/ingredientes), não este campo.
+  const recipeProductIds = Array.from(new Set((recipeLinks ?? []).map((link) => link.product_id)));
+  return { products: products ?? [], recipeProductIds };
 });
 
 export const restockProduct = createServerFn({ method: "POST" })
