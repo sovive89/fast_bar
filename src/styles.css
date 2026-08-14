@@ -71,41 +71,43 @@
   --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui;
   --font-body: "DM Sans", ui-sans-serif, system-ui;
 
-  --background: oklch(0.18 0.021 60);
-  --foreground: oklch(0.965 0.014 85);
-  --card: oklch(0.235 0.024 62);
-  --card-foreground: oklch(0.965 0.014 85);
-  --popover: oklch(0.235 0.024 62);
-  --popover-foreground: oklch(0.965 0.014 85);
-  --primary: oklch(0.79 0.16 74);
-  --primary-foreground: oklch(0.2 0.03 60);
-  --secondary: oklch(0.29 0.028 62);
-  --secondary-foreground: oklch(0.95 0.014 85);
-  --muted: oklch(0.28 0.024 62);
-  --muted-foreground: oklch(0.72 0.03 76);
-  --accent: oklch(0.62 0.14 25);
-  --accent-foreground: oklch(0.97 0.01 85);
-  --success: oklch(0.68 0.14 150);
-  --success-foreground: oklch(0.18 0.03 150);
-  --destructive: oklch(0.6 0.2 24);
-  --destructive-foreground: oklch(0.98 0.005 85);
-  --border: oklch(0.33 0.026 62);
-  --input: oklch(0.33 0.026 62);
-  --ring: oklch(0.79 0.16 74);
-  --shadow-soft: 0 10px 30px -12px oklch(0.1 0.02 60 / 0.7);
-  --chart-1: oklch(0.646 0.222 41.116);
-  --chart-2: oklch(0.6 0.118 184.704);
-  --chart-3: oklch(0.398 0.07 227.392);
-  --chart-4: oklch(0.828 0.189 84.429);
-  --chart-5: oklch(0.769 0.188 70.08);
+  /* Identidade minimalista/tecnológica: grafite neutro + azul elétrico como cor de ação,
+     dourado discreto reservado pra destaques pontuais (não pra UI geral). */
+  --background: oklch(0.15 0.004 260);
+  --foreground: oklch(0.96 0.003 260);
+  --card: oklch(0.2 0.005 260);
+  --card-foreground: oklch(0.96 0.003 260);
+  --popover: oklch(0.21 0.005 260);
+  --popover-foreground: oklch(0.96 0.003 260);
+  --primary: oklch(0.62 0.19 256);
+  --primary-foreground: oklch(0.98 0.006 256);
+  --secondary: oklch(0.27 0.006 260);
+  --secondary-foreground: oklch(0.93 0.004 260);
+  --muted: oklch(0.24 0.005 260);
+  --muted-foreground: oklch(0.63 0.012 260);
+  --accent: oklch(0.78 0.12 82);
+  --accent-foreground: oklch(0.2 0.03 82);
+  --success: oklch(0.7 0.15 150);
+  --success-foreground: oklch(0.16 0.03 150);
+  --destructive: oklch(0.62 0.21 25);
+  --destructive-foreground: oklch(0.98 0.006 25);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 12%);
+  --ring: oklch(0.62 0.19 256);
+  --shadow-soft: 0 10px 30px -12px oklch(0.05 0.005 260 / 0.7);
+  --chart-1: oklch(0.62 0.19 256);
+  --chart-2: oklch(0.7 0.15 150);
+  --chart-3: oklch(0.78 0.12 82);
+  --chart-4: oklch(0.6 0.2 300);
+  --chart-5: oklch(0.62 0.21 25);
   --sidebar: oklch(0.984 0.003 247.858);
   --sidebar-foreground: oklch(0.129 0.042 264.695);
-  --sidebar-primary: oklch(0.208 0.042 265.755);
-  --sidebar-primary-foreground: oklch(0.984 0.003 247.858);
+  --sidebar-primary: oklch(0.62 0.19 256);
+  --sidebar-primary-foreground: oklch(0.98 0.006 256);
   --sidebar-accent: oklch(0.968 0.007 247.896);
   --sidebar-accent-foreground: oklch(0.208 0.042 265.755);
   --sidebar-border: oklch(0.929 0.013 255.508);
-  --sidebar-ring: oklch(0.704 0.04 256.788);
+  --sidebar-ring: oklch(0.62 0.19 256);
 }
 
 .dark {
@@ -149,9 +151,25 @@
   }
 
   body {
+    position: relative;
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-body);
+  }
+
+  /* Marca d'água discreta: o ícone FB ampliado, quase invisível, só como textura de fundo.
+     Fixo (não rola com a página), atrás de todo o conteúdo, sem interferir na leitura. */
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    background-image: url("/icons/icon-512.png");
+    background-repeat: no-repeat;
+    background-position: 105% 105%;
+    background-size: min(70vw, 640px);
+    opacity: 0.035;
   }
 
   h1,

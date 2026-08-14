@@ -21,13 +21,15 @@ function RegisterLayout() {
   const navigate = useNavigate();
   const lock = useServerFn(lockBarPanel);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const active = pathname.startsWith("/caixa/estoque")
-    ? "estoque"
-    : pathname.startsWith("/caixa/clientes")
-      ? "clientes"
-      : pathname.startsWith("/caixa/relatorios")
-        ? "relatorios"
-        : "comandas";
+  const active = pathname.startsWith("/caixa/cardapio")
+    ? "cardapio"
+    : pathname.startsWith("/caixa/estoque")
+      ? "estoque"
+      : pathname.startsWith("/caixa/clientes")
+        ? "clientes"
+        : pathname.startsWith("/caixa/relatorios")
+          ? "relatorios"
+          : "comandas";
 
   const tabClass = (tab: string) =>
     `rounded-full px-4 py-1.5 text-sm font-medium ${active === tab ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`;
@@ -38,6 +40,9 @@ function RegisterLayout() {
         <div className="flex gap-2 overflow-x-auto">
           <Link to="/caixa" className={tabClass("comandas")}>
             Comandas
+          </Link>
+          <Link to="/caixa/cardapio" className={tabClass("cardapio")}>
+            Cardápio
           </Link>
           <Link to="/caixa/estoque" className={tabClass("estoque")}>
             Estoque

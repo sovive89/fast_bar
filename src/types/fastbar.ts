@@ -1,4 +1,4 @@
-export type SessionStatus = "pending" | "open" | "closed" | "paid";
+export type SessionStatus = "pending" | "open" | "closed" | "paid" | "cancelled";
 
 /** Public (client-safe) shape of a bar_sessions row — never includes verification_code. */
 export type BarSession = {
@@ -41,4 +41,5 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   open: "Aberta",
   closed: "Fechada",
   paid: "Paga",
+  cancelled: "Cancelada",
 };

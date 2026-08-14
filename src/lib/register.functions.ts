@@ -1,5 +1,38 @@
 import { createServerFn } from "@tanstack/react-start";
 
+/**
+ * As operações de estoque moram em funções no Postgres (migration atomic_stock_operations), onde
+ * cada uma roda como transação única e os saldos mudam com `set x = x + n`. Em TypeScript não dá
+ * para garantir isso: ler o saldo e gravar depois perde atualizações quando dois pedidos acontecem
+ * juntos, e encadear passos sem transação deixa o estoque pela metade se um falhar no meio.
+ * Aqui ficam só a autorização e a tradução do código de erro para a mensagem da equipe.
+ */
+const RPC_MESSAGES: Record<string, string> = {
+  session_not_found: "Comanda não encontrada.",
+  session_not_open: "Comanda não está aberta.",
+  item_not_found: "Item não encontrado.",
+  product_unavailable: "Produto indisponível.",
+  product_not_found: "Produto não encontrado.",
+  no_items: "Não há lançamentos para desfazer.",
+  cannot_cancel: "Essa comanda não pode ser cancelada.",
+  invalid_quantity: "Informe uma quantidade válida.",
+};
+
+type RpcResult = { ok: boolean; code?: string; removed?: number; new_quantity?: number };
+
+/** Normaliza o retorno das funções do banco no formato que a UI já espera. */
+function fromRpc(
+  result: RpcResult | null,
+  error: unknown,
+  fallback: string,
+): { ok: true; removed?: number } | { ok: false; message: string } {
+  if (error || !result) return { ok: false, message: fallback };
+  if (!result.ok) {
+    return { ok: false, message: RPC_MESSAGES[result.code ?? ""] ?? fallback };
+  }
+  return result.removed === undefined ? { ok: true } : { ok: true, removed: result.removed };
+}
+
 export const confirmSession = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string }) => data)
   .handler(async ({ data }) => {
@@ -17,137 +50,96 @@ export const confirmSession = createServerFn({ method: "POST" })
 export const addTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; productId: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, registerStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
-    const [{ data: session }, { data: product }] = await Promise.all([
-      admin().from("fastbar_sessions").select("id, status").eq("id", data.sessionId).maybeSingle(),
-      admin()
-        .from("fastbar_products")
-        .select("id, name, price")
-        .eq("id", data.productId)
-        .eq("is_active", true)
-        .maybeSingle(),
-    ]);
-    if (!session || session.status !== "open") {
-      return { ok: false as const, message: "Comanda não está aberta." };
-    }
-    if (!product) return { ok: false as const, message: "Produto indisponível." };
-    const { error } = await admin().from("fastbar_tab_items").insert({
-      session_id: session.id,
-      product_id: product.id,
-      name: product.name,
-      unit_price: product.price,
-      quantity: 1,
+    const { data: result, error } = await admin().rpc("fastbar_add_tab_item", {
+      p_session_id: data.sessionId,
+      p_product_id: data.productId,
     });
-    if (error) return { ok: false as const, message: "Não foi possível lançar o item." };
-    await registerStockMovement(product.id, session.id, 1);
-    return { ok: true as const };
+    return fromRpc(result as RpcResult | null, error, "Não foi possível lançar o item.");
   });
 
 /**
  * Cancela um lançamento feito por engano, devolvendo ao estoque o que ele tinha consumido.
  * Só em comanda aberta — depois de fechada/paga, o valor já está no faturamento e mexer aqui
  * desalinharia estoque, faturamento e o total já somado ao cliente no CRM.
+ * Exige a senha da equipe de novo (mesma do login do caixa, não uma senha de admin à parte) —
+ * protege contra remoção por engano ou por alguém que pegou o caixa destravado sem querer apagar
+ * nada. Validado no servidor, não só escondido na UI.
  */
 export const removeTabItem = createServerFn({ method: "POST" })
-  .inputValidator((data: { itemId: string }) => data)
+  .inputValidator((data: { itemId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-
-    const { data: item } = await admin()
-      .from("fastbar_tab_items")
-      .select("id, product_id, quantity, session_id, fastbar_sessions(status)")
-      .eq("id", data.itemId)
-      .maybeSingle();
-    if (!item) return { ok: false as const, message: "Item não encontrado." };
-    const session = item.fastbar_sessions as { status: string } | { status: string }[] | null;
-    const status = Array.isArray(session) ? session[0]?.status : session?.status;
-    if (status !== "open") {
-      return { ok: false as const, message: "Comanda não está aberta." };
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
     }
-
-    // Devolve o estoque antes de apagar o item: se o cancelamento cair no meio, o pior caso é
-    // repetir o estorno (idempotente na prática) em vez de o item sumir com o estoque ainda baixado.
-    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
-    if (!reverted.ok) {
-      return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
-    }
-
-    const { error } = await admin().from("fastbar_tab_items").delete().eq("id", item.id);
-    if (error) return { ok: false as const, message: "Não foi possível remover o item." };
-    return { ok: true as const };
+    const { data: result, error } = await admin().rpc("fastbar_remove_tab_item", {
+      p_item_id: data.itemId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível remover o item.");
   });
 
-/** Desfaz o último lançamento da comanda — atalho pro erro mais comum no balcão. Só em comanda aberta. */
+/**
+ * Desfaz o último lançamento da comanda — atalho pro erro mais comum no balcão. Só em comanda
+ * aberta. Exige senha como as demais remoções: sem isso, bastaria clicar aqui repetidamente para
+ * apagar lançamento por lançamento sem senha nenhuma, anulando a proteção de removeTabItem.
+ */
 export const undoLastTabItem = createServerFn({ method: "POST" })
-  .inputValidator((data: { sessionId: string }) => data)
+  .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-
-    const { data: session } = await admin()
-      .from("fastbar_sessions")
-      .select("id, status")
-      .eq("id", data.sessionId)
-      .maybeSingle();
-    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
-    if (session.status !== "open") {
-      return { ok: false as const, message: "Comanda não está aberta." };
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
     }
-
-    const { data: item } = await admin()
-      .from("fastbar_tab_items")
-      .select("id, product_id, quantity, session_id")
-      .eq("session_id", session.id)
-      .order("added_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!item) return { ok: false as const, message: "Não há lançamentos para desfazer." };
-
-    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
-    if (!reverted.ok) {
-      return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
-    }
-
-    const { error } = await admin().from("fastbar_tab_items").delete().eq("id", item.id);
-    if (error) return { ok: false as const, message: "Não foi possível desfazer o lançamento." };
-    return { ok: true as const };
+    const { data: result, error } = await admin().rpc("fastbar_undo_last_tab_item", {
+      p_session_id: data.sessionId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível desfazer o lançamento.");
   });
 
-/** Remove todos os lançamentos da comanda, devolvendo tudo ao estoque. Só em comanda aberta. */
+/**
+ * Remove todos os lançamentos da comanda, devolvendo tudo ao estoque. Só em comanda aberta.
+ * Exige senha da equipe — mesmo padrão de remover item avulso.
+ */
 export const clearTabItems = createServerFn({ method: "POST" })
-  .inputValidator((data: { sessionId: string }) => data)
+  .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-
-    const { data: session } = await admin()
-      .from("fastbar_sessions")
-      .select("id, status")
-      .eq("id", data.sessionId)
-      .maybeSingle();
-    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
-    if (session.status !== "open") {
-      return { ok: false as const, message: "Só dá pra zerar comanda aberta." };
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
     }
+    const { data: result, error } = await admin().rpc("fastbar_clear_tab_items", {
+      p_session_id: data.sessionId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível zerar a comanda.");
+  });
 
-    const { data: items } = await admin()
-      .from("fastbar_tab_items")
-      .select("id, product_id, quantity, session_id")
-      .eq("session_id", session.id);
-    if (!items || items.length === 0) return { ok: true as const, removed: 0 };
-
-    for (const item of items) {
-      const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
-      if (!reverted.ok) {
-        return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
-      }
+/**
+ * Cancela a comanda inteira: devolve ao estoque tudo que tinha sido lançado e marca como
+ * cancelada. Uma comanda cancelada nunca vira "paid", então nunca entra no faturamento nem nos
+ * relatórios — diferente de "fechar", que é passo normal a caminho do pagamento. Exige senha da
+ * equipe (mesma do login do caixa).
+ */
+export const cancelSession = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
     }
-
-    const { error } = await admin().from("fastbar_tab_items").delete().eq("session_id", session.id);
-    if (error) return { ok: false as const, message: "Não foi possível zerar a comanda." };
-    return { ok: true as const, removed: items.length };
+    const { data: result, error } = await admin().rpc("fastbar_cancel_session", {
+      p_session_id: data.sessionId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível cancelar a comanda.");
   });
 
 /**
@@ -166,8 +158,8 @@ export const archiveSession = createServerFn({ method: "POST" })
       .eq("id", data.sessionId)
       .maybeSingle();
     if (!session) return { ok: false as const, message: "Comanda não encontrada." };
-    if (session.status !== "closed" && session.status !== "paid") {
-      return { ok: false as const, message: "Só dá pra arquivar comanda já fechada ou paga." };
+    if (!["closed", "paid", "cancelled"].includes(session.status)) {
+      return { ok: false as const, message: "Só dá pra arquivar comanda já fechada, paga ou cancelada." };
     }
 
     const { error } = await admin()
@@ -214,7 +206,14 @@ export const registerPayment = createServerFn({ method: "POST" })
     if (!session || session.status === "pending") {
       return { ok: false as const, message: "Comanda inválida." };
     }
-    const { error } = await admin()
+    // Cancelada é terminal: aceitar pagamento aqui a jogaria no faturamento, que é exatamente o
+    // que o cancelamento existe para impedir. A condição vai no próprio UPDATE, não só no if
+    // acima — checar antes e gravar depois deixa uma janela para um cancelamento concorrente
+    // entrar no meio e ser sobrescrito.
+    if (session.status === "cancelled") {
+      return { ok: false as const, message: "Comanda cancelada não pode receber pagamento." };
+    }
+    const { data: updated, error } = await admin()
       .from("fastbar_sessions")
       .update({
         status: "paid",
@@ -222,8 +221,14 @@ export const registerPayment = createServerFn({ method: "POST" })
         paid_at: nowIso,
         payment_method: data.method,
       })
-      .eq("id", session.id);
+      .eq("id", session.id)
+      .neq("status", "cancelled")
+      .select("id");
     if (error) return { ok: false as const, message: "Não foi possível registrar o pagamento." };
+    if (!updated || updated.length === 0) {
+      return { ok: false as const, message: "Comanda cancelada não pode receber pagamento." };
+    }
+    // Só credita o gasto no CRM depois de confirmar que o pagamento foi mesmo gravado.
     await registerCustomerSpend(session.id);
     return { ok: true as const };
   });
@@ -241,7 +246,7 @@ export const archiveClosedSessions = createServerFn({ method: "POST" })
     let query = admin()
       .from("fastbar_sessions")
       .select("id")
-      .in("status", ["closed", "paid"])
+      .in("status", ["closed", "paid", "cancelled"])
       .is("archived_at", null);
     if (data.before) query = query.lt("closed_at", data.before);
 
@@ -273,13 +278,18 @@ export const unarchiveSession = createServerFn({ method: "POST" })
 
 /**
  * Tira o produto do cardápio sem apagar o cadastro: o histórico de vendas e a ficha técnica
- * continuam intactos, o item só deixa de aparecer para lançamento.
+ * continuam intactos, o item só deixa de aparecer para lançamento. Exige senha da equipe como as
+ * demais ações destrutivas.
  */
 export const deactivateProduct = createServerFn({ method: "POST" })
-  .inputValidator((data: { productId: string }) => data)
+  .inputValidator((data: { productId: string; password: string }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
     const { error } = await admin()
       .from("fastbar_products")
       .update({ is_active: false })
@@ -293,10 +303,28 @@ export const reopenSession = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
-    const { error } = await admin()
+
+    // Reabrir uma cancelada devolveria ao fluxo normal uma comanda cujos itens já foram apagados e
+    // cujo estoque já voltou — e de lá ela poderia ser paga, entrando no faturamento. A condição
+    // vai no próprio UPDATE para não abrir janela entre a checagem e a gravação.
+    const { data: updated, error } = await admin()
       .from("fastbar_sessions")
       .update({ status: "open", closed_at: null, paid_at: null })
-      .eq("id", data.sessionId);
+      .eq("id", data.sessionId)
+      .neq("status", "cancelled")
+      .select("id");
     if (error) return { ok: false as const, message: "Não foi possível reabrir a comanda." };
+    if (!updated || updated.length === 0) {
+      // Zero linhas tanto significa "estava cancelada" quanto "não existe" — sem distinguir,
+      // um id errado acusaria cancelamento e mandaria procurar um problema que não existe.
+      const { data: exists } = await admin()
+        .from("fastbar_sessions")
+        .select("id")
+        .eq("id", data.sessionId)
+        .maybeSingle();
+      return exists
+        ? { ok: false as const, message: "Comanda cancelada não pode ser reaberta." }
+        : { ok: false as const, message: "Comanda não encontrada." };
+    }
     return { ok: true as const };
   });

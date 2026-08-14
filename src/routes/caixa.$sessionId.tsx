@@ -113,7 +113,7 @@ function RegisterTabDetail() {
 
       {isOpen && (
         <section className="mt-8">
-          <h2 className="text-lg font-semibold">Lançar bebidas</h2>
+          <h2 className="text-lg font-semibold">Lançamentos</h2>
           <div className="mt-3">
             <ProductPicker
               products={products}
@@ -132,7 +132,13 @@ function RegisterTabDetail() {
           <TabItemList
             items={items}
             {...(isOpen
-              ? { onRemove: (itemId: string) => void run(() => remove({ data: { itemId } })) }
+              ? {
+                  onRemove: async (itemId: string, password: string) => {
+                    const result = await remove({ data: { itemId, password } });
+                    if (result.ok) await reload();
+                    return result;
+                  },
+                }
               : {})}
           />
         </div>
