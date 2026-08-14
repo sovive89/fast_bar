@@ -105,16 +105,25 @@ export const createBaseDrink = createServerFn({ method: "POST" })
     }
     const packaging = readPackaging(data);
     if (!packaging.ok) return packaging;
-    const { error } = await admin().from("fastbar_base_drinks").insert({
-      name,
-      unit: data.unit,
-      min_stock: data.minStock && data.minStock > 0 ? data.minStock : 0,
-      purchase_unit: data.purchaseUnit?.trim() || null,
-      units_per_pack: packaging.unitsPerPack,
-      content_amount: packaging.contentAmount,
-    });
-    if (error) return { ok: false as const, message: "Não foi possível salvar a bebida base." };
-    return { ok: true as const };
+    // Devolve o id para que a tela consiga dar a entrada de estoque logo em seguida, no mesmo
+    // gesto de cadastrar — é assim que a compra acontece no bar: chega a mercadoria e se registra
+    // o que chegou, não "cadastra agora e informa a quantidade depois".
+    const { data: created, error } = await admin()
+      .from("fastbar_base_drinks")
+      .insert({
+        name,
+        unit: data.unit,
+        min_stock: data.minStock && data.minStock > 0 ? data.minStock : 0,
+        purchase_unit: data.purchaseUnit?.trim() || null,
+        units_per_pack: packaging.unitsPerPack,
+        content_amount: packaging.contentAmount,
+      })
+      .select("id")
+      .maybeSingle();
+    if (error || !created) {
+      return { ok: false as const, message: "Não foi possível salvar a bebida base." };
+    }
+    return { ok: true as const, id: created.id };
   });
 
 /**
@@ -258,16 +267,23 @@ export const createIngredient = createServerFn({ method: "POST" })
     }
     const packaging = readPackaging(data);
     if (!packaging.ok) return packaging;
-    const { error } = await admin().from("fastbar_drink_ingredients").insert({
-      name,
-      unit: data.unit,
-      min_stock: data.minStock && data.minStock > 0 ? data.minStock : 0,
-      purchase_unit: data.purchaseUnit?.trim() || null,
-      units_per_pack: packaging.unitsPerPack,
-      content_amount: packaging.contentAmount,
-    });
-    if (error) return { ok: false as const, message: "Não foi possível salvar o ingrediente." };
-    return { ok: true as const };
+    // Mesmo motivo de createBaseDrink: o id volta para a tela dar a entrada em seguida.
+    const { data: created, error } = await admin()
+      .from("fastbar_drink_ingredients")
+      .insert({
+        name,
+        unit: data.unit,
+        min_stock: data.minStock && data.minStock > 0 ? data.minStock : 0,
+        purchase_unit: data.purchaseUnit?.trim() || null,
+        units_per_pack: packaging.unitsPerPack,
+        content_amount: packaging.contentAmount,
+      })
+      .select("id")
+      .maybeSingle();
+    if (error || !created) {
+      return { ok: false as const, message: "Não foi possível salvar o ingrediente." };
+    }
+    return { ok: true as const, id: created.id };
   });
 
 /** Ajusta a embalagem de compra de um ingrediente já cadastrado — mesmo motivo da bebida base. */
