@@ -28,31 +28,25 @@ export const restockProduct = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Informe uma quantidade válida." };
     }
 
-    const { data: product } = await admin()
-      .from("fastbar_products")
-      .select("id, stock_quantity")
-      .eq("id", data.productId)
-      .maybeSingle();
-    if (!product) return { ok: false as const, message: "Produto não encontrado." };
-
-    const { error: movementError } = await admin().from("fastbar_stock_movements").insert({
-      product_id: product.id,
-      quantity,
-      movement_type: "in",
-      note: "Reposição manual",
+    // O saldo é somado dentro do banco (`set stock_quantity = stock_quantity + n`), junto com o
+    // registro do movimento. Ler o saldo aqui e gravar depois perderia uma das entradas se duas
+    // reposições acontecessem ao mesmo tempo.
+    const { data: result, error } = await admin().rpc("fastbar_restock_product", {
+      p_product_id: data.productId,
+      p_quantity: quantity,
     });
-    if (movementError) {
+    const parsed = result as { ok: boolean; code?: string; new_quantity?: number } | null;
+    if (error || !parsed) {
       return { ok: false as const, message: "Não foi possível registrar a entrada." };
     }
-
-    const newQuantity = product.stock_quantity + quantity;
-    const { error: updateError } = await admin()
-      .from("fastbar_products")
-      .update({ stock_quantity: newQuantity })
-      .eq("id", product.id);
-    if (updateError) {
-      return { ok: false as const, message: "Não foi possível atualizar o estoque." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message:
+          parsed.code === "product_not_found"
+            ? "Produto não encontrado."
+            : "Informe uma quantidade válida.",
+      };
     }
-
-    return { ok: true as const, newQuantity };
+    return { ok: true as const, newQuantity: parsed.new_quantity ?? 0 };
   });

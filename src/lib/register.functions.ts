@@ -1,5 +1,38 @@
 import { createServerFn } from "@tanstack/react-start";
 
+/**
+ * As operações de estoque moram em funções no Postgres (migration atomic_stock_operations), onde
+ * cada uma roda como transação única e os saldos mudam com `set x = x + n`. Em TypeScript não dá
+ * para garantir isso: ler o saldo e gravar depois perde atualizações quando dois pedidos acontecem
+ * juntos, e encadear passos sem transação deixa o estoque pela metade se um falhar no meio.
+ * Aqui ficam só a autorização e a tradução do código de erro para a mensagem da equipe.
+ */
+const RPC_MESSAGES: Record<string, string> = {
+  session_not_found: "Comanda não encontrada.",
+  session_not_open: "Comanda não está aberta.",
+  item_not_found: "Item não encontrado.",
+  product_unavailable: "Produto indisponível.",
+  product_not_found: "Produto não encontrado.",
+  no_items: "Não há lançamentos para desfazer.",
+  cannot_cancel: "Essa comanda não pode ser cancelada.",
+  invalid_quantity: "Informe uma quantidade válida.",
+};
+
+type RpcResult = { ok: boolean; code?: string; removed?: number; new_quantity?: number };
+
+/** Normaliza o retorno das funções do banco no formato que a UI já espera. */
+function fromRpc(
+  result: RpcResult | null,
+  error: unknown,
+  fallback: string,
+): { ok: true; removed?: number } | { ok: false; message: string } {
+  if (error || !result) return { ok: false, message: fallback };
+  if (!result.ok) {
+    return { ok: false, message: RPC_MESSAGES[result.code ?? ""] ?? fallback };
+  }
+  return result.removed === undefined ? { ok: true } : { ok: true, removed: result.removed };
+}
+
 export const confirmSession = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string }) => data)
   .handler(async ({ data }) => {
@@ -17,31 +50,13 @@ export const confirmSession = createServerFn({ method: "POST" })
 export const addTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; productId: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, registerStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
-    const [{ data: session }, { data: product }] = await Promise.all([
-      admin().from("fastbar_sessions").select("id, status").eq("id", data.sessionId).maybeSingle(),
-      admin()
-        .from("fastbar_products")
-        .select("id, name, price")
-        .eq("id", data.productId)
-        .eq("is_active", true)
-        .maybeSingle(),
-    ]);
-    if (!session || session.status !== "open") {
-      return { ok: false as const, message: "Comanda não está aberta." };
-    }
-    if (!product) return { ok: false as const, message: "Produto indisponível." };
-    const { error } = await admin().from("fastbar_tab_items").insert({
-      session_id: session.id,
-      product_id: product.id,
-      name: product.name,
-      unit_price: product.price,
-      quantity: 1,
+    const { data: result, error } = await admin().rpc("fastbar_add_tab_item", {
+      p_session_id: data.sessionId,
+      p_product_id: data.productId,
     });
-    if (error) return { ok: false as const, message: "Não foi possível lançar o item." };
-    await registerStockMovement(product.id, session.id, 1);
-    return { ok: true as const };
+    return fromRpc(result as RpcResult | null, error, "Não foi possível lançar o item.");
   });
 
 /**
@@ -55,50 +70,16 @@ export const addTabItem = createServerFn({ method: "POST" })
 export const removeTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { itemId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
-
-    const { data: item } = await admin()
-      .from("fastbar_tab_items")
-      .select("id, product_id, quantity, session_id, fastbar_sessions(status)")
-      .eq("id", data.itemId)
-      .maybeSingle();
-    if (!item) return { ok: false as const, message: "Item não encontrado." };
-    const session = item.fastbar_sessions as { status: string } | { status: string }[] | null;
-    const status = Array.isArray(session) ? session[0]?.status : session?.status;
-    if (status !== "open") {
-      return { ok: false as const, message: "Comanda não está aberta." };
-    }
-
-    // Apaga primeiro e só estorna se este request foi quem de fato removeu a linha. Estornar antes
-    // parecia mais seguro, mas não é: dois requests simultâneos (duplo clique, retry de rede) leem
-    // o mesmo item, estornam os dois e creditam o estoque em dobro. O delete condicional deixa
-    // exatamente um vencedor, e é o estoque que precisa fechar no fim do dia.
-    //
-    // O troco desta escolha: se o processo morrer entre o delete e o estorno, o item some sem o
-    // estoque voltar. Preferido ao inverso porque duplo clique é corriqueiro no balcão e queda de
-    // processo é rara, e porque estoque a mais (vender o que não existe) machuca mais que estoque a
-    // menos. Resolver de verdade exige transação — os dois passos numa função no Postgres.
-    const { data: deleted, error } = await admin()
-      .from("fastbar_tab_items")
-      .delete()
-      .eq("id", item.id)
-      .select("id");
-    if (error) return { ok: false as const, message: "Não foi possível remover o item." };
-    if (!deleted || deleted.length === 0) {
-      // Outro request já removeu: o estorno dele já aconteceu, então aqui não há o que fazer.
-      return { ok: true as const };
-    }
-
-    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
-    if (!reverted.ok) {
-      return { ok: false as const, message: "Item removido, mas o estoque não voltou — confira o estoque." };
-    }
-    return { ok: true as const };
+    const { data: result, error } = await admin().rpc("fastbar_remove_tab_item", {
+      p_item_id: data.itemId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível remover o item.");
   });
 
 /**
@@ -109,47 +90,16 @@ export const removeTabItem = createServerFn({ method: "POST" })
 export const undoLastTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
-
-    const { data: session } = await admin()
-      .from("fastbar_sessions")
-      .select("id, status")
-      .eq("id", data.sessionId)
-      .maybeSingle();
-    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
-    if (session.status !== "open") {
-      return { ok: false as const, message: "Comanda não está aberta." };
-    }
-
-    const { data: item } = await admin()
-      .from("fastbar_tab_items")
-      .select("id, product_id, quantity, session_id")
-      .eq("session_id", session.id)
-      .order("added_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (!item) return { ok: false as const, message: "Não há lançamentos para desfazer." };
-
-    // Mesmo padrão de removeTabItem: o delete condicional decide quem estorna, para que dois
-    // "desfazer" simultâneos não devolvam o mesmo item ao estoque duas vezes.
-    const { data: deleted, error } = await admin()
-      .from("fastbar_tab_items")
-      .delete()
-      .eq("id", item.id)
-      .select("id");
-    if (error) return { ok: false as const, message: "Não foi possível desfazer o lançamento." };
-    if (!deleted || deleted.length === 0) return { ok: true as const };
-
-    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
-    if (!reverted.ok) {
-      return { ok: false as const, message: "Lançamento desfeito, mas o estoque não voltou — confira o estoque." };
-    }
-    return { ok: true as const };
+    const { data: result, error } = await admin().rpc("fastbar_undo_last_tab_item", {
+      p_session_id: data.sessionId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível desfazer o lançamento.");
   });
 
 /**
@@ -159,36 +109,16 @@ export const undoLastTabItem = createServerFn({ method: "POST" })
 export const clearTabItems = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, drainSessionItems } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
-
-    const { data: session, error: lookupError } = await admin()
-      .from("fastbar_sessions")
-      .select("id, status")
-      .eq("id", data.sessionId)
-      .maybeSingle();
-    if (lookupError) {
-      return { ok: false as const, message: "Não foi possível zerar a comanda." };
-    }
-    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
-    if (session.status !== "open") {
-      return { ok: false as const, message: "Só dá pra zerar comanda aberta." };
-    }
-
-    // Mesmo drain do cancelamento: cada item é estornado por quem conseguiu apagá-lo, então zerar
-    // duas vezes seguidas não credita nada em dobro.
-    const drained = await drainSessionItems(session.id);
-    if (!drained.ok) {
-      return {
-        ok: false as const,
-        message: "Estoque não voltou por inteiro — tente zerar de novo.",
-      };
-    }
-    return { ok: true as const, removed: drained.removed };
+    const { data: result, error } = await admin().rpc("fastbar_clear_tab_items", {
+      p_session_id: data.sessionId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível zerar a comanda.");
   });
 
 /**
@@ -196,64 +126,20 @@ export const clearTabItems = createServerFn({ method: "POST" })
  * cancelada. Uma comanda cancelada nunca vira "paid", então nunca entra no faturamento nem nos
  * relatórios — diferente de "fechar", que é passo normal a caminho do pagamento. Exige senha da
  * equipe (mesma do login do caixa).
- *
- * Repetir o cancelamento é seguro e às vezes necessário: se o estorno morrer no meio, a comanda
- * fica cancelada com lançamentos sobrando, e rodar de novo termina o serviço sem estornar duas
- * vezes o que já voltou.
  */
 export const cancelSession = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, drainSessionItems } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
-
-    // Reserva a comanda antes de tocar em qualquer coisa: o UPDATE só pega a linha se ela ainda
-    // estiver num estado cancelável, então um pagamento que tenha entrado no meio faz este
-    // cancelamento perder a corrida — e perder sem ter destruído nada. Ler o status primeiro e
-    // gravar no fim fazia o oposto: estornava estoque e apagava os itens de uma comanda que já
-    // tinha sido paga, e só então sobrescrevia o pagamento.
-    const { data: claimed, error: claimError } = await admin()
-      .from("fastbar_sessions")
-      .update({ status: "cancelled", closed_at: new Date().toISOString() })
-      .eq("id", data.sessionId)
-      .in("status", ["pending", "open", "closed"])
-      .select("id");
-    if (claimError) {
-      return { ok: false as const, message: "Não foi possível cancelar a comanda." };
-    }
-
-    if (!claimed || claimed.length === 0) {
-      const { data: current, error: lookupError } = await admin()
-        .from("fastbar_sessions")
-        .select("id, status")
-        .eq("id", data.sessionId)
-        .maybeSingle();
-      // Sem distinguir a falha da consulta, um erro de banco seria reportado como "não encontrada"
-      // e mandaria procurar uma comanda que existe.
-      if (lookupError) {
-        return { ok: false as const, message: "Não foi possível cancelar a comanda." };
-      }
-      if (!current) return { ok: false as const, message: "Comanda não encontrada." };
-      // Já cancelada: não é erro, é um cancelamento anterior que não terminou de estornar.
-      // Cai adiante para o drain, que é idempotente e só mexe no que ainda sobrou.
-      if (current.status !== "cancelled") {
-        return { ok: false as const, message: "Essa comanda não pode ser cancelada." };
-      }
-    }
-
-    // A comanda já está cancelada e ninguém mais a move, então o estorno acontece sem disputa.
-    const drained = await drainSessionItems(data.sessionId);
-    if (!drained.ok) {
-      return {
-        ok: false as const,
-        message: "Comanda cancelada, mas o estoque não voltou por inteiro — tente cancelar de novo.",
-      };
-    }
-    return { ok: true as const };
+    const { data: result, error } = await admin().rpc("fastbar_cancel_session", {
+      p_session_id: data.sessionId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível cancelar a comanda.");
   });
 
 /**

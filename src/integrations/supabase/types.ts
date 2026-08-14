@@ -508,7 +508,29 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      fastbar_add_tab_item: {
+        Args: { p_product_id: string; p_session_id: string }
+        Returns: Json
+      }
+      fastbar_apply_sale_stock: {
+        Args: { p_product_id: string; p_quantity: number; p_session_id: string }
+        Returns: undefined
+      }
+      fastbar_cancel_session: { Args: { p_session_id: string }; Returns: Json }
+      fastbar_clear_tab_items: { Args: { p_session_id: string }; Returns: Json }
+      fastbar_remove_tab_item: { Args: { p_item_id: string }; Returns: Json }
+      fastbar_restock_product: {
+        Args: { p_product_id: string; p_quantity: number }
+        Returns: Json
+      }
+      fastbar_revert_item_stock: {
+        Args: { p_product_id: string; p_quantity: number; p_session_id: string }
+        Returns: undefined
+      }
+      fastbar_undo_last_tab_item: {
+        Args: { p_session_id: string }
+        Returns: Json
+      }
     }
     Enums: {
       [_ in never]: never
