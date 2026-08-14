@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl } from "@/lib/format";
-import { getStockOverview, restockProduct } from "@/lib/stock.functions";
+import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
 import { deactivateProduct } from "@/lib/register.functions";
 import {
   createProduct,
@@ -38,6 +38,10 @@ type Product = {
   is_active: boolean;
   stock_quantity: number;
   image_url: string | null;
+  purchase_unit: string | null;
+  units_per_pack: number;
+  content_amount: number;
+  average_cost: number;
 };
 
 const LOW_STOCK_THRESHOLD = 20;
@@ -103,6 +107,7 @@ function CardapioPage() {
   const [showPreview, setShowPreview] = useState(false);
   const [openRestockId, setOpenRestockId] = useState<string | null>(null);
   const [restockAmount, setRestockAmount] = useState("");
+  const [restockCost, setRestockCost] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [restockError, setRestockError] = useState<string | null>(null);
@@ -122,10 +127,11 @@ function CardapioPage() {
   // isso, montar o cardápio exigia digitar o nome do zero e depois ir a outra aba fazer a ligação.
   const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
   const [components, setComponents] = useState<ComponentRow[]>([]);
+  const [creatingCategory, setCreatingCategory] = useState(false);
 
   const loadOverview = useServerFn(getStockOverview);
   const loadStock = useServerFn(getBaseDrinksOverview);
-  const restock = useServerFn(restockProduct);
+  const productEntry = useServerFn(addProductEntry);
   const removeProduct = useServerFn(deactivateProduct);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
@@ -156,17 +162,24 @@ function CardapioPage() {
 
   async function confirmRestock(productId: string) {
     setRestockError(null);
-    const quantity = Number(restockAmount);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      return setRestockError("Informe uma quantidade válida.");
+    const packs = Number(restockAmount);
+    if (!Number.isFinite(packs) || !Number.isInteger(packs) || packs <= 0) {
+      return setRestockError("Informe uma quantidade inteira maior que zero.");
+    }
+    let purchaseCost: number | undefined;
+    if (restockCost.trim()) {
+      const parsed = Number(restockCost.replace(",", "."));
+      if (!Number.isFinite(parsed) || parsed < 0) return setRestockError("Valor pago inválido.");
+      purchaseCost = parsed;
     }
     setBusyId(productId);
-    const result = await restock({ data: { productId, quantity } });
+    const result = await productEntry({ data: { productId, packs, purchaseCost } });
     setBusyId(null);
-    // Falha silenciosa aqui faria a equipe achar que repôs o estoque quando não repôs.
-    if (!result.ok) return setRestockError(result.message ?? "Não foi possível repor o estoque.");
+    // Falha silenciosa aqui faria a equipe achar que deu entrada quando não deu.
+    if (!result.ok) return setRestockError(result.message ?? "Não foi possível registrar a entrada.");
     setOpenRestockId(null);
     setRestockAmount("");
+    setRestockCost("");
     await load();
   }
 
@@ -184,6 +197,7 @@ function CardapioPage() {
     const priceNumber = Number(price.replace(",", "."));
     if (name.trim().length < 2) return setError("Digite o nome do produto.");
     if (!Number.isFinite(priceNumber) || priceNumber < 0) return setError("Preço inválido.");
+    if (category.trim().length < 2) return setError("Digite o nome da categoria.");
 
     // Valida a ficha antes de criar o produto: melhor recusar agora do que deixar um produto
     // gravado com a receita pela metade.
@@ -263,6 +277,7 @@ function CardapioPage() {
 
     setSaving(false);
     setComponents([]);
+    setCreatingCategory(false);
     setName("");
     setCategory("Bebidas");
     setPrice("");
@@ -283,6 +298,14 @@ function CardapioPage() {
     }
     return Array.from(map.entries());
   }, [products]);
+
+  const existingCategories = useMemo(() => {
+    const set = new Set(products.map((product) => product.category));
+    // Enquanto "+ Nova categoria" está em edição, o nome sendo digitado não é uma opção real do
+    // dropdown — só entra na lista depois de salvo.
+    if (!creatingCategory) set.add(category || "Bebidas");
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
+  }, [products, category, creatingCategory]);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
@@ -314,12 +337,39 @@ function CardapioPage() {
             <SectionCard title="Novo produto do cardápio">
               <div className="space-y-3">
                 <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
-                <TextField
-                  label="Categoria"
-                  value={category}
-                  onChange={setCategory}
-                  placeholder="Drinks"
-                />
+                {/* Escolher entre as categorias que já existem evita "Drinks" e "drinks" virarem
+                    duas seções do cardápio por causa de digitação. Criar nova continua possível. */}
+                <label className="block">
+                  <span className="text-xs font-medium text-muted-foreground">Categoria</span>
+                  <select
+                    value={creatingCategory ? "__nova__" : category}
+                    onChange={(event) => {
+                      if (event.target.value === "__nova__") {
+                        setCreatingCategory(true);
+                        setCategory("");
+                      } else {
+                        setCreatingCategory(false);
+                        setCategory(event.target.value);
+                      }
+                    }}
+                    className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                  >
+                    {existingCategories.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                    <option value="__nova__">+ Nova categoria</option>
+                  </select>
+                </label>
+                {creatingCategory && (
+                  <TextField
+                    label="Nome da nova categoria"
+                    value={category}
+                    onChange={setCategory}
+                    placeholder="Petiscos"
+                  />
+                )}
                 <TextField label="Preço (R$)" value={price} onChange={setPrice} placeholder="18,00" />
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
@@ -495,6 +545,9 @@ function CardapioPage() {
                                   {brl(product.price)}
                                   {product.package_type ? ` · ${product.package_type}` : ""}
                                   {product.unit ? ` (${product.unit})` : ""}
+                                  {!hasRecipe && product.average_cost > 0
+                                    ? ` · custo ${brl(product.average_cost)}`
+                                    : ""}
                                 </p>
                               </div>
                             </div>
@@ -507,17 +560,18 @@ function CardapioPage() {
                                   onClick={() => {
                                     setOpenRestockId(isOpen ? null : product.id);
                                     setRestockAmount("");
+                                    setRestockCost("");
                                     setDeletingId(null);
                                     // Sem isso, o erro de uma linha reaparece no formulário da
                                     // próxima que for aberta.
                                     setRestockError(null);
                                   }}
-                                  // Uma reposição por vez: o formulário é compartilhado, então
+                                  // Uma entrada por vez: o formulário é compartilhado, então
                                   // abrir outro no meio de um envio mistura as duas linhas.
                                   disabled={busyId !== null && busyId !== product.id}
                                   className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
                                 >
-                                  {isOpen ? "Cancelar" : "+ Repor"}
+                                  {isOpen ? "Cancelar" : "+ Entrada"}
                                 </button>
                               )}
                               <button
@@ -553,18 +607,47 @@ function CardapioPage() {
                                   min={1}
                                   value={restockAmount}
                                   onChange={(event) => setRestockAmount(event.target.value)}
-                                  placeholder="Quantidade"
+                                  placeholder={
+                                    product.purchase_unit
+                                      ? `Quantas ${product.purchase_unit}`
+                                      : "Quantidade"
+                                  }
                                   autoFocus
                                   className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
                                 />
-                                <button
-                                  onClick={() => confirmRestock(product.id)}
-                                  disabled={busyId === product.id || !restockAmount}
-                                  className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-                                >
-                                  {busyId === product.id ? "Salvando..." : "Confirmar"}
-                                </button>
+                                <input
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={restockCost}
+                                  onChange={(event) => setRestockCost(event.target.value)}
+                                  placeholder="Total pago (R$)"
+                                  className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+                                />
                               </div>
+                              {Number(restockAmount) > 0 && (
+                                <p className="mt-2 text-xs text-muted-foreground">
+                                  Entram{" "}
+                                  {Number(restockAmount) *
+                                    product.units_per_pack *
+                                    Number(product.content_amount)}{" "}
+                                  un no estoque
+                                  {Number(restockCost.replace(",", ".")) > 0
+                                    ? ` · ${brl(
+                                        Number(restockCost.replace(",", ".")) /
+                                          (Number(restockAmount) *
+                                            product.units_per_pack *
+                                            Number(product.content_amount)),
+                                      )} por un`
+                                    : ""}
+                                </p>
+                              )}
+                              <button
+                                onClick={() => confirmRestock(product.id)}
+                                disabled={busyId === product.id || !restockAmount}
+                                className="mt-2 h-11 w-full rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                              >
+                                {busyId === product.id ? "Salvando..." : "Confirmar entrada"}
+                              </button>
                               {restockError && (
                                 <p className="mt-2 text-xs text-destructive">{restockError}</p>
                               )}

@@ -244,6 +244,10 @@ export type Database = {
       }
       fastbar_products: {
         Row: {
+          average_cost: number
+          content_amount: number
+          purchase_unit: string | null
+          units_per_pack: number
           category: string
           created_at: string
           id: string
@@ -257,6 +261,10 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          average_cost?: number
+          content_amount?: number
+          purchase_unit?: string | null
+          units_per_pack?: number
           category?: string
           created_at?: string
           id?: string
@@ -270,6 +278,10 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          average_cost?: number
+          content_amount?: number
+          purchase_unit?: string | null
+          units_per_pack?: number
           category?: string
           created_at?: string
           id?: string
@@ -508,6 +520,15 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      fastbar_add_product_entry: {
+        Args: {
+          p_packs: number
+          p_product_id: string
+          p_purchase_cost?: number
+          p_supplier_id?: string
+        }
+        Returns: Json
+      }
       fastbar_add_tab_item: {
         Args: { p_product_id: string; p_session_id: string }
         Returns: Json
