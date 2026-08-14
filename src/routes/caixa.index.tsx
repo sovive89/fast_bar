@@ -1,5 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { brl, digits, elapsed, formatPhone, hhmm } from "@/lib/format";
 import { useServerFn } from "@tanstack/react-start";
@@ -7,6 +8,7 @@ import { getRegisterOverview } from "@/lib/tab-reads.functions";
 import {
   archiveClosedSessions,
   archiveSession,
+  cancelSession,
   clearTabItems,
   removeTabItem,
   unarchiveSession,
@@ -47,6 +49,13 @@ function shortId(value: string | null | undefined) {
   return value.replace(/-/g, "").slice(0, 6).toUpperCase();
 }
 
+/** "Maria Creuza" -> "Maria C." — cabe no card quadrado sem truncar de forma ilegível. */
+function shortName(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length <= 1) return parts[0] ?? name;
+  return `${parts[0]} ${parts[1]!.charAt(0).toUpperCase()}.`;
+}
+
 function RegisterList() {
   const [sessions, setSessions] = useState<BarSession[]>([]);
   const [items, setItems] = useState<OverviewItem[]>([]);
@@ -54,7 +63,11 @@ function RegisterList() {
   const [view, setView] = useState<"open" | "all" | "archived">("open");
   const [now, setNow] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState<{ kind: string; sessionId?: string } | null>(null);
+  const [confirming, setConfirming] = useState<{
+    kind: string;
+    sessionId?: string;
+    itemId?: string;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -62,6 +75,7 @@ function RegisterList() {
   const undoLast = useServerFn(undoLastTabItem);
   const removeItem = useServerFn(removeTabItem);
   const clearItems = useServerFn(clearTabItems);
+  const cancelOne = useServerFn(cancelSession);
   const archiveOne = useServerFn(archiveSession);
   const unarchiveOne = useServerFn(unarchiveSession);
   const archiveClosed = useServerFn(archiveClosedSessions);
@@ -127,7 +141,7 @@ function RegisterList() {
   const openTotal = openSessions.reduce((sum, session) => sum + (totals.get(session.id) ?? 0), 0);
   const archivableCount = sessions.filter(
     (session) =>
-      !session.archived_at && (session.status === "closed" || session.status === "paid"),
+      !session.archived_at && ["closed", "paid", "cancelled"].includes(session.status),
   ).length;
 
   async function run(action: () => Promise<{ ok: boolean; message?: string }>) {
@@ -195,7 +209,7 @@ function RegisterList() {
 
       {confirming?.kind === "archiveAll" && (
         <ConfirmBar
-          message={`Tirar ${archivableCount} comandas fechadas/pagas da lista? Nada é apagado — elas continuam no faturamento e você pode revê-las em "Arquivadas".`}
+          message={`Tirar ${archivableCount} comandas fechadas/pagas/canceladas da lista? Nada é apagado — elas continuam contando no faturamento (quando aplicável) e você pode revê-las em "Arquivadas".`}
           confirmLabel="Arquivar"
           busy={busy}
           onCancel={() => setConfirming(null)}
@@ -208,134 +222,230 @@ function RegisterList() {
           Nenhuma comanda encontrada.
         </p>
       ) : (
-        <ul className="mt-5 space-y-3">
+        <ul className="mt-5 grid grid-cols-3 gap-2 sm:grid-cols-4">
           {filtered.map((session) => {
             const isExpanded = expandedId === session.id;
             const sessionItems = itemsBySession.get(session.id) ?? [];
             const code = shortId(session.customer_id ?? session.id);
             const isPaid = session.status === "paid";
+            const isCancelled = session.status === "cancelled";
             const isOpen = session.status === "open";
+            const isClosed = session.status === "closed";
             const isArchived = Boolean(session.archived_at);
-            const canArchive = !isArchived && (session.status === "closed" || isPaid);
+            const canArchive = !isArchived && (isClosed || isPaid || isCancelled);
+            const canCancel = !isArchived && (isOpen || isClosed);
 
             return (
-              <li key={session.id} className="rounded-2xl border border-border bg-card">
-                <div className="flex items-start gap-1 p-4">
-                  <button
-                    onClick={() => setExpandedId(isExpanded ? null : session.id)}
-                    className="flex min-w-0 flex-1 items-center justify-between gap-4 text-left"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold">
-                        {session.customer_name}
-                        {code && (
-                          <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
-                            #{code}
-                          </span>
-                        )}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {formatPhone(session.phone)}
-                        {session.started_at ? ` · ${hhmm(session.started_at)}` : ""} ·{" "}
-                        {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
-                      </p>
+              <li key={session.id} className={isExpanded ? "col-span-3 sm:col-span-4" : ""}>
+                <div className="rounded-2xl border border-border bg-card">
+                  {isExpanded ? (
+                    <div className="flex items-start gap-1 p-4">
+                      <button
+                        onClick={() => setExpandedId(null)}
+                        className="flex min-w-0 flex-1 items-start justify-between gap-4 text-left"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate font-semibold">
+                            {session.customer_name}
+                            {code && (
+                              <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">
+                                #{code}
+                              </span>
+                            )}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {formatPhone(session.phone)}
+                            {session.started_at ? ` · abertura ${hhmm(session.started_at)}` : ""} ·{" "}
+                            {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
+                          </p>
+                          {session.payment_method && (
+                            <p className="mt-0.5 text-xs text-muted-foreground">
+                              Pagamento: {session.payment_method}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex shrink-0 flex-col items-end gap-1">
+                          <p className="font-bold">{brl(totals.get(session.id) ?? 0)}</p>
+                          <StatusBadge status={session.status} />
+                        </div>
+                      </button>
+                      {canArchive && (
+                        <button
+                          onClick={() => run(() => archiveOne({ data: { sessionId: session.id } }))}
+                          disabled={busy}
+                          title="Tirar da lista (não apaga)"
+                          aria-label="Tirar da lista"
+                          className="-mr-1 shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                        >
+                          ×
+                        </button>
+                      )}
                     </div>
-                    <div className="flex flex-col items-end gap-1">
-                      <p className="font-bold">{brl(totals.get(session.id) ?? 0)}</p>
-                      <StatusBadge status={session.status} />
-                    </div>
-                  </button>
-                  {canArchive && (
+                  ) : (
                     <button
-                      onClick={() => run(() => archiveOne({ data: { sessionId: session.id } }))}
-                      disabled={busy}
-                      title="Tirar da lista (não apaga)"
-                      aria-label="Tirar da lista"
-                      className="-mr-1 shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                      onClick={() => setExpandedId(session.id)}
+                      className="flex aspect-square w-full flex-col items-center justify-center gap-1 p-2 text-center"
                     >
-                      ×
+                      <p className="w-full truncate text-xs font-semibold">
+                        {shortName(session.customer_name)}
+                      </p>
+                      {code && (
+                        <p className="font-mono text-[10px] text-muted-foreground">#{code}</p>
+                      )}
+                      <p className="text-xs font-bold">{brl(totals.get(session.id) ?? 0)}</p>
+                      <StatusBadge status={session.status} />
                     </button>
                   )}
-                </div>
 
-                {isExpanded && (
-                  <div className="border-t border-border p-4">
-                    {sessionItems.length === 0 ? (
-                      <p className="text-sm text-muted-foreground">Nenhum lançamento ainda.</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {sessionItems.map((item) => (
-                          <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
-                            <span className="truncate">
-                              {item.quantity}× {item.name}
-                            </span>
-                            <span className="flex shrink-0 items-center gap-3">
-                              <span className="font-semibold">
-                                {brl(Number(item.unit_price) * item.quantity)}
-                              </span>
-                              {isOpen && (
-                                <button
-                                  onClick={() => run(() => removeItem({ data: { itemId: item.id } }))}
-                                  disabled={busy}
-                                  className="text-xs text-muted-foreground transition-colors hover:text-destructive disabled:opacity-60"
-                                  title="Cancelar este lançamento"
-                                >
-                                  Cancelar
-                                </button>
+                  {isExpanded && (
+                    <div className="border-t border-border p-4">
+                      {sessionItems.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Nenhum lançamento ainda.</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {sessionItems.map((item) => (
+                            <li key={item.id} className="text-sm">
+                              <div className="flex items-center justify-between gap-3">
+                                <span className="truncate">
+                                  {item.quantity}× {item.name}
+                                </span>
+                                <span className="flex shrink-0 items-center gap-3">
+                                  <span className="font-semibold">
+                                    {brl(Number(item.unit_price) * item.quantity)}
+                                  </span>
+                                  {isOpen && (
+                                    <button
+                                      onClick={() =>
+                                        setConfirming({
+                                          kind: "removeItem",
+                                          sessionId: session.id,
+                                          itemId: item.id,
+                                        })
+                                      }
+                                      className="text-xs text-muted-foreground transition-colors hover:text-destructive"
+                                      title="Cancelar este lançamento"
+                                    >
+                                      Cancelar
+                                    </button>
+                                  )}
+                                </span>
+                              </div>
+                              {confirming?.kind === "removeItem" && confirming.itemId === item.id && (
+                                <div className="mt-2">
+                                  <PasswordConfirm
+                                    message={`Remover "${item.name}" da comanda? Confirme com a senha da equipe.`}
+                                    confirmLabel="Remover"
+                                    onCancel={() => setConfirming(null)}
+                                    onConfirm={async (password) => {
+                                      const result = await removeItem({
+                                        data: { itemId: item.id, password },
+                                      });
+                                      if (result.ok) {
+                                        setConfirming(null);
+                                        await load();
+                                      }
+                                      return result;
+                                    }}
+                                  />
+                                </div>
                               )}
-                            </span>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
 
-                    {confirming?.sessionId === session.id ? (
-                      <ConfirmBar
-                        message="Zerar todos os lançamentos? A comanda continua aberta e o estoque volta."
-                        confirmLabel="Zerar"
-                        busy={busy}
-                        onCancel={() => setConfirming(null)}
-                        onConfirm={() => run(() => clearItems({ data: { sessionId: session.id } }))}
-                      />
-                    ) : (
-                      <div className="mt-4 flex flex-wrap gap-2">
-                        <Link
-                          to="/caixa/$sessionId"
-                          params={{ sessionId: session.id }}
-                          className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground"
-                        >
-                          Abrir comanda
-                        </Link>
-                        {isOpen && sessionItems.length > 0 && (
-                          <>
+                      {confirming?.kind === "clear" && confirming.sessionId === session.id && (
+                        <div className="mt-4">
+                          <PasswordConfirm
+                            message="Zerar todos os lançamentos? A comanda continua aberta e o estoque volta. Confirme com a senha da equipe."
+                            confirmLabel="Zerar"
+                            onCancel={() => setConfirming(null)}
+                            onConfirm={async (password) => {
+                              const result = await clearItems({
+                                data: { sessionId: session.id, password },
+                              });
+                              if (result.ok) {
+                                setConfirming(null);
+                                await load();
+                              }
+                              return result;
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {confirming?.kind === "cancelSession" && confirming.sessionId === session.id && (
+                        <div className="mt-4">
+                          <PasswordConfirm
+                            message="Cancelar esta comanda inteira? O estoque lançado volta e ela não entra no faturamento. Confirme com a senha da equipe."
+                            confirmLabel="Cancelar comanda"
+                            onCancel={() => setConfirming(null)}
+                            onConfirm={async (password) => {
+                              const result = await cancelOne({
+                                data: { sessionId: session.id, password },
+                              });
+                              if (result.ok) {
+                                setConfirming(null);
+                                await load();
+                              }
+                              return result;
+                            }}
+                          />
+                        </div>
+                      )}
+
+                      {(!confirming ||
+                        (confirming.kind !== "clear" && confirming.kind !== "cancelSession") ||
+                        confirming.sessionId !== session.id) && (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          <Link
+                            to="/caixa/$sessionId"
+                            params={{ sessionId: session.id }}
+                            className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground"
+                          >
+                            Abrir comanda
+                          </Link>
+                          {isOpen && sessionItems.length > 0 && (
+                            <>
+                              <button
+                                onClick={() => run(() => undoLast({ data: { sessionId: session.id } }))}
+                                disabled={busy}
+                                className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                              >
+                                Desfazer último
+                              </button>
+                              <button
+                                onClick={() => setConfirming({ kind: "clear", sessionId: session.id })}
+                                className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                              >
+                                Zerar
+                              </button>
+                            </>
+                          )}
+                          {canCancel && (
                             <button
-                              onClick={() => run(() => undoLast({ data: { sessionId: session.id } }))}
+                              onClick={() =>
+                                setConfirming({ kind: "cancelSession", sessionId: session.id })
+                              }
+                              className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                            >
+                              Cancelar comanda
+                            </button>
+                          )}
+                          {isArchived && (
+                            <button
+                              onClick={() => run(() => unarchiveOne({ data: { sessionId: session.id } }))}
                               disabled={busy}
                               className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
                             >
-                              Desfazer último
+                              Restaurar
                             </button>
-                            <button
-                              onClick={() => setConfirming({ kind: "clear", sessionId: session.id })}
-                              className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
-                            >
-                              Zerar
-                            </button>
-                          </>
-                        )}
-                        {isArchived && (
-                          <button
-                            onClick={() => run(() => unarchiveOne({ data: { sessionId: session.id } }))}
-                            disabled={busy}
-                            className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-                          >
-                            Restaurar
-                          </button>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </li>
             );
           })}
