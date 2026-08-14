@@ -108,7 +108,7 @@ function ComponentStockTab(props: {
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
     };
-  }) => Promise<{ ok: boolean; message?: string }>;
+  }) => Promise<{ ok: boolean; message?: string; id?: string }>;
   entryFn: (input: {
     data: {
       id: string;
@@ -136,6 +136,11 @@ function ComponentStockTab(props: {
   const [purchaseUnit, setPurchaseUnit] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("1");
   const [contentAmount, setContentAmount] = useState("1");
+  // Quantidade e valor da primeira compra: o cadastro e a entrada acontecem no mesmo gesto, que é
+  // como a coisa acontece no bar — chega a mercadoria e se registra o que chegou.
+  const [newPacks, setNewPacks] = useState("");
+  const [newPurchaseCost, setNewPurchaseCost] = useState("");
+  const [newSupplierId, setNewSupplierId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -184,6 +189,33 @@ function ComponentStockTab(props: {
       return setError("Conteúdo por item deve ser maior que zero.");
     }
 
+    // Quantidade é opcional: dá para cadastrar o insumo sem entrada, se a mercadoria ainda não
+    // chegou. Mas se veio preenchida, precisa ser válida antes de cadastrar qualquer coisa.
+    let packs: number | undefined;
+    if (newPacks.trim()) {
+      const parsed = parseAmount(newPacks);
+      if (parsed === null || !Number.isInteger(parsed) || parsed <= 0) {
+        return setError(
+          purchaseUnit.trim()
+            ? "Informe um número inteiro de embalagens."
+            : "Informe uma quantidade inteira maior que zero.",
+        );
+      }
+      packs = parsed;
+    }
+    let purchaseCost: number | undefined;
+    if (newPurchaseCost.trim()) {
+      const parsed = parseAmount(newPurchaseCost);
+      if (parsed === null || parsed < 0) return setError("Valor pago inválido.");
+      purchaseCost = parsed;
+    }
+
+    // Valor pago ou fornecedor sem quantidade significa entrada esquecida pela metade. Salvar
+    // assim descartaria o que foi digitado sem avisar ninguém.
+    if (packs === undefined && (purchaseCost !== undefined || newSupplierId)) {
+      return setError("Informe a quantidade que chegou, ou limpe o valor pago e o fornecedor.");
+    }
+
     setSaving(true);
     const result = await props.createFn({
       data: {
@@ -195,13 +227,41 @@ function ComponentStockTab(props: {
         contentAmount: contentValue,
       },
     });
+    if (!result.ok) {
+      setSaving(false);
+      return setError(result.message ?? "Não foi possível salvar.");
+    }
+
+    // O cadastro já foi gravado. Se a entrada falhar aqui, o insumo continua criado e a equipe
+    // pode dar a entrada pelo botão da linha — por isso a mensagem diz exatamente onde parou, em
+    // vez de sugerir que nada foi salvo.
+    if (packs !== undefined && result.id) {
+      const entry = await props.entryFn({
+        data: {
+          id: result.id,
+          packs,
+          purchaseCost,
+          supplierId: newSupplierId || undefined,
+        },
+      });
+      if (!entry.ok) {
+        setSaving(false);
+        await load();
+        return setError(
+          `${props.title} cadastrada, mas a entrada não foi registrada: ${entry.message ?? "tente pelo botão Entrada da linha."}`,
+        );
+      }
+    }
+
     setSaving(false);
-    if (!result.ok) return setError(result.message ?? "Não foi possível salvar.");
     setName("");
     setMinStock("");
     setPurchaseUnit("");
     setUnitsPerPack("1");
     setContentAmount("1");
+    setNewPacks("");
+    setNewPurchaseCost("");
+    setNewSupplierId("");
     setShowForm(false);
     await load();
   }
@@ -279,11 +339,11 @@ function ComponentStockTab(props: {
         onClick={() => setShowForm((value) => !value)}
         className="w-full rounded-xl border border-dashed border-border py-3 text-sm font-medium text-muted-foreground hover:text-foreground"
       >
-        {showForm ? "Cancelar" : `+ Nova ${props.title.toLowerCase()}`}
+        {showForm ? "Cancelar" : "+ Entrada"}
       </button>
 
       {showForm && (
-        <SectionCard title={`Nova ${props.title.toLowerCase()}`}>
+        <SectionCard title={`Entrada de ${props.title.toLowerCase()}`}>
           <div className="space-y-3">
             <TextField label="Nome" value={name} onChange={setName} placeholder="Vodka Smirnoff 1L" />
             <label className="block">
@@ -341,6 +401,70 @@ function ComponentStockTab(props: {
                 item, 1000 de conteúdo.
               </p>
             </div>
+
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-xs font-medium">O que chegou agora</p>
+              <p className="mt-0.5 text-xs text-muted-foreground">
+                Pode deixar em branco se a mercadoria ainda não chegou — dá para lançar depois pelo
+                botão Entrada da linha.
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-3">
+                <TextField
+                  // Sem unidade de compra definida, a embalagem é 1×1 e o número digitado é a
+                  // própria quantidade — pedir "embalagens" aqui faria a equipe informar outra coisa.
+                  label={
+                    purchaseUnit.trim() ? `Quantas ${purchaseUnit.trim()}` : `Quantidade (${unit})`
+                  }
+                  value={newPacks}
+                  onChange={setNewPacks}
+                  placeholder="0"
+                  type="number"
+                />
+                <TextField
+                  label="Total pago (R$)"
+                  value={newPurchaseCost}
+                  onChange={setNewPurchaseCost}
+                  placeholder="0,00"
+                />
+              </div>
+              {/* A prévia lê os campos com parseAmount, o mesmo que o salvamento usa: com Number,
+                  digitar "1.000" mostrava um total aqui e gravava outro no estoque. */}
+              {(() => {
+                // A prévia só descreve entradas que o salvamento aceitaria: quantidade inteira e
+                // embalagem positiva. Descrever um total que vai ser recusado é pior que não
+                // mostrar nada.
+                const packs = parseAmount(newPacks);
+                if (packs === null || !Number.isInteger(packs) || packs <= 0) return null;
+                const perPack = parseAmount(unitsPerPack);
+                const content = parseAmount(contentAmount);
+                if (perPack === null || perPack <= 0 || content === null || content <= 0) {
+                  return null;
+                }
+                const total = packs * perPack * content;
+                const cost = newPurchaseCost.trim() ? parseAmount(newPurchaseCost) : null;
+                return (
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    Entra {total} {unit} no estoque
+                    {cost !== null && cost > 0 && total > 0
+                      ? ` · ${brl(cost / total)} por ${unit}`
+                      : ""}
+                  </p>
+                );
+              })()}
+              <select
+                value={newSupplierId}
+                onChange={(event) => setNewSupplierId(event.target.value)}
+                className="mt-3 h-11 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+              >
+                <option value="">Fornecedor (opcional)</option>
+                {suppliers.map((supplier) => (
+                  <option key={supplier.id} value={supplier.id}>
+                    {supplier.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             {error && <p className="text-xs text-destructive">{error}</p>}
             <PrimaryButton onClick={submitNew} disabled={saving}>
               {saving ? "Salvando..." : "Salvar"}
