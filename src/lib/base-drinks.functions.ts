@@ -435,6 +435,9 @@ export const createProduct = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Preço inválido." };
     }
 
+    const initialStock =
+      data.stockQuantity && data.stockQuantity > 0 ? Math.floor(data.stockQuantity) : 0;
+
     const { data: inserted, error } = await admin()
       .from("fastbar_products")
       .insert({
@@ -444,7 +447,7 @@ export const createProduct = createServerFn({ method: "POST" })
         unit,
         package_type: data.packageType?.trim() || null,
         image_url: data.imageUrl?.trim() || null,
-        stock_quantity: data.stockQuantity && data.stockQuantity > 0 ? data.stockQuantity : 0,
+        stock_quantity: initialStock,
       })
       .select("id")
       .single();
@@ -452,6 +455,19 @@ export const createProduct = createServerFn({ method: "POST" })
     if (error || !inserted) {
       return { ok: false as const, message: "Não foi possível salvar o produto." };
     }
+
+    // Registra o estoque inicial como movimento: sem isso o saldo apareceria do nada, sem
+    // rastro, e o produto contaria como "sem nenhuma entrada" pra quem checa se já foi
+    // configurado.
+    if (initialStock > 0) {
+      await admin().from("fastbar_stock_movements").insert({
+        product_id: inserted.id,
+        quantity: initialStock,
+        movement_type: "in",
+        note: "Estoque inicial no cadastro",
+      });
+    }
+
     return { ok: true as const, productId: inserted.id };
   });
 

@@ -3,7 +3,7 @@ import { createServerFn } from "@tanstack/react-start";
 export const getStockOverview = createServerFn({ method: "POST" }).handler(async () => {
   const { admin, assertRegisterAccess } = await import("./fastbar.server");
   await assertRegisterAccess();
-  const [{ data: products }, { data: recipeLinks }] = await Promise.all([
+  const [{ data: products }, { data: recipeLinks }, { data: movementLinks }] = await Promise.all([
     admin()
       .from("fastbar_products")
       .select(
@@ -12,11 +12,20 @@ export const getStockOverview = createServerFn({ method: "POST" }).handler(async
       .order("category")
       .order("name"),
     admin().from("fastbar_recipe_items").select("product_id"),
+    admin().from("fastbar_stock_movements").select("product_id"),
   ]);
   // Produtos com ficha técnica não têm stock_quantity próprio confiável — quem controla
   // disponibilidade pra eles é o estoque dos componentes (bebidas base/ingredientes), não este campo.
   const recipeProductIds = Array.from(new Set((recipeLinks ?? []).map((link) => link.product_id)));
-  return { products: products ?? [], recipeProductIds };
+  // "Configurado" = tem ficha técnica OU já recebeu ao menos uma entrada de estoque — mesmo
+  // critério que fastbar_add_tab_item usa pra bloquear a venda. Sem nenhum dos dois, o item nunca
+  // teve sua origem de estoque definida.
+  const movedProductIds = new Set((movementLinks ?? []).map((link) => link.product_id));
+  const recipeSet = new Set(recipeProductIds);
+  const pendingProductIds = (products ?? [])
+    .filter((product) => !recipeSet.has(product.id) && !movedProductIds.has(product.id))
+    .map((product) => product.id);
+  return { products: products ?? [], recipeProductIds, pendingProductIds };
 });
 
 export const restockProduct = createServerFn({ method: "POST" })

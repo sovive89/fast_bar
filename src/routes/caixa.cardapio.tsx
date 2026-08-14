@@ -103,6 +103,7 @@ async function compressImageForUpload(
 function CardapioPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [recipeProductIds, setRecipeProductIds] = useState<Set<string>>(new Set());
+  const [pendingProductIds, setPendingProductIds] = useState<Set<string>>(new Set());
   const [showForm, setShowForm] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const [openRestockId, setOpenRestockId] = useState<string | null>(null);
@@ -141,6 +142,7 @@ function CardapioPage() {
     const [result, stock] = await Promise.all([loadOverview(), loadStock()]);
     setProducts(result.products as Product[]);
     setRecipeProductIds(new Set(result.recipeProductIds));
+    setPendingProductIds(new Set(result.pendingProductIds));
     setStockOptions([
       ...((stock.baseDrinks ?? []) as Array<Omit<StockOption, "kind">>).map((item) => ({
         ...item,
@@ -523,11 +525,18 @@ function CardapioPage() {
                       // dos componentes. Mostrar "0 un" em vermelho e oferecer "+ Repor" aqui
                       // sugeriria um problema que não existe e um botão que não resolve nada.
                       const hasRecipe = recipeProductIds.has(product.id);
+                      const isPending = pendingProductIds.has(product.id);
                       const low = !hasRecipe && product.stock_quantity < LOW_STOCK_THRESHOLD;
                       const isOpen = openRestockId === product.id;
                       const isDeleting = deletingId === product.id;
                       return (
                         <li key={product.id} className="rounded-2xl border border-border bg-card p-4">
+                          {isPending && (
+                            <p className="mb-2 text-xs font-medium text-destructive">
+                              ⚠ Configuração de estoque pendente — vincule uma ficha técnica ou dê
+                              a primeira entrada para liberar a venda.
+                            </p>
+                          )}
                           <div className="flex items-center justify-between gap-4">
                             <div className="flex min-w-0 items-center gap-3">
                               {product.image_url ? (

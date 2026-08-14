@@ -16,6 +16,8 @@ const RPC_MESSAGES: Record<string, string> = {
   no_items: "Não há lançamentos para desfazer.",
   cannot_cancel: "Essa comanda não pode ser cancelada.",
   invalid_quantity: "Informe uma quantidade válida.",
+  product_not_configured:
+    "Item sem configuração de estoque — defina no Cardápio (ficha técnica ou uma entrada) antes de vender.",
 };
 
 type RpcResult = { ok: boolean; code?: string; removed?: number; new_quantity?: number };
