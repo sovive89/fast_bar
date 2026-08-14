@@ -167,7 +167,7 @@
     pointer-events: none;
     background-image: url("/icons/icon-512.png");
     background-repeat: no-repeat;
-    background-position: 105% 105%;
+    background-position: center;
     background-size: min(70vw, 640px);
     opacity: 0.035;
   }
