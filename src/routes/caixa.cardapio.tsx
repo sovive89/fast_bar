@@ -364,8 +364,14 @@ function CardapioPage() {
                                     setOpenRestockId(isOpen ? null : product.id);
                                     setRestockAmount("");
                                     setDeletingId(null);
+                                    // Sem isso, o erro de uma linha reaparece no formulário da
+                                    // próxima que for aberta.
+                                    setRestockError(null);
                                   }}
-                                  className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                  // Uma reposição por vez: o formulário é compartilhado, então
+                                  // abrir outro no meio de um envio mistura as duas linhas.
+                                  disabled={busyId !== null && busyId !== product.id}
+                                  className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
                                 >
                                   {isOpen ? "Cancelar" : "+ Repor"}
                                 </button>

@@ -78,6 +78,11 @@ export const removeTabItem = createServerFn({ method: "POST" })
     // parecia mais seguro, mas não é: dois requests simultâneos (duplo clique, retry de rede) leem
     // o mesmo item, estornam os dois e creditam o estoque em dobro. O delete condicional deixa
     // exatamente um vencedor, e é o estoque que precisa fechar no fim do dia.
+    //
+    // O troco desta escolha: se o processo morrer entre o delete e o estorno, o item some sem o
+    // estoque voltar. Preferido ao inverso porque duplo clique é corriqueiro no balcão e queda de
+    // processo é rara, e porque estoque a mais (vender o que não existe) machuca mais que estoque a
+    // menos. Resolver de verdade exige transação — os dois passos numa função no Postgres.
     const { data: deleted, error } = await admin()
       .from("fastbar_tab_items")
       .delete()
@@ -320,11 +325,13 @@ export const registerPayment = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Comanda inválida." };
     }
     // Cancelada é terminal: aceitar pagamento aqui a jogaria no faturamento, que é exatamente o
-    // que o cancelamento existe para impedir.
+    // que o cancelamento existe para impedir. A condição vai no próprio UPDATE, não só no if
+    // acima — checar antes e gravar depois deixa uma janela para um cancelamento concorrente
+    // entrar no meio e ser sobrescrito.
     if (session.status === "cancelled") {
       return { ok: false as const, message: "Comanda cancelada não pode receber pagamento." };
     }
-    const { error } = await admin()
+    const { data: updated, error } = await admin()
       .from("fastbar_sessions")
       .update({
         status: "paid",
@@ -332,8 +339,14 @@ export const registerPayment = createServerFn({ method: "POST" })
         paid_at: nowIso,
         payment_method: data.method,
       })
-      .eq("id", session.id);
+      .eq("id", session.id)
+      .neq("status", "cancelled")
+      .select("id");
     if (error) return { ok: false as const, message: "Não foi possível registrar o pagamento." };
+    if (!updated || updated.length === 0) {
+      return { ok: false as const, message: "Comanda cancelada não pode receber pagamento." };
+    }
+    // Só credita o gasto no CRM depois de confirmar que o pagamento foi mesmo gravado.
     await registerCustomerSpend(session.id);
     return { ok: true as const };
   });
@@ -410,21 +423,17 @@ export const reopenSession = createServerFn({ method: "POST" })
     await assertRegisterAccess();
 
     // Reabrir uma cancelada devolveria ao fluxo normal uma comanda cujos itens já foram apagados e
-    // cujo estoque já voltou — e de lá ela poderia ser paga, entrando no faturamento.
-    const { data: session } = await admin()
-      .from("fastbar_sessions")
-      .select("id, status")
-      .eq("id", data.sessionId)
-      .maybeSingle();
-    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
-    if (session.status === "cancelled") {
-      return { ok: false as const, message: "Comanda cancelada não pode ser reaberta." };
-    }
-
-    const { error } = await admin()
+    // cujo estoque já voltou — e de lá ela poderia ser paga, entrando no faturamento. A condição
+    // vai no próprio UPDATE para não abrir janela entre a checagem e a gravação.
+    const { data: updated, error } = await admin()
       .from("fastbar_sessions")
       .update({ status: "open", closed_at: null, paid_at: null })
-      .eq("id", data.sessionId);
+      .eq("id", data.sessionId)
+      .neq("status", "cancelled")
+      .select("id");
+    if (!error && (!updated || updated.length === 0)) {
+      return { ok: false as const, message: "Comanda cancelada não pode ser reaberta." };
+    }
     if (error) return { ok: false as const, message: "Não foi possível reabrir a comanda." };
     return { ok: true as const };
   });

@@ -126,7 +126,8 @@ function RegisterList() {
         const archived = Boolean(session.archived_at);
         if (view === "archived") return archived;
         if (archived) return false;
-        return view === "all" ? true : session.status !== "paid";
+        // "Em aberto" = ainda em andamento. Paga e cancelada são desfechos, não pendências.
+        return view === "all" ? true : !["paid", "cancelled"].includes(session.status);
       })
       .filter((session) => {
         if (!term) return true;
