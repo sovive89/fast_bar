@@ -159,44 +159,36 @@ export const undoLastTabItem = createServerFn({ method: "POST" })
 export const clearTabItems = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess, drainSessionItems } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
 
-    const { data: session } = await admin()
+    const { data: session, error: lookupError } = await admin()
       .from("fastbar_sessions")
       .select("id, status")
       .eq("id", data.sessionId)
       .maybeSingle();
+    if (lookupError) {
+      return { ok: false as const, message: "Não foi possível zerar a comanda." };
+    }
     if (!session) return { ok: false as const, message: "Comanda não encontrada." };
     if (session.status !== "open") {
       return { ok: false as const, message: "Só dá pra zerar comanda aberta." };
     }
 
-    // Distingue "sem itens" de "falha ao ler os itens": tratar erro como lista vazia apagaria a
-    // comanda achando que não havia nada a estornar.
-    const { data: items, error: itemsError } = await admin()
-      .from("fastbar_tab_items")
-      .select("id, product_id, quantity, session_id")
-      .eq("session_id", session.id);
-    if (itemsError) {
-      return { ok: false as const, message: "Não foi possível ler os lançamentos — tente de novo." };
+    // Mesmo drain do cancelamento: cada item é estornado por quem conseguiu apagá-lo, então zerar
+    // duas vezes seguidas não credita nada em dobro.
+    const drained = await drainSessionItems(session.id);
+    if (!drained.ok) {
+      return {
+        ok: false as const,
+        message: "Estoque não voltou por inteiro — tente zerar de novo.",
+      };
     }
-    if (!items || items.length === 0) return { ok: true as const, removed: 0 };
-
-    for (const item of items) {
-      const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
-      if (!reverted.ok) {
-        return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
-      }
-    }
-
-    const { error } = await admin().from("fastbar_tab_items").delete().eq("session_id", session.id);
-    if (error) return { ok: false as const, message: "Não foi possível zerar a comanda." };
-    return { ok: true as const, removed: items.length };
+    return { ok: true as const, removed: drained.removed };
   });
 
 /**
@@ -204,11 +196,15 @@ export const clearTabItems = createServerFn({ method: "POST" })
  * cancelada. Uma comanda cancelada nunca vira "paid", então nunca entra no faturamento nem nos
  * relatórios — diferente de "fechar", que é passo normal a caminho do pagamento. Exige senha da
  * equipe (mesma do login do caixa).
+ *
+ * Repetir o cancelamento é seguro e às vezes necessário: se o estorno morrer no meio, a comanda
+ * fica cancelada com lançamentos sobrando, e rodar de novo termina o serviço sem estornar duas
+ * vezes o que já voltou.
  */
 export const cancelSession = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess, drainSessionItems } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!teamPasswordMatches(data.password)) {
@@ -229,41 +225,33 @@ export const cancelSession = createServerFn({ method: "POST" })
     if (claimError) {
       return { ok: false as const, message: "Não foi possível cancelar a comanda." };
     }
+
     if (!claimed || claimed.length === 0) {
-      const { data: exists } = await admin()
+      const { data: current, error: lookupError } = await admin()
         .from("fastbar_sessions")
-        .select("id")
+        .select("id, status")
         .eq("id", data.sessionId)
         .maybeSingle();
-      return exists
-        ? { ok: false as const, message: "Essa comanda não pode ser cancelada." }
-        : { ok: false as const, message: "Comanda não encontrada." };
-    }
-
-    // Daqui pra frente a comanda já está cancelada e ninguém mais mexe nela, então o estorno pode
-    // acontecer sem disputa. Falha ao ler os itens não pode virar "lista vazia" — apagaria os
-    // lançamentos sem devolver o estoque.
-    const { data: items, error: itemsError } = await admin()
-      .from("fastbar_tab_items")
-      .select("id, product_id, quantity, session_id")
-      .eq("session_id", data.sessionId);
-    if (itemsError) {
-      return { ok: false as const, message: "Comanda cancelada, mas o estoque não voltou — confira o estoque." };
-    }
-
-    for (const item of items ?? []) {
-      const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
-      if (!reverted.ok) {
-        return { ok: false as const, message: "Comanda cancelada, mas o estoque não voltou — confira o estoque." };
+      // Sem distinguir a falha da consulta, um erro de banco seria reportado como "não encontrada"
+      // e mandaria procurar uma comanda que existe.
+      if (lookupError) {
+        return { ok: false as const, message: "Não foi possível cancelar a comanda." };
+      }
+      if (!current) return { ok: false as const, message: "Comanda não encontrada." };
+      // Já cancelada: não é erro, é um cancelamento anterior que não terminou de estornar.
+      // Cai adiante para o drain, que é idempotente e só mexe no que ainda sobrou.
+      if (current.status !== "cancelled") {
+        return { ok: false as const, message: "Essa comanda não pode ser cancelada." };
       }
     }
 
-    const { error: deleteError } = await admin()
-      .from("fastbar_tab_items")
-      .delete()
-      .eq("session_id", data.sessionId);
-    if (deleteError) {
-      return { ok: false as const, message: "Comanda cancelada, mas os lançamentos continuam nela — tente de novo." };
+    // A comanda já está cancelada e ninguém mais a move, então o estorno acontece sem disputa.
+    const drained = await drainSessionItems(data.sessionId);
+    if (!drained.ok) {
+      return {
+        ok: false as const,
+        message: "Comanda cancelada, mas o estoque não voltou por inteiro — tente cancelar de novo.",
+      };
     }
     return { ok: true as const };
   });

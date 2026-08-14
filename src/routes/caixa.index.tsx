@@ -234,7 +234,11 @@ function RegisterList() {
             const isClosed = session.status === "closed";
             const isArchived = Boolean(session.archived_at);
             const canArchive = !isArchived && (isClosed || isPaid || isCancelled);
-            const canCancel = !isArchived && (isOpen || isClosed);
+            // Comanda cancelada que ainda tem lançamentos é um cancelamento que travou antes de
+            // devolver tudo ao estoque. Oferecer a ação de novo é o que permite terminá-lo — o
+            // servidor trata a repetição como retomada, não como novo cancelamento.
+            const cancelStalled = isCancelled && sessionItems.length > 0;
+            const canCancel = !isArchived && (isOpen || isClosed || cancelStalled);
 
             return (
               <li key={session.id} className={isExpanded ? "col-span-3 sm:col-span-4" : ""}>
@@ -378,8 +382,12 @@ function RegisterList() {
                       {confirming?.kind === "cancelSession" && confirming.sessionId === session.id && (
                         <div className="mt-4">
                           <PasswordConfirm
-                            message="Cancelar esta comanda inteira? O estoque lançado volta e ela não entra no faturamento. Confirme com a senha da equipe."
-                            confirmLabel="Cancelar comanda"
+                            message={
+                              cancelStalled
+                                ? "Esta comanda foi cancelada, mas sobraram lançamentos sem voltar ao estoque. Confirme com a senha da equipe para terminar de devolver."
+                                : "Cancelar esta comanda inteira? O estoque lançado volta e ela não entra no faturamento. Confirme com a senha da equipe."
+                            }
+                            confirmLabel={cancelStalled ? "Concluir cancelamento" : "Cancelar comanda"}
                             onCancel={() => setConfirming(null)}
                             onConfirm={async (password) => {
                               const result = await cancelOne({
@@ -451,7 +459,7 @@ function RegisterList() {
                               }
                               className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
                             >
-                              Cancelar comanda
+                              {cancelStalled ? "Concluir cancelamento" : "Cancelar comanda"}
                             </button>
                           )}
                           {isArchived && (

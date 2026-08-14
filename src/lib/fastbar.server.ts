@@ -95,6 +95,42 @@ export async function revertStockMovement(
   return restoreRecipeComponents(productId, quantity);
 }
 
+/**
+ * Esvazia os lançamentos de uma comanda devolvendo cada um ao estoque exatamente uma vez.
+ *
+ * Quem decide o estorno é o delete de cada item: só estorna quem conseguiu apagar a linha. Isso
+ * torna a operação repetível — dois cliques simultâneos não creditam o mesmo item duas vezes, e um
+ * cancelamento que morreu no meio pode ser rodado de novo para terminar o serviço, porque os itens
+ * já drenados simplesmente não existem mais. Sem transação no banco, essa é a garantia possível:
+ * cada item é atômico por si só, mesmo que o conjunto não seja.
+ */
+export async function drainSessionItems(
+  sessionId: string,
+): Promise<{ ok: boolean; removed: number }> {
+  const { data: items, error } = await supabaseAdmin
+    .from("fastbar_tab_items")
+    .select("id, product_id, quantity, session_id")
+    .eq("session_id", sessionId);
+  if (error) return { ok: false, removed: 0 };
+
+  let removed = 0;
+  for (const item of items ?? []) {
+    const { data: deleted, error: deleteError } = await supabaseAdmin
+      .from("fastbar_tab_items")
+      .delete()
+      .eq("id", item.id)
+      .select("id");
+    if (deleteError) return { ok: false, removed };
+    // Outro request levou este item primeiro: o estorno dele é responsabilidade daquele request.
+    if (!deleted || deleted.length === 0) continue;
+
+    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
+    if (!reverted.ok) return { ok: false, removed };
+    removed += 1;
+  }
+  return { ok: true, removed };
+}
+
 /** Baixa automática: 1 venda do produto consome os componentes (bebidas base + ingredientes) da ficha técnica. */
 export async function deductRecipeComponentsForSale(productId: string, saleQuantity: number) {
   const { data: recipeItems } = await supabaseAdmin
