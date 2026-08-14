@@ -12,12 +12,20 @@ export function PasswordConfirm(props: {
   const [error, setError] = useState<string | null>(null);
 
   async function submit() {
-    if (!password) return;
+    // Guarda contra duplo-envio: sem isso, Enter batido duas vezes dispara a ação destrutiva de
+    // novo e estorna o estoque em dobro.
+    if (!password || busy) return;
     setBusy(true);
     setError(null);
-    const result = await props.onConfirm(password);
-    setBusy(false);
-    if (!result.ok) setError(result.message ?? "Não foi possível concluir.");
+    try {
+      const result = await props.onConfirm(password);
+      if (!result.ok) setError(result.message ?? "Não foi possível concluir.");
+    } catch {
+      setError("Não foi possível concluir — tente de novo.");
+    } finally {
+      // No finally para que uma exceção não deixe o botão preso em "Confirmando...".
+      setBusy(false);
+    }
   }
 
   return (

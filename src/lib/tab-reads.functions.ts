@@ -4,7 +4,7 @@ import { createServerFn } from "@tanstack/react-start";
 const PUBLIC_SESSION_COLUMNS = "id, customer_name, phone, status, started_at, closed_at, paid_at";
 
 /** Caixa-only shape — internal identifiers ok since it's behind assertRegisterAccess. */
-const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at`;
+const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at, payment_method`;
 
 /** Customer view: readable only with the unguessable comanda link, never sensitive columns. */
 export const getCustomerTab = createServerFn({ method: "POST" })
@@ -54,7 +54,7 @@ export const getRegisterOverview = createServerFn({ method: "POST" }).handler(as
     admin()
       .from("fastbar_sessions")
       .select(REGISTER_SESSION_COLUMNS)
-      .in("status", ["pending", "open", "closed", "paid"])
+      .in("status", ["pending", "open", "closed", "paid", "cancelled"])
       .order("created_at", { ascending: false })
       .limit(200),
     admin()

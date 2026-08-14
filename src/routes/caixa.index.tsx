@@ -394,8 +394,28 @@ function RegisterList() {
                         </div>
                       )}
 
+                      {confirming?.kind === "undoLast" && confirming.sessionId === session.id && (
+                        <div className="mt-4">
+                          <PasswordConfirm
+                            message="Desfazer o último lançamento? O estoque volta. Confirme com a senha da equipe."
+                            confirmLabel="Desfazer"
+                            onCancel={() => setConfirming(null)}
+                            onConfirm={async (password) => {
+                              const result = await undoLast({
+                                data: { sessionId: session.id, password },
+                              });
+                              if (result.ok) {
+                                setConfirming(null);
+                                await load();
+                              }
+                              return result;
+                            }}
+                          />
+                        </div>
+                      )}
+
                       {(!confirming ||
-                        (confirming.kind !== "clear" && confirming.kind !== "cancelSession") ||
+                        !["clear", "cancelSession", "undoLast"].includes(confirming.kind) ||
                         confirming.sessionId !== session.id) && (
                         <div className="mt-4 flex flex-wrap gap-2">
                           <Link
@@ -408,9 +428,10 @@ function RegisterList() {
                           {isOpen && sessionItems.length > 0 && (
                             <>
                               <button
-                                onClick={() => run(() => undoLast({ data: { sessionId: session.id } }))}
-                                disabled={busy}
-                                className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
+                                onClick={() =>
+                                  setConfirming({ kind: "undoLast", sessionId: session.id })
+                                }
+                                className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                               >
                                 Desfazer último
                               </button>

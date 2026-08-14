@@ -1,6 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl } from "@/lib/format";
 import { getStockOverview, restockProduct } from "@/lib/stock.functions";
@@ -90,7 +91,7 @@ function CardapioPage() {
   const [restockAmount, setRestockAmount] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [restockError, setRestockError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("Bebidas");
@@ -123,26 +124,28 @@ function CardapioPage() {
   }, []);
 
   async function confirmRestock(productId: string) {
+    setRestockError(null);
     const quantity = Number(restockAmount);
-    if (!Number.isFinite(quantity) || quantity <= 0) return;
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return setRestockError("Informe uma quantidade válida.");
+    }
     setBusyId(productId);
     const result = await restock({ data: { productId, quantity } });
     setBusyId(null);
-    if (result.ok) {
-      setOpenRestockId(null);
-      setRestockAmount("");
-      await load();
-    }
+    // Falha silenciosa aqui faria a equipe achar que repôs o estoque quando não repôs.
+    if (!result.ok) return setRestockError(result.message ?? "Não foi possível repor o estoque.");
+    setOpenRestockId(null);
+    setRestockAmount("");
+    await load();
   }
 
-  async function confirmDelete(productId: string) {
-    setDeleteError(null);
-    setBusyId(productId);
-    const result = await removeProduct({ data: { productId } });
-    setBusyId(null);
-    if (!result.ok) return setDeleteError(result.message ?? "Não foi possível apagar.");
-    setDeletingId(null);
-    await load();
+  async function confirmDelete(productId: string, password: string) {
+    const result = await removeProduct({ data: { productId, password } });
+    if (result.ok) {
+      setDeletingId(null);
+      await load();
+    }
+    return result;
   }
 
   async function submitNewProduct() {
@@ -322,7 +325,11 @@ function CardapioPage() {
                   </p>
                   <ul className="space-y-3">
                     {categoryProducts.map((product) => {
-                      const low = product.stock_quantity < LOW_STOCK_THRESHOLD;
+                      // Produto com ficha técnica não tem estoque próprio: quem manda é o estoque
+                      // dos componentes. Mostrar "0 un" em vermelho e oferecer "+ Repor" aqui
+                      // sugeriria um problema que não existe e um botão que não resolve nada.
+                      const hasRecipe = recipeProductIds.has(product.id);
+                      const low = !hasRecipe && product.stock_quantity < LOW_STOCK_THRESHOLD;
                       const isOpen = openRestockId === product.id;
                       const isDeleting = deletingId === product.id;
                       return (
@@ -349,23 +356,25 @@ function CardapioPage() {
                             </div>
                             <div className="flex items-center gap-3">
                               <span className={`text-sm font-bold ${low ? "text-destructive" : ""}`}>
-                                {product.stock_quantity} un
+                                {hasRecipe ? "ficha técnica" : `${product.stock_quantity} un`}
                               </span>
-                              <button
-                                onClick={() => {
-                                  setOpenRestockId(isOpen ? null : product.id);
-                                  setRestockAmount("");
-                                  setDeletingId(null);
-                                }}
-                                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                              >
-                                {isOpen ? "Cancelar" : "+ Repor"}
-                              </button>
+                              {!hasRecipe && (
+                                <button
+                                  onClick={() => {
+                                    setOpenRestockId(isOpen ? null : product.id);
+                                    setRestockAmount("");
+                                    setDeletingId(null);
+                                  }}
+                                  className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                >
+                                  {isOpen ? "Cancelar" : "+ Repor"}
+                                </button>
+                              )}
                               <button
                                 onClick={() => {
                                   setDeletingId(isDeleting ? null : product.id);
                                   setOpenRestockId(null);
-                                  setDeleteError(null);
+                                  setRestockError(null);
                                 }}
                                 className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                               >
@@ -375,52 +384,40 @@ function CardapioPage() {
                           </div>
 
                           {isDeleting && (
-                            <div className="mt-3 rounded-xl border border-border bg-muted/40 p-3">
-                              <p className="text-xs">
-                                Tirar “{product.name}” do cardápio? O cadastro e o histórico de
-                                vendas continuam guardados — o item só deixa de aparecer para
-                                lançamento.
-                              </p>
-                              {deleteError && (
-                                <p className="mt-2 text-xs text-destructive">{deleteError}</p>
-                              )}
-                              <div className="mt-3 flex gap-2">
-                                <button
-                                  onClick={() => confirmDelete(product.id)}
-                                  disabled={busyId === product.id}
-                                  className="rounded-full bg-primary px-4 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-60"
-                                >
-                                  {busyId === product.id ? "Removendo..." : "Remover"}
-                                </button>
-                                <button
-                                  onClick={() => setDeletingId(null)}
-                                  className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground"
-                                >
-                                  Cancelar
-                                </button>
-                              </div>
+                            <div className="mt-3">
+                              <PasswordConfirm
+                                message={`Tirar “${product.name}” do cardápio? O cadastro e o histórico de vendas continuam guardados — o item só deixa de aparecer para lançamento. Confirme com a senha da equipe.`}
+                                confirmLabel="Remover"
+                                onCancel={() => setDeletingId(null)}
+                                onConfirm={(password) => confirmDelete(product.id, password)}
+                              />
                             </div>
                           )}
 
                           {isOpen && (
-                            <div className="mt-3 flex gap-2">
-                              <input
-                                type="number"
-                                inputMode="numeric"
-                                min={1}
-                                value={restockAmount}
-                                onChange={(event) => setRestockAmount(event.target.value)}
-                                placeholder="Quantidade"
-                                autoFocus
-                                className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-                              />
-                              <button
-                                onClick={() => confirmRestock(product.id)}
-                                disabled={busyId === product.id || !restockAmount}
-                                className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-                              >
-                                {busyId === product.id ? "Salvando..." : "Confirmar"}
-                              </button>
+                            <div className="mt-3">
+                              <div className="flex gap-2">
+                                <input
+                                  type="number"
+                                  inputMode="numeric"
+                                  min={1}
+                                  value={restockAmount}
+                                  onChange={(event) => setRestockAmount(event.target.value)}
+                                  placeholder="Quantidade"
+                                  autoFocus
+                                  className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+                                />
+                                <button
+                                  onClick={() => confirmRestock(product.id)}
+                                  disabled={busyId === product.id || !restockAmount}
+                                  className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                                >
+                                  {busyId === product.id ? "Salvando..." : "Confirmar"}
+                                </button>
+                              </div>
+                              {restockError && (
+                                <p className="mt-2 text-xs text-destructive">{restockError}</p>
+                              )}
                             </div>
                           )}
                         </li>
@@ -442,24 +439,29 @@ function CustomerMenuPreview(props: {
   grouped: Array<[string, Product[]]>;
   recipeProductIds: Set<string>;
 }) {
-  if (props.grouped.length === 0) {
+  // O cliente só vê produto ativo, então a categoria que ficou sem nenhum não deve aparecer
+  // como um título solto com grade vazia.
+  const visible = props.grouped
+    .map(([name, items]) => [name, items.filter((p) => p.is_active)] as [string, Product[]])
+    .filter(([, items]) => items.length > 0);
+
+  if (visible.length === 0) {
     return (
       <p className="mt-6 rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-        Nenhum produto cadastrado ainda.
+        Nenhum produto ativo no cardápio.
       </p>
     );
   }
 
   return (
     <div className="mt-5 space-y-6">
-      {props.grouped.map(([categoryName, categoryProducts]) => (
+      {visible.map(([categoryName, categoryProducts]) => (
         <div key={categoryName}>
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
             {categoryName}
           </p>
           <div className="grid grid-cols-2 gap-3">
             {categoryProducts
-              .filter((product) => product.is_active)
               .map((product) => {
                 // stock_quantity só é confiável pra produto sem ficha técnica (ex.: cerveja lata) —
                 // produto com receita depende do estoque dos componentes, não desse campo.

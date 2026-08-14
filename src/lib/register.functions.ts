@@ -56,11 +56,9 @@ export const removeTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { itemId: string; password: string }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
-    const { passwordMatches } = await import("./bar-gate.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-
-    const expected = process.env["BAR_PANEL_PASSWORD"];
-    if (!expected || !passwordMatches(data.password, expected)) {
+    if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
 
@@ -76,24 +74,42 @@ export const removeTabItem = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Comanda não está aberta." };
     }
 
-    // Devolve o estoque antes de apagar o item: se o cancelamento cair no meio, o pior caso é
-    // repetir o estorno (idempotente na prática) em vez de o item sumir com o estoque ainda baixado.
-    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
-    if (!reverted.ok) {
-      return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
+    // Apaga primeiro e só estorna se este request foi quem de fato removeu a linha. Estornar antes
+    // parecia mais seguro, mas não é: dois requests simultâneos (duplo clique, retry de rede) leem
+    // o mesmo item, estornam os dois e creditam o estoque em dobro. O delete condicional deixa
+    // exatamente um vencedor, e é o estoque que precisa fechar no fim do dia.
+    const { data: deleted, error } = await admin()
+      .from("fastbar_tab_items")
+      .delete()
+      .eq("id", item.id)
+      .select("id");
+    if (error) return { ok: false as const, message: "Não foi possível remover o item." };
+    if (!deleted || deleted.length === 0) {
+      // Outro request já removeu: o estorno dele já aconteceu, então aqui não há o que fazer.
+      return { ok: true as const };
     }
 
-    const { error } = await admin().from("fastbar_tab_items").delete().eq("id", item.id);
-    if (error) return { ok: false as const, message: "Não foi possível remover o item." };
+    const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
+    if (!reverted.ok) {
+      return { ok: false as const, message: "Item removido, mas o estoque não voltou — confira o estoque." };
+    }
     return { ok: true as const };
   });
 
-/** Desfaz o último lançamento da comanda — atalho pro erro mais comum no balcão. Só em comanda aberta. */
+/**
+ * Desfaz o último lançamento da comanda — atalho pro erro mais comum no balcão. Só em comanda
+ * aberta. Exige senha como as demais remoções: sem isso, bastaria clicar aqui repetidamente para
+ * apagar lançamento por lançamento sem senha nenhuma, anulando a proteção de removeTabItem.
+ */
 export const undoLastTabItem = createServerFn({ method: "POST" })
-  .inputValidator((data: { sessionId: string }) => data)
+  .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
 
     const { data: session } = await admin()
       .from("fastbar_sessions")
@@ -114,13 +130,20 @@ export const undoLastTabItem = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!item) return { ok: false as const, message: "Não há lançamentos para desfazer." };
 
+    // Mesmo padrão de removeTabItem: o delete condicional decide quem estorna, para que dois
+    // "desfazer" simultâneos não devolvam o mesmo item ao estoque duas vezes.
+    const { data: deleted, error } = await admin()
+      .from("fastbar_tab_items")
+      .delete()
+      .eq("id", item.id)
+      .select("id");
+    if (error) return { ok: false as const, message: "Não foi possível desfazer o lançamento." };
+    if (!deleted || deleted.length === 0) return { ok: true as const };
+
     const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
     if (!reverted.ok) {
-      return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
+      return { ok: false as const, message: "Lançamento desfeito, mas o estoque não voltou — confira o estoque." };
     }
-
-    const { error } = await admin().from("fastbar_tab_items").delete().eq("id", item.id);
-    if (error) return { ok: false as const, message: "Não foi possível desfazer o lançamento." };
     return { ok: true as const };
   });
 
@@ -132,11 +155,9 @@ export const clearTabItems = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
-    const { passwordMatches } = await import("./bar-gate.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-
-    const expected = process.env["BAR_PANEL_PASSWORD"];
-    if (!expected || !passwordMatches(data.password, expected)) {
+    if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
 
@@ -150,10 +171,15 @@ export const clearTabItems = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Só dá pra zerar comanda aberta." };
     }
 
-    const { data: items } = await admin()
+    // Distingue "sem itens" de "falha ao ler os itens": tratar erro como lista vazia apagaria a
+    // comanda achando que não havia nada a estornar.
+    const { data: items, error: itemsError } = await admin()
       .from("fastbar_tab_items")
       .select("id, product_id, quantity, session_id")
       .eq("session_id", session.id);
+    if (itemsError) {
+      return { ok: false as const, message: "Não foi possível ler os lançamentos — tente de novo." };
+    }
     if (!items || items.length === 0) return { ok: true as const, removed: 0 };
 
     for (const item of items) {
@@ -178,11 +204,9 @@ export const cancelSession = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; password: string }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess, revertStockMovement } = await import("./fastbar.server");
-    const { passwordMatches } = await import("./bar-gate.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-
-    const expected = process.env["BAR_PANEL_PASSWORD"];
-    if (!expected || !passwordMatches(data.password, expected)) {
+    if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
 
@@ -196,10 +220,15 @@ export const cancelSession = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Essa comanda não pode ser cancelada." };
     }
 
-    const { data: items } = await admin()
+    // Falha ao ler os itens não pode virar "lista vazia": cancelaria a comanda deixando o estoque
+    // baixado, sem ninguém saber quanto voltar.
+    const { data: items, error: itemsError } = await admin()
       .from("fastbar_tab_items")
       .select("id, product_id, quantity, session_id")
       .eq("session_id", session.id);
+    if (itemsError) {
+      return { ok: false as const, message: "Não foi possível ler os lançamentos — tente de novo." };
+    }
 
     for (const item of items ?? []) {
       const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
@@ -208,7 +237,16 @@ export const cancelSession = createServerFn({ method: "POST" })
       }
     }
 
-    await admin().from("fastbar_tab_items").delete().eq("session_id", session.id);
+    // Se o delete falhar, para aqui: marcar como cancelada com os itens ainda na comanda deixaria
+    // o total visível divergindo do estoque já estornado.
+    const { error: deleteError } = await admin()
+      .from("fastbar_tab_items")
+      .delete()
+      .eq("session_id", session.id);
+    if (deleteError) {
+      return { ok: false as const, message: "Não foi possível limpar os lançamentos — tente de novo." };
+    }
+
     const { error } = await admin()
       .from("fastbar_sessions")
       .update({ status: "cancelled", closed_at: new Date().toISOString() })
@@ -281,6 +319,11 @@ export const registerPayment = createServerFn({ method: "POST" })
     if (!session || session.status === "pending") {
       return { ok: false as const, message: "Comanda inválida." };
     }
+    // Cancelada é terminal: aceitar pagamento aqui a jogaria no faturamento, que é exatamente o
+    // que o cancelamento existe para impedir.
+    if (session.status === "cancelled") {
+      return { ok: false as const, message: "Comanda cancelada não pode receber pagamento." };
+    }
     const { error } = await admin()
       .from("fastbar_sessions")
       .update({
@@ -340,13 +383,18 @@ export const unarchiveSession = createServerFn({ method: "POST" })
 
 /**
  * Tira o produto do cardápio sem apagar o cadastro: o histórico de vendas e a ficha técnica
- * continuam intactos, o item só deixa de aparecer para lançamento.
+ * continuam intactos, o item só deixa de aparecer para lançamento. Exige senha da equipe como as
+ * demais ações destrutivas.
  */
 export const deactivateProduct = createServerFn({ method: "POST" })
-  .inputValidator((data: { productId: string }) => data)
+  .inputValidator((data: { productId: string; password: string }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
     const { error } = await admin()
       .from("fastbar_products")
       .update({ is_active: false })
@@ -360,6 +408,19 @@ export const reopenSession = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
+
+    // Reabrir uma cancelada devolveria ao fluxo normal uma comanda cujos itens já foram apagados e
+    // cujo estoque já voltou — e de lá ela poderia ser paga, entrando no faturamento.
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("id, status")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
+    if (session.status === "cancelled") {
+      return { ok: false as const, message: "Comanda cancelada não pode ser reaberta." };
+    }
+
     const { error } = await admin()
       .from("fastbar_sessions")
       .update({ status: "open", closed_at: null, paid_at: null })
