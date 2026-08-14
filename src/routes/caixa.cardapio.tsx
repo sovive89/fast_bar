@@ -8,6 +8,8 @@ import { getStockOverview, restockProduct } from "@/lib/stock.functions";
 import { deactivateProduct } from "@/lib/register.functions";
 import {
   createProduct,
+  getBaseDrinksOverview,
+  setRecipeItems,
   uploadProductPhoto,
   PRODUCT_UNITS,
   PRODUCT_PACKAGE_TYPES,
@@ -39,6 +41,18 @@ type Product = {
 };
 
 const LOW_STOCK_THRESHOLD = 20;
+
+/** Insumo do estoque disponível para compor um item do cardápio. */
+type StockOption = {
+  id: string;
+  name: string;
+  unit: string;
+  current_stock: number;
+  kind: "base_drink" | "ingredient";
+};
+
+/** Uma linha da ficha técnica sendo montada junto com o produto. */
+type ComponentRow = { key: string; stockId: string; quantity: string };
 
 /**
  * Reduz a foto pro tamanho de upload (server functions em serverless têm limite de payload,
@@ -104,16 +118,33 @@ function CardapioPage() {
   const [compressing, setCompressing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Insumos do estoque disponíveis para compor o item, e a ficha sendo montada aqui mesmo — sem
+  // isso, montar o cardápio exigia digitar o nome do zero e depois ir a outra aba fazer a ligação.
+  const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
+  const [components, setComponents] = useState<ComponentRow[]>([]);
+
   const loadOverview = useServerFn(getStockOverview);
+  const loadStock = useServerFn(getBaseDrinksOverview);
   const restock = useServerFn(restockProduct);
   const removeProduct = useServerFn(deactivateProduct);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
+  const saveRecipe = useServerFn(setRecipeItems);
 
   async function load() {
-    const result = await loadOverview();
+    const [result, stock] = await Promise.all([loadOverview(), loadStock()]);
     setProducts(result.products as Product[]);
     setRecipeProductIds(new Set(result.recipeProductIds));
+    setStockOptions([
+      ...((stock.baseDrinks ?? []) as Array<Omit<StockOption, "kind">>).map((item) => ({
+        ...item,
+        kind: "base_drink" as const,
+      })),
+      ...((stock.ingredients ?? []) as Array<Omit<StockOption, "kind">>).map((item) => ({
+        ...item,
+        kind: "ingredient" as const,
+      })),
+    ]);
   }
 
   useEffect(() => {
@@ -154,6 +185,27 @@ function CardapioPage() {
     if (name.trim().length < 2) return setError("Digite o nome do produto.");
     if (!Number.isFinite(priceNumber) || priceNumber < 0) return setError("Preço inválido.");
 
+    // Valida a ficha antes de criar o produto: melhor recusar agora do que deixar um produto
+    // gravado com a receita pela metade.
+    const recipe: Array<
+      | { type: "base_drink"; baseDrinkId: string; quantity: number }
+      | { type: "ingredient"; ingredientId: string; quantity: number }
+    > = [];
+    for (const row of components) {
+      if (!row.stockId) return setError("Escolha o insumo em todas as linhas, ou remova a linha.");
+      const quantity = Number(row.quantity.replace(",", "."));
+      if (!Number.isFinite(quantity) || quantity <= 0) {
+        return setError("Informe uma quantidade maior que zero para cada insumo.");
+      }
+      const option = stockOptions.find((item) => item.id === row.stockId);
+      if (!option) return setError("Insumo não encontrado — recarregue a página.");
+      recipe.push(
+        option.kind === "base_drink"
+          ? { type: "base_drink", baseDrinkId: option.id, quantity }
+          : { type: "ingredient", ingredientId: option.id, quantity },
+      );
+    }
+
     setSaving(true);
     let imageUrl: string | undefined;
     if (photoFile) {
@@ -187,12 +239,30 @@ function CardapioPage() {
         unit,
         packageType,
         imageUrl,
-        stockQuantity: stockQuantity ? Number(stockQuantity) : undefined,
+        // Produto com ficha técnica não tem estoque próprio: quem controla é o dos insumos.
+        stockQuantity: recipe.length > 0 ? undefined : stockQuantity ? Number(stockQuantity) : undefined,
       },
     });
-    setSaving(false);
-    if (!result.ok) return setError(result.message);
+    if (!result.ok) {
+      setSaving(false);
+      return setError(result.message);
+    }
 
+    // O produto já foi gravado. Se a ficha falhar, ele existe sem receita — a mensagem diz onde
+    // parou, para a equipe completar em Estoque → Fichas técnicas, em vez de recadastrar tudo.
+    if (recipe.length > 0 && result.productId) {
+      const saved = await saveRecipe({ data: { productId: result.productId, items: recipe } });
+      if (!saved.ok) {
+        setSaving(false);
+        await load();
+        return setError(
+          `Produto criado, mas a ficha técnica não foi salva: ${saved.message ?? "complete em Estoque → Fichas técnicas."}`,
+        );
+      }
+    }
+
+    setSaving(false);
+    setComponents([]);
     setName("");
     setCategory("Bebidas");
     setPrice("");
@@ -283,13 +353,92 @@ function CardapioPage() {
                     </select>
                   </label>
                 </div>
-                <TextField
-                  label="Estoque inicial (só se NÃO tiver ficha técnica, ex.: cerveja lata)"
-                  value={stockQuantity}
-                  onChange={setStockQuantity}
-                  placeholder="0"
-                  type="number"
-                />
+                <div className="rounded-xl border border-border p-3">
+                  <p className="text-xs font-medium">Do que é feito</p>
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    Puxe do estoque o que este item consome. A cada venda a baixa acontece sozinha
+                    nos insumos. Deixe vazio se for algo sem controle de estoque.
+                  </p>
+
+                  {stockOptions.length === 0 ? (
+                    <p className="mt-3 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+                      Nada no estoque ainda. Cadastre em Estoque → Bebidas base ou Ingredientes.
+                    </p>
+                  ) : (
+                    <div className="mt-3 space-y-2">
+                      {components.map((row) => {
+                        const option = stockOptions.find((item) => item.id === row.stockId);
+                        return (
+                          <div key={row.key} className="flex items-center gap-2">
+                            <select
+                              value={row.stockId}
+                              onChange={(event) =>
+                                setComponents((current) =>
+                                  current.map((c) =>
+                                    c.key === row.key ? { ...c, stockId: event.target.value } : c,
+                                  ),
+                                )
+                              }
+                              className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                            >
+                              <option value="">Escolha o insumo</option>
+                              {stockOptions.map((item) => (
+                                <option key={item.id} value={item.id}>
+                                  {item.name} ({item.unit})
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              value={row.quantity}
+                              onChange={(event) =>
+                                setComponents((current) =>
+                                  current.map((c) =>
+                                    c.key === row.key ? { ...c, quantity: event.target.value } : c,
+                                  ),
+                                )
+                              }
+                              placeholder={option ? option.unit : "qtd"}
+                              inputMode="decimal"
+                              className="h-11 w-24 shrink-0 rounded-xl border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
+                            />
+                            <button
+                              onClick={() =>
+                                setComponents((current) => current.filter((c) => c.key !== row.key))
+                              }
+                              aria-label="Remover insumo"
+                              className="shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-destructive"
+                            >
+                              ×
+                            </button>
+                          </div>
+                        );
+                      })}
+                      <button
+                        onClick={() =>
+                          setComponents((current) => [
+                            ...current,
+                            { key: `c-${Date.now()}-${current.length}`, stockId: "", quantity: "" },
+                          ])
+                        }
+                        className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+                      >
+                        + Puxar insumo do estoque
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Produto com ficha técnica tira do estoque dos insumos, então um estoque próprio
+                    aqui seria um número paralelo que nunca baixa. */}
+                {components.length === 0 && (
+                  <TextField
+                    label="Estoque inicial (para item sem ficha técnica, ex.: cerveja lata)"
+                    value={stockQuantity}
+                    onChange={setStockQuantity}
+                    placeholder="0"
+                    type="number"
+                  />
+                )}
                 <label className="block">
                   <span className="text-xs font-medium text-muted-foreground">Foto (opcional)</span>
                   <input
@@ -303,11 +452,6 @@ function CardapioPage() {
                 <PrimaryButton onClick={submitNewProduct} disabled={saving}>
                   {compressing ? "Comprimindo foto..." : saving ? "Salvando..." : "Salvar produto"}
                 </PrimaryButton>
-                <p className="text-xs text-muted-foreground">
-                  Depois de criar, vá em Estoque → "Fichas técnicas" pra ligar esse produto às
-                  bebidas base e ingredientes que ele consome — assim a baixa de estoque acontece
-                  sozinha a cada venda.
-                </p>
               </div>
             </SectionCard>
           )}
