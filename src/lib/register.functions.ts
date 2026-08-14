@@ -215,48 +215,56 @@ export const cancelSession = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Senha incorreta." };
     }
 
-    const { data: session } = await admin()
+    // Reserva a comanda antes de tocar em qualquer coisa: o UPDATE só pega a linha se ela ainda
+    // estiver num estado cancelável, então um pagamento que tenha entrado no meio faz este
+    // cancelamento perder a corrida — e perder sem ter destruído nada. Ler o status primeiro e
+    // gravar no fim fazia o oposto: estornava estoque e apagava os itens de uma comanda que já
+    // tinha sido paga, e só então sobrescrevia o pagamento.
+    const { data: claimed, error: claimError } = await admin()
       .from("fastbar_sessions")
-      .select("id, status")
+      .update({ status: "cancelled", closed_at: new Date().toISOString() })
       .eq("id", data.sessionId)
-      .maybeSingle();
-    if (!session) return { ok: false as const, message: "Comanda não encontrada." };
-    if (session.status === "paid" || session.status === "cancelled") {
-      return { ok: false as const, message: "Essa comanda não pode ser cancelada." };
+      .in("status", ["pending", "open", "closed"])
+      .select("id");
+    if (claimError) {
+      return { ok: false as const, message: "Não foi possível cancelar a comanda." };
+    }
+    if (!claimed || claimed.length === 0) {
+      const { data: exists } = await admin()
+        .from("fastbar_sessions")
+        .select("id")
+        .eq("id", data.sessionId)
+        .maybeSingle();
+      return exists
+        ? { ok: false as const, message: "Essa comanda não pode ser cancelada." }
+        : { ok: false as const, message: "Comanda não encontrada." };
     }
 
-    // Falha ao ler os itens não pode virar "lista vazia": cancelaria a comanda deixando o estoque
-    // baixado, sem ninguém saber quanto voltar.
+    // Daqui pra frente a comanda já está cancelada e ninguém mais mexe nela, então o estorno pode
+    // acontecer sem disputa. Falha ao ler os itens não pode virar "lista vazia" — apagaria os
+    // lançamentos sem devolver o estoque.
     const { data: items, error: itemsError } = await admin()
       .from("fastbar_tab_items")
       .select("id, product_id, quantity, session_id")
-      .eq("session_id", session.id);
+      .eq("session_id", data.sessionId);
     if (itemsError) {
-      return { ok: false as const, message: "Não foi possível ler os lançamentos — tente de novo." };
+      return { ok: false as const, message: "Comanda cancelada, mas o estoque não voltou — confira o estoque." };
     }
 
     for (const item of items ?? []) {
       const reverted = await revertStockMovement(item.product_id, item.session_id, item.quantity);
       if (!reverted.ok) {
-        return { ok: false as const, message: "Não foi possível devolver o estoque — tente de novo." };
+        return { ok: false as const, message: "Comanda cancelada, mas o estoque não voltou — confira o estoque." };
       }
     }
 
-    // Se o delete falhar, para aqui: marcar como cancelada com os itens ainda na comanda deixaria
-    // o total visível divergindo do estoque já estornado.
     const { error: deleteError } = await admin()
       .from("fastbar_tab_items")
       .delete()
-      .eq("session_id", session.id);
+      .eq("session_id", data.sessionId);
     if (deleteError) {
-      return { ok: false as const, message: "Não foi possível limpar os lançamentos — tente de novo." };
+      return { ok: false as const, message: "Comanda cancelada, mas os lançamentos continuam nela — tente de novo." };
     }
-
-    const { error } = await admin()
-      .from("fastbar_sessions")
-      .update({ status: "cancelled", closed_at: new Date().toISOString() })
-      .eq("id", session.id);
-    if (error) return { ok: false as const, message: "Não foi possível cancelar a comanda." };
     return { ok: true as const };
   });
 
@@ -431,9 +439,18 @@ export const reopenSession = createServerFn({ method: "POST" })
       .eq("id", data.sessionId)
       .neq("status", "cancelled")
       .select("id");
-    if (!error && (!updated || updated.length === 0)) {
-      return { ok: false as const, message: "Comanda cancelada não pode ser reaberta." };
-    }
     if (error) return { ok: false as const, message: "Não foi possível reabrir a comanda." };
+    if (!updated || updated.length === 0) {
+      // Zero linhas tanto significa "estava cancelada" quanto "não existe" — sem distinguir,
+      // um id errado acusaria cancelamento e mandaria procurar um problema que não existe.
+      const { data: exists } = await admin()
+        .from("fastbar_sessions")
+        .select("id")
+        .eq("id", data.sessionId)
+        .maybeSingle();
+      return exists
+        ? { ok: false as const, message: "Comanda cancelada não pode ser reaberta." }
+        : { ok: false as const, message: "Comanda não encontrada." };
+    }
     return { ok: true as const };
   });
