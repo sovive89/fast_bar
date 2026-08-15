@@ -464,10 +464,13 @@ export const listAllProducts = createServerFn({ method: "POST" }).handler(async 
 export const listProductCategories = createServerFn({ method: "POST" }).handler(async () => {
   const { admin, assertRegisterAccess } = await import("./fastbar.server");
   await assertRegisterAccess();
-  const { data } = await admin()
+  const { data, error } = await admin()
     .from("fastbar_product_categories")
     .select("id, name")
     .order("name");
+  // Falha de leitura não pode virar "lista vazia" — isso faria a tela mandar a equipe "criar uma
+  // categoria" quando o problema real é o banco fora do ar, escondendo o erro em vez de mostrar.
+  if (error) throw new Error("Não foi possível carregar as categorias.");
   return { categories: data ?? [] };
 });
 
@@ -476,6 +479,9 @@ export const createProductCategory = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
+    if (typeof data.name !== "string") {
+      return { ok: false as const, message: "Digite um nome de categoria." };
+    }
     const name = data.name.trim();
     if (name.length < 2) return { ok: false as const, message: "Digite um nome de categoria." };
 
@@ -518,7 +524,6 @@ export const createProduct = createServerFn({ method: "POST" })
     await assertRegisterAccess();
 
     const name = data.name.trim();
-    const category = data.category.trim() || "Bebidas";
     const price = Number(data.price);
     const unit = PRODUCT_UNITS.includes(data.unit as (typeof PRODUCT_UNITS)[number])
       ? data.unit
@@ -527,6 +532,19 @@ export const createProduct = createServerFn({ method: "POST" })
     if (!Number.isFinite(price) || price < 0) {
       return { ok: false as const, message: "Preço inválido." };
     }
+
+    // Categoria precisa ser uma das cadastradas (comparação sem diferenciar maiúscula/minúscula,
+    // igual ao índice único de fastbar_product_categories) — um valor de cliente adulterado ou
+    // desatualizado não pode gravar um nome de categoria que não existe na entidade própria.
+    const { data: matchedCategory } = await admin()
+      .from("fastbar_product_categories")
+      .select("name")
+      .ilike("name", data.category.trim())
+      .maybeSingle();
+    if (!matchedCategory) {
+      return { ok: false as const, message: "Escolha uma categoria válida." };
+    }
+    const category = matchedCategory.name;
 
     const initialStock =
       data.stockQuantity && data.stockQuantity > 0 ? Math.floor(data.stockQuantity) : 0;

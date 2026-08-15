@@ -176,14 +176,22 @@ function CardapioPage() {
   }
 
   async function submitNewCategory() {
+    // Guarda contra duplo-envio: sem isso, apertar Enter de novo durante o pedido em andamento
+    // dispara uma segunda criação e volta um "já existe" falso pra quem só apertou duas vezes.
+    if (categorySaving) return;
     setCategoryError(null);
     setCategorySaving(true);
-    const result = await createCategory({ data: { name: newCategoryName } });
-    setCategorySaving(false);
-    if (!result.ok) return setCategoryError(result.message ?? "Não foi possível criar.");
-    setNewCategoryName("");
-    setShowCategoryForm(false);
-    await load();
+    try {
+      const result = await createCategory({ data: { name: newCategoryName } });
+      if (!result.ok) return setCategoryError(result.message ?? "Não foi possível criar.");
+      setNewCategoryName("");
+      setShowCategoryForm(false);
+      await load();
+    } catch {
+      setCategoryError("Não foi possível criar — tente de novo.");
+    } finally {
+      setCategorySaving(false);
+    }
   }
 
   useEffect(() => {
@@ -421,7 +429,7 @@ function CardapioPage() {
                   <span className="text-xs font-medium text-muted-foreground">Categoria</span>
                   {categories.length === 0 ? (
                     <p className="mt-1 rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
-                      Nenhuma categoria cadastrada. Crie uma na seção "Categorias" abaixo antes de
+                      Nenhuma categoria cadastrada. Crie uma na seção "Categorias" acima antes de
                       cadastrar o produto.
                     </p>
                   ) : (
@@ -686,7 +694,7 @@ function CardapioPage() {
                                 </summary>
                                 <div className="mt-2">
                                   <PasswordConfirm
-                                    message={`Apagar “${product.name}" de vez? Só funciona se ele nunca teve venda nem movimento de estoque registrado — não dá pra desfazer. Confirme com a senha da equipe.`}
+                                    message={`Apagar “${product.name}” de vez? Só funciona se ele nunca teve venda nem movimento de estoque registrado — não dá pra desfazer. Confirme com a senha da equipe.`}
                                     confirmLabel="Apagar de vez"
                                     onCancel={() => setDeletingId(null)}
                                     onConfirm={(password) => confirmDeletePermanently(product.id, password)}

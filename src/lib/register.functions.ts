@@ -317,10 +317,33 @@ export const deleteProduct = createServerFn({ method: "POST" })
     if (!teamPasswordMatches(data.password)) {
       return { ok: false as const, message: "Senha incorreta." };
     }
+
+    // Busca a foto antes de apagar a linha: depois de apagada não tem mais como saber qual
+    // arquivo era dela. O Postgres não mexe em Storage, então essa parte só pode rodar aqui.
+    const { data: before } = await admin()
+      .from("fastbar_products")
+      .select("image_url")
+      .eq("id", data.productId)
+      .maybeSingle();
+
     const { data: result, error } = await admin().rpc("fastbar_delete_product", {
       p_product_id: data.productId,
     });
-    return fromRpc(result as RpcResult | null, error, "Não foi possível apagar o produto.");
+    const parsed = fromRpc(result as RpcResult | null, error, "Não foi possível apagar o produto.");
+    if (!parsed.ok) return parsed;
+
+    // Best-effort: se a remoção da foto falhar, o produto já foi apagado do cardápio (o que
+    // importa pra equipe) — só fica um arquivo órfão no bucket, não um estado inconsistente.
+    if (before?.image_url) {
+      const marker = "/fastbar-products/";
+      const index = before.image_url.indexOf(marker);
+      if (index !== -1) {
+        const path = before.image_url.slice(index + marker.length);
+        await admin().storage.from("fastbar-products").remove([path]);
+      }
+    }
+
+    return parsed;
   });
 
 export const reopenSession = createServerFn({ method: "POST" })

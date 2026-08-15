@@ -19,10 +19,16 @@ create policy "service role only" on public.fastbar_product_categories
   with check (auth.role() = 'service_role');
 
 -- Popula com as categorias que já existem em produtos cadastrados, pra ninguém perder o que já
--- estava em uso.
+-- estava em uso. Dedupe por lower(name): esta migration roda antes do índice único
+-- case-insensitive (na migration seguinte), então se o banco já tivesse "Doses" e "doses" como
+-- categorias distintas, o unique(name) original deixaria as duas entrarem aqui — e a criação do
+-- índice case-insensitive na migration seguinte falharia por causa dessa duplicata. Mantém a
+-- primeira grafia encontrada (ordem alfabética) de cada nome, ignorando maiúscula/minúscula.
 insert into public.fastbar_product_categories (name)
-select distinct category from public.fastbar_products
+select distinct on (lower(category)) category
+from public.fastbar_products
 where category is not null and trim(category) <> ''
+order by lower(category), category
 on conflict (name) do nothing;
 
 -- Garante que sempre exista pelo menos uma opção no seletor, mesmo em banco novo/vazio.

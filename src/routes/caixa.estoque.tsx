@@ -270,7 +270,7 @@ function ComponentStockTab(props: {
     setMinStock("");
     setPurchaseUnit("");
     setUnitsPerPack("1");
-    setContentAmount("1");
+    setContentAmount("");
     setNewPacks("");
     setNewPurchaseCost("");
     setNewSupplierId("");
@@ -313,6 +313,7 @@ function ComponentStockTab(props: {
   function openPackagingEditor(item: StockComponent) {
     setOpenPackagingId(item.id);
     setOpenEntryId(null);
+    setDeletingId(null);
     setPackagingError(null);
     setEditPurchaseUnit(item.purchase_unit ?? "");
     setEditUnitsPerPack(String(item.units_per_pack));
@@ -538,6 +539,7 @@ function ComponentStockTab(props: {
                       onClick={() => {
                         setOpenEntryId(isOpen ? null : item.id);
                         setOpenPackagingId(null);
+                        setDeletingId(null);
                         setEntryPacks("");
                         setEntryPurchaseCost("");
                         setEntrySupplierId("");
