@@ -397,6 +397,40 @@ export const listAllProducts = createServerFn({ method: "POST" }).handler(async 
   return { products: data ?? [] };
 });
 
+/**
+ * Categoria do cardápio é a divisão do menu (Bebidas, Doses, Drinks) — nada além de um nome.
+ * Entidade própria, separada do formulário de produto, pra criar uma categoria nova nunca exigir
+ * preencher preço/unidade/foto de um produto que não existe.
+ */
+export const listProductCategories = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  await assertRegisterAccess();
+  const { data } = await admin()
+    .from("fastbar_product_categories")
+    .select("id, name")
+    .order("name");
+  return { categories: data ?? [] };
+});
+
+export const createProductCategory = createServerFn({ method: "POST" })
+  .inputValidator((data: { name: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const name = data.name.trim();
+    if (name.length < 2) return { ok: false as const, message: "Digite um nome de categoria." };
+
+    const { error } = await admin().from("fastbar_product_categories").insert({ name });
+    if (error) {
+      // Nome único: categoria repetida (mesmo com maiúscula/minúscula diferente) cai aqui.
+      if (error.code === "23505") {
+        return { ok: false as const, message: "Já existe uma categoria com esse nome." };
+      }
+      return { ok: false as const, message: "Não foi possível criar a categoria." };
+    }
+    return { ok: true as const };
+  });
+
 export const PRODUCT_UNITS = ["un", "ml", "L", "g", "kg"] as const;
 export const PRODUCT_PACKAGE_TYPES = [
   "Lata",

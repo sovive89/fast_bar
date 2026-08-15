@@ -8,7 +8,9 @@ import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
 import { deactivateProduct } from "@/lib/register.functions";
 import {
   createProduct,
+  createProductCategory,
   getBaseDrinksOverview,
+  listProductCategories,
   setRecipeItems,
   uploadProductPhoto,
   PRODUCT_UNITS,
@@ -114,7 +116,7 @@ function CardapioPage() {
   const [restockError, setRestockError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("Bebidas");
+  const [category, setCategory] = useState("");
   const [price, setPrice] = useState("");
   const [unit, setUnit] = useState<(typeof PRODUCT_UNITS)[number]>("un");
   const [packageType, setPackageType] = useState<(typeof PRODUCT_PACKAGE_TYPES)[number]>("Lata");
@@ -128,10 +130,19 @@ function CardapioPage() {
   // isso, montar o cardápio exigia digitar o nome do zero e depois ir a outra aba fazer a ligação.
   const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
   const [components, setComponents] = useState<ComponentRow[]>([]);
-  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  // Categoria é uma divisão do menu, não um produto — cadastro próprio, separado do formulário
+  // de produto, pra "criar categoria" nunca virar "criar um produto vazio só pra registrar o nome".
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
 
   const loadOverview = useServerFn(getStockOverview);
   const loadStock = useServerFn(getBaseDrinksOverview);
+  const loadCategories = useServerFn(listProductCategories);
+  const createCategory = useServerFn(createProductCategory);
   const productEntry = useServerFn(addProductEntry);
   const removeProduct = useServerFn(deactivateProduct);
   const uploadPhoto = useServerFn(uploadProductPhoto);
@@ -139,7 +150,11 @@ function CardapioPage() {
   const saveRecipe = useServerFn(setRecipeItems);
 
   async function load() {
-    const [result, stock] = await Promise.all([loadOverview(), loadStock()]);
+    const [result, stock, categoriesResult] = await Promise.all([
+      loadOverview(),
+      loadStock(),
+      loadCategories(),
+    ]);
     setProducts(result.products as Product[]);
     setRecipeProductIds(new Set(result.recipeProductIds));
     setPendingProductIds(new Set(result.pendingProductIds));
@@ -153,6 +168,21 @@ function CardapioPage() {
         kind: "ingredient" as const,
       })),
     ]);
+    setCategories(categoriesResult.categories);
+    // Primeiro carregamento: começa com a primeira categoria já selecionada, pra não deixar o
+    // formulário de produto abrir sem nenhuma escolhida.
+    setCategory((current) => current || categoriesResult.categories[0]?.name || "");
+  }
+
+  async function submitNewCategory() {
+    setCategoryError(null);
+    setCategorySaving(true);
+    const result = await createCategory({ data: { name: newCategoryName } });
+    setCategorySaving(false);
+    if (!result.ok) return setCategoryError(result.message ?? "Não foi possível criar.");
+    setNewCategoryName("");
+    setShowCategoryForm(false);
+    await load();
   }
 
   useEffect(() => {
@@ -199,7 +229,7 @@ function CardapioPage() {
     const priceNumber = Number(price.replace(",", "."));
     if (name.trim().length < 2) return setError("Digite o nome do produto.");
     if (!Number.isFinite(priceNumber) || priceNumber < 0) return setError("Preço inválido.");
-    if (category.trim().length < 2) return setError("Digite o nome da categoria.");
+    if (!category) return setError("Escolha uma categoria.");
 
     // Valida a ficha antes de criar o produto: melhor recusar agora do que deixar um produto
     // gravado com a receita pela metade.
@@ -279,9 +309,7 @@ function CardapioPage() {
 
     setSaving(false);
     setComponents([]);
-    setCreatingCategory(false);
     setName("");
-    setCategory("Bebidas");
     setPrice("");
     setUnit("un");
     setPackageType("Lata");
@@ -301,13 +329,6 @@ function CardapioPage() {
     return Array.from(map.entries());
   }, [products]);
 
-  const existingCategories = useMemo(() => {
-    const set = new Set(products.map((product) => product.category));
-    // Enquanto "+ Nova categoria" está em edição, o nome sendo digitado não é uma opção real do
-    // dropdown — só entra na lista depois de salvo.
-    if (!creatingCategory) set.add(category || "Bebidas");
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [products, category, creatingCategory]);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
@@ -328,6 +349,51 @@ function CardapioPage() {
         <CustomerMenuPreview grouped={grouped} recipeProductIds={recipeProductIds} />
       ) : (
         <div className="mt-5 space-y-5">
+          {/* Categoria é só a divisão do menu — cadastro próprio, que pede apenas nome. Fica fora
+              e antes do formulário de produto de propósito, pra não parecerem a mesma ação. */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold">Categorias</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">
+                  {categories.length === 0
+                    ? "Nenhuma categoria ainda."
+                    : categories.map((c) => c.name).join(" · ")}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowCategoryForm((value) => !value);
+                  setCategoryError(null);
+                  setNewCategoryName("");
+                }}
+                className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {showCategoryForm ? "Cancelar" : "+ Nova categoria"}
+              </button>
+            </div>
+            {showCategoryForm && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={newCategoryName}
+                  onChange={(event) => setNewCategoryName(event.target.value)}
+                  placeholder="Nome da categoria"
+                  autoFocus
+                  onKeyDown={(event) => event.key === "Enter" && void submitNewCategory()}
+                  className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+                />
+                <button
+                  onClick={() => void submitNewCategory()}
+                  disabled={categorySaving || newCategoryName.trim().length < 2}
+                  className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                >
+                  {categorySaving ? "Salvando..." : "Criar"}
+                </button>
+              </div>
+            )}
+            {categoryError && <p className="mt-2 text-xs text-destructive">{categoryError}</p>}
+          </div>
+
           <button
             onClick={() => setShowForm((value) => !value)}
             className="w-full rounded-xl border border-dashed border-border py-3 text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -339,39 +405,29 @@ function CardapioPage() {
             <SectionCard title="Novo produto do cardápio">
               <div className="space-y-3">
                 <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
-                {/* Escolher entre as categorias que já existem evita "Drinks" e "drinks" virarem
-                    duas seções do cardápio por causa de digitação. Criar nova continua possível. */}
+                {/* Categoria é uma entidade própria (ver seção abaixo) — aqui só escolhe entre as
+                    que já existem. Sem opção de criar embutida: criar categoria não é criar produto. */}
                 <label className="block">
                   <span className="text-xs font-medium text-muted-foreground">Categoria</span>
-                  <select
-                    value={creatingCategory ? "__nova__" : category}
-                    onChange={(event) => {
-                      if (event.target.value === "__nova__") {
-                        setCreatingCategory(true);
-                        setCategory("");
-                      } else {
-                        setCreatingCategory(false);
-                        setCategory(event.target.value);
-                      }
-                    }}
-                    className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
-                  >
-                    {existingCategories.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                    <option value="__nova__">+ Nova categoria</option>
-                  </select>
+                  {categories.length === 0 ? (
+                    <p className="mt-1 rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
+                      Nenhuma categoria cadastrada. Crie uma na seção "Categorias" abaixo antes de
+                      cadastrar o produto.
+                    </p>
+                  ) : (
+                    <select
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value)}
+                      className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                    >
+                      {categories.map((option) => (
+                        <option key={option.id} value={option.name}>
+                          {option.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </label>
-                {creatingCategory && (
-                  <TextField
-                    label="Nome da nova categoria"
-                    value={category}
-                    onChange={setCategory}
-                    placeholder="Petiscos"
-                  />
-                )}
                 <TextField label="Preço (R$)" value={price} onChange={setPrice} placeholder="18,00" />
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">

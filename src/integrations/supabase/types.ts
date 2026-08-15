@@ -10,10 +10,142 @@ export type Database = {
   // Allows to automatically instantiate createClient with right options
   // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
   __InternalSupabase: {
-    PostgrestVersion: "14.1"
+    PostgrestVersion: "14.15"
   }
   public: {
     Tables: {
+      bar_products: {
+        Row: {
+          active: boolean | null
+          brand: string | null
+          category: string
+          cost_price: number | null
+          created_at: string | null
+          id: string
+          name: string
+          sale_price: number | null
+          stock_type: string
+          updated_at: string | null
+          volume_ml: number | null
+        }
+        Insert: {
+          active?: boolean | null
+          brand?: string | null
+          category: string
+          cost_price?: number | null
+          created_at?: string | null
+          id?: string
+          name: string
+          sale_price?: number | null
+          stock_type: string
+          updated_at?: string | null
+          volume_ml?: number | null
+        }
+        Update: {
+          active?: boolean | null
+          brand?: string | null
+          category?: string
+          cost_price?: number | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          sale_price?: number | null
+          stock_type?: string
+          updated_at?: string | null
+          volume_ml?: number | null
+        }
+        Relationships: []
+      }
+      bar_sessions: {
+        Row: {
+          closed_at: string | null
+          created_at: string | null
+          customer_name: string
+          id: string
+          opened_at: string
+          phone: string
+          status: string
+          updated_at: string | null
+          verification_code: string | null
+          verification_status: boolean | null
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string | null
+          customer_name: string
+          id?: string
+          opened_at?: string
+          phone: string
+          status?: string
+          updated_at?: string | null
+          verification_code?: string | null
+          verification_status?: boolean | null
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string | null
+          customer_name?: string
+          id?: string
+          opened_at?: string
+          phone?: string
+          status?: string
+          updated_at?: string | null
+          verification_code?: string | null
+          verification_status?: boolean | null
+        }
+        Relationships: []
+      }
+      bar_tab_items: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          launched_at: string | null
+          product_id: string | null
+          quantity: number | null
+          session_id: string
+          total_price: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          launched_at?: string | null
+          product_id?: string | null
+          quantity?: number | null
+          session_id: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          launched_at?: string | null
+          product_id?: string | null
+          quantity?: number | null
+          session_id?: string
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "bar_tab_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "bar_products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bar_tab_items_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "bar_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fastbar_base_drink_movements: {
         Row: {
           base_drink_id: string
@@ -242,13 +374,29 @@ export type Database = {
         }
         Relationships: []
       }
+      fastbar_product_categories: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+        }
+        Relationships: []
+      }
       fastbar_products: {
         Row: {
           average_cost: number
-          content_amount: number
-          purchase_unit: string | null
-          units_per_pack: number
           category: string
+          content_amount: number
           created_at: string
           id: string
           image_url: string | null
@@ -256,16 +404,16 @@ export type Database = {
           name: string
           package_type: string | null
           price: number
+          purchase_unit: string | null
           stock_quantity: number
           unit: string
+          units_per_pack: number
           updated_at: string
         }
         Insert: {
           average_cost?: number
-          content_amount?: number
-          purchase_unit?: string | null
-          units_per_pack?: number
           category?: string
+          content_amount?: number
           created_at?: string
           id?: string
           image_url?: string | null
@@ -273,16 +421,16 @@ export type Database = {
           name: string
           package_type?: string | null
           price?: number
+          purchase_unit?: string | null
           stock_quantity?: number
           unit?: string
+          units_per_pack?: number
           updated_at?: string
         }
         Update: {
           average_cost?: number
-          content_amount?: number
-          purchase_unit?: string | null
-          units_per_pack?: number
           category?: string
+          content_amount?: number
           created_at?: string
           id?: string
           image_url?: string | null
@@ -290,8 +438,10 @@ export type Database = {
           name?: string
           package_type?: string | null
           price?: number
+          purchase_unit?: string | null
           stock_quantity?: number
           unit?: string
+          units_per_pack?: number
           updated_at?: string
         }
         Relationships: []
@@ -404,6 +554,8 @@ export type Database = {
           product_id: string
           quantity: number
           session_id: string | null
+          supplier_id: string | null
+          unit_cost: number | null
         }
         Insert: {
           created_at?: string
@@ -413,6 +565,8 @@ export type Database = {
           product_id: string
           quantity: number
           session_id?: string | null
+          supplier_id?: string | null
+          unit_cost?: number | null
         }
         Update: {
           created_at?: string
@@ -422,6 +576,8 @@ export type Database = {
           product_id?: string
           quantity?: number
           session_id?: string | null
+          supplier_id?: string | null
+          unit_cost?: number | null
         }
         Relationships: [
           {
@@ -436,6 +592,13 @@ export type Database = {
             columns: ["session_id"]
             isOneToOne: false
             referencedRelation: "fastbar_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fastbar_stock_movements_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_suppliers"
             referencedColumns: ["id"]
           },
         ]
@@ -514,6 +677,136 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      menu_items: {
+        Row: {
+          category: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          price: number
+        }
+        Insert: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          price?: number
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          price?: number
+        }
+        Relationships: []
+      }
+      stock_movements: {
+        Row: {
+          created_at: string | null
+          id: string
+          movement_type: string
+          observation: string | null
+          product_id: string
+          quantity: number
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          movement_type: string
+          observation?: string | null
+          product_id: string
+          quantity: number
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          movement_type?: string
+          observation?: string | null
+          product_id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "stock_movements_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "bar_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tab_items: {
+        Row: {
+          added_at: string
+          id: string
+          name: string
+          quantity: number
+          tab_id: string
+          unit_price: number
+        }
+        Insert: {
+          added_at?: string
+          id?: string
+          name: string
+          quantity?: number
+          tab_id: string
+          unit_price?: number
+        }
+        Update: {
+          added_at?: string
+          id?: string
+          name?: string
+          quantity?: number
+          tab_id?: string
+          unit_price?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tab_items_tab_id_fkey"
+            columns: ["tab_id"]
+            isOneToOne: false
+            referencedRelation: "tabs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tabs: {
+        Row: {
+          closed_at: string | null
+          created_at: string
+          customer_name: string
+          id: string
+          paid_at: string | null
+          phone: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          closed_at?: string | null
+          created_at?: string
+          customer_name: string
+          id?: string
+          paid_at?: string | null
+          phone: string
+          started_at?: string
+          status?: string
+        }
+        Update: {
+          closed_at?: string | null
+          created_at?: string
+          customer_name?: string
+          id?: string
+          paid_at?: string | null
+          phone?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
       }
     }
     Views: {
