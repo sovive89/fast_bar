@@ -18,6 +18,8 @@ const RPC_MESSAGES: Record<string, string> = {
   invalid_quantity: "Informe uma quantidade válida.",
   product_not_configured:
     "Item sem configuração de estoque — defina no Cardápio (ficha técnica ou uma entrada) antes de vender.",
+  has_history:
+    "Esse produto já tem histórico de vendas ou movimentos de estoque — não dá pra apagar sem perder rastro. Use 'Remover' pra tirar do cardápio sem apagar o histórico.",
 };
 
 type RpcResult = { ok: boolean; code?: string; removed?: number; new_quantity?: number };
@@ -298,6 +300,27 @@ export const deactivateProduct = createServerFn({ method: "POST" })
       .eq("id", data.productId);
     if (error) return { ok: false as const, message: "Não foi possível remover o produto." };
     return { ok: true as const };
+  });
+
+/**
+ * Apaga o produto de vez, sem deixar rastro no cardápio. Diferente de "remover" (que só desativa):
+ * o número de estoque nunca bloqueia essa ação — a trava real é ter movimento de estoque ou
+ * lançamento numa comanda, o que de fato representaria perda de histórico. Sem isso, um cadastro
+ * feito por engano (nome errado, categoria errada) fica pra sempre como lixo inativo no banco.
+ */
+export const deleteProduct = createServerFn({ method: "POST" })
+  .inputValidator((data: { productId: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+    const { data: result, error } = await admin().rpc("fastbar_delete_product", {
+      p_product_id: data.productId,
+    });
+    return fromRpc(result as RpcResult | null, error, "Não foi possível apagar o produto.");
   });
 
 export const reopenSession = createServerFn({ method: "POST" })

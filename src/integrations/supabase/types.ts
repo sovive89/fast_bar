@@ -832,6 +832,9 @@ export type Database = {
       }
       fastbar_cancel_session: { Args: { p_session_id: string }; Returns: Json }
       fastbar_clear_tab_items: { Args: { p_session_id: string }; Returns: Json }
+      fastbar_delete_base_drink: { Args: { p_id: string }; Returns: Json }
+      fastbar_delete_ingredient: { Args: { p_id: string }; Returns: Json }
+      fastbar_delete_product: { Args: { p_product_id: string }; Returns: Json }
       fastbar_remove_tab_item: { Args: { p_item_id: string }; Returns: Json }
       fastbar_restock_product: {
         Args: { p_product_id: string; p_quantity: number }

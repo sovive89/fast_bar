@@ -157,6 +157,41 @@ export const updateBaseDrinkPackaging = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+const DELETE_MESSAGES: Record<string, string> = {
+  in_use_by_recipe: "Esse insumo está numa ficha técnica — remova a ligação antes de apagar.",
+  has_sales_history: "Esse insumo já saiu em vendas de verdade — apagar perderia o rastro.",
+  not_found: "Insumo não encontrado.",
+};
+
+/**
+ * Apaga a bebida base de vez. O número de estoque nunca bloqueia — o que impede é uso real: estar
+ * numa ficha técnica ou já ter saído por venda. Uma entrada de compra errada sozinha (sem venda)
+ * não bloqueia, porque é exatamente o caso que essa ação existe pra resolver: "cadastrei garrafa
+ * de 1L com conteúdo 1 em vez de 1000, quero apagar e refazer certo".
+ */
+export const deleteBaseDrink = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+    const { data: result, error } = await admin().rpc("fastbar_delete_base_drink", {
+      p_id: data.id,
+    });
+    const parsed = result as { ok: boolean; code?: string } | null;
+    if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message: DELETE_MESSAGES[parsed.code ?? ""] ?? "Não foi possível apagar.",
+      };
+    }
+    return { ok: true as const };
+  });
+
 /**
  * Dá entrada de estoque numa bebida base (compra). A equipe informa quantas embalagens de compra
  * (ex.: garrafas, caixas) e o custo total pago — a quantidade em `unit` e o custo por `unit` são
@@ -310,6 +345,30 @@ export const updateIngredientPackaging = createServerFn({ method: "POST" })
       })
       .eq("id", data.ingredientId);
     if (error) return { ok: false as const, message: "Não foi possível salvar a embalagem." };
+    return { ok: true as const };
+  });
+
+/** Apaga o ingrediente de vez. Mesmo critério da bebida base: histórico real bloqueia, número de estoque não. */
+export const deleteIngredient = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+    const { data: result, error } = await admin().rpc("fastbar_delete_ingredient", {
+      p_id: data.id,
+    });
+    const parsed = result as { ok: boolean; code?: string } | null;
+    if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message: DELETE_MESSAGES[parsed.code ?? ""] ?? "Não foi possível apagar.",
+      };
+    }
     return { ok: true as const };
   });
 

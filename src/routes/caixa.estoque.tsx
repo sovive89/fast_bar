@@ -1,6 +1,7 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
+import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl, parseAmount } from "@/lib/format";
 import {
@@ -9,6 +10,8 @@ import {
   createBaseDrink,
   createIngredient,
   createSupplier,
+  deleteBaseDrink,
+  deleteIngredient,
   getRecipeItems,
   getBaseDrinksOverview,
   listAllProducts,
@@ -37,7 +40,7 @@ const TABS: Array<{ id: Tab; label: string }> = [
   { id: "bebidas", label: "Bebidas base" },
   { id: "ingredientes", label: "Ingredientes" },
   { id: "fornecedores", label: "Fornecedores" },
-  { id: "fichas", label: "Fichas técnicas" },
+  { id: "fichas", label: "Ficha técnica (Receitas)" },
 ];
 
 function StockOverview() {
@@ -126,6 +129,9 @@ function ComponentStockTab(props: {
       contentAmount?: number | undefined;
     };
   }) => Promise<{ ok: boolean; message?: string }>;
+  deleteFn: (input: {
+    data: { id: string; password: string };
+  }) => Promise<{ ok: boolean; message?: string }>;
 }) {
   const [items, setItems] = useState<StockComponent[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -135,7 +141,9 @@ function ComponentStockTab(props: {
   const [minStock, setMinStock] = useState("");
   const [purchaseUnit, setPurchaseUnit] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("1");
-  const [contentAmount, setContentAmount] = useState("1");
+  // Vazio de propósito, não "1": um padrão de "1" parece já preenchido corretamente e passa
+  // despercebido — foi assim que uma garrafa de 1L ficou registrada como "1ml" na prática.
+  const [contentAmount, setContentAmount] = useState("");
   // Quantidade e valor da primeira compra: o cadastro e a entrada acontecem no mesmo gesto, que é
   // como a coisa acontece no bar — chega a mercadoria e se registra o que chegou.
   const [newPacks, setNewPacks] = useState("");
@@ -157,6 +165,8 @@ function ComponentStockTab(props: {
   const [editContentAmount, setEditContentAmount] = useState("1");
   const [packagingError, setPackagingError] = useState<string | null>(null);
   const [packagingBusy, setPackagingBusy] = useState(false);
+
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   const overview = useServerFn(getBaseDrinksOverview);
   const listSup = useServerFn(listSuppliers);
@@ -184,9 +194,11 @@ function ComponentStockTab(props: {
     if (packsPerPackValue === null || !Number.isInteger(packsPerPackValue) || packsPerPackValue <= 0) {
       return setError("Itens por embalagem deve ser um número inteiro maior que zero.");
     }
-    const contentValue = contentAmount ? parseAmount(contentAmount) : 1;
+    // Sem valor padrão aqui, de propósito: "1" parece já preenchido corretamente e passa
+    // despercebido — foi assim que uma garrafa de 1L virou "1ml" de conteúdo na prática.
+    const contentValue = contentAmount ? parseAmount(contentAmount) : null;
     if (contentValue === null || contentValue <= 0) {
-      return setError("Conteúdo por item deve ser maior que zero.");
+      return setError(`Preencha o conteúdo por item em ${unit} (ex.: garrafa de 1L → 1000).`);
     }
 
     // Quantidade é opcional: dá para cadastrar o insumo sem entrada, se a mercadoria ainda não
@@ -333,6 +345,15 @@ function ComponentStockTab(props: {
     await load();
   }
 
+  async function confirmDeleteStockItem(id: string, password: string) {
+    const result = await props.deleteFn({ data: { id, password } });
+    if (result.ok) {
+      setDeletingId(null);
+      await load();
+    }
+    return result;
+  }
+
   return (
     <div className="space-y-5">
       <button
@@ -367,10 +388,14 @@ function ComponentStockTab(props: {
               placeholder="0"
               type="number"
             />
-            <div className="rounded-xl border border-border p-3">
-              <p className="text-xs font-medium">Como você compra</p>
+            <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
+              <p className="text-xs font-semibold">Como você compra</p>
               <p className="mt-0.5 text-xs text-muted-foreground">
                 O custo por {unit} é calculado a partir daqui — você nunca digita ele na mão.
+              </p>
+              <p className="mt-1.5 text-xs font-medium text-primary">
+                Ex.: caixa com 12 latas de 350 ml → 12 itens por embalagem, 350 de conteúdo cada.
+                Garrafa de 1L → 1 item por embalagem, 1000 de conteúdo (não deixe em 1).
               </p>
               <div className="mt-3 space-y-3">
                 <TextField
@@ -388,18 +413,14 @@ function ComponentStockTab(props: {
                     type="number"
                   />
                   <TextField
-                    label={`Conteúdo por item (${unit})`}
+                    label={`Conteúdo por item (${unit}) — obrigatório`}
                     value={contentAmount}
                     onChange={setContentAmount}
-                    placeholder="1"
+                    placeholder={unit === "ml" || unit === "g" ? "ex.: 1000" : "ex.: 1"}
                     type="number"
                   />
                 </div>
               </div>
-              <p className="mt-2 text-xs text-muted-foreground">
-                Ex.: caixa com 12 latas de 350 ml → 12 itens, 350 de conteúdo. Garrafa de 1L → 1
-                item, 1000 de conteúdo.
-              </p>
             </div>
 
             <div className="rounded-xl border border-border p-3">
@@ -483,6 +504,7 @@ function ComponentStockTab(props: {
             const low = item.current_stock < item.min_stock;
             const isOpen = openEntryId === item.id;
             const isPackagingOpen = openPackagingId === item.id;
+            const isDeleting = deletingId === item.id;
             return (
               <li key={item.id} className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
@@ -525,8 +547,29 @@ function ComponentStockTab(props: {
                     >
                       {isOpen ? "Cancelar" : "+ Entrada"}
                     </button>
+                    <button
+                      onClick={() => {
+                        setDeletingId(isDeleting ? null : item.id);
+                        setOpenEntryId(null);
+                        setOpenPackagingId(null);
+                      }}
+                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                    >
+                      {isDeleting ? "Cancelar" : "Apagar"}
+                    </button>
                   </div>
                 </div>
+
+                {isDeleting && (
+                  <div className="mt-3">
+                    <PasswordConfirm
+                      message={`Apagar "${item.name}" de vez? Só funciona se ele nunca foi usado numa ficha técnica nem saiu por venda — não dá pra desfazer. Confirme com a senha da equipe.`}
+                      confirmLabel="Apagar de vez"
+                      onCancel={() => setDeletingId(null)}
+                      onConfirm={(password) => confirmDeleteStockItem(item.id, password)}
+                    />
+                  </div>
+                )}
 
                 {!item.purchase_unit && (
                   <p className="mt-2 text-xs text-muted-foreground">
@@ -648,6 +691,7 @@ function BebidasBaseTab() {
   const createFn = useServerFn(createBaseDrink);
   const entryFn = useServerFn(addBaseDrinkEntry);
   const updatePackagingFn = useServerFn(updateBaseDrinkPackaging);
+  const deleteFn = useServerFn(deleteBaseDrink);
   return (
     <ComponentStockTab
       kind="base_drink"
@@ -686,6 +730,7 @@ function BebidasBaseTab() {
           },
         })
       }
+      deleteFn={(input) => deleteFn({ data: input.data })}
     />
   );
 }
@@ -694,6 +739,7 @@ function IngredientesTab() {
   const createFn = useServerFn(createIngredient);
   const entryFn = useServerFn(addIngredientEntry);
   const updatePackagingFn = useServerFn(updateIngredientPackaging);
+  const deleteFn = useServerFn(deleteIngredient);
   return (
     <ComponentStockTab
       kind="ingredient"
@@ -732,6 +778,7 @@ function IngredientesTab() {
           },
         })
       }
+      deleteFn={(input) => deleteFn({ data: input.data })}
     />
   );
 }
@@ -947,8 +994,19 @@ function FichasTecnicasTab() {
 
   return (
     <div className="space-y-5">
+      {/* Ficha técnica é sempre de um produto que já existe — criar produto novo (com ficha ou
+          não) acontece no Cardápio, que já tem esse formulário. Reaproveita em vez de duplicar. */}
+      <Link
+        to="/caixa/cardapio"
+        className="block w-full rounded-xl border border-dashed border-border py-3 text-center text-sm font-medium text-muted-foreground hover:text-foreground"
+      >
+        + Criar produto novo com ficha técnica
+      </Link>
+
       <label className="block">
-        <span className="text-xs font-medium text-muted-foreground">Produto</span>
+        <span className="text-xs font-medium text-muted-foreground">
+          Ou edite a ficha de um produto já cadastrado
+        </span>
         <select
           value={selectedProduct}
           onChange={(event) => void loadRecipe(event.target.value)}

@@ -5,7 +5,7 @@ import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl } from "@/lib/format";
 import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
-import { deactivateProduct } from "@/lib/register.functions";
+import { deactivateProduct, deleteProduct as deleteProductFn } from "@/lib/register.functions";
 import {
   createProduct,
   createProductCategory,
@@ -145,6 +145,7 @@ function CardapioPage() {
   const createCategory = useServerFn(createProductCategory);
   const productEntry = useServerFn(addProductEntry);
   const removeProduct = useServerFn(deactivateProduct);
+  const deleteProduct = useServerFn(deleteProductFn);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
   const saveRecipe = useServerFn(setRecipeItems);
@@ -217,6 +218,15 @@ function CardapioPage() {
 
   async function confirmDelete(productId: string, password: string) {
     const result = await removeProduct({ data: { productId, password } });
+    if (result.ok) {
+      setDeletingId(null);
+      await load();
+    }
+    return result;
+  }
+
+  async function confirmDeletePermanently(productId: string, password: string) {
+    const result = await deleteProduct({ data: { productId, password } });
     if (result.ok) {
       setDeletingId(null);
       await load();
@@ -461,11 +471,16 @@ function CardapioPage() {
                     </select>
                   </label>
                 </div>
-                <div className="rounded-xl border border-border p-3">
-                  <p className="text-xs font-medium">Do que é feito</p>
+                <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
+                  <p className="text-xs font-semibold">Do que é feito</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Puxe do estoque o que este item consome. A cada venda a baixa acontece sozinha
-                    nos insumos. Deixe vazio se for algo sem controle de estoque.
+                    nos insumos. Deixe vazio só se for algo sem controle de estoque nenhum.
+                  </p>
+                  <p className="mt-1.5 text-xs font-medium text-primary">
+                    É uma dose? Clique em "+ Puxar insumo do estoque" abaixo, escolha a garrafa de
+                    origem e digite o tamanho da dose em ml no campo ao lado — ex.: Tequila + 50.
+                    Não use "Estoque inicial" mais abaixo pra isso.
                   </p>
 
                   {stockOptions.length === 0 ? (
@@ -537,10 +552,12 @@ function CardapioPage() {
                 </div>
 
                 {/* Produto com ficha técnica tira do estoque dos insumos, então um estoque próprio
-                    aqui seria um número paralelo que nunca baixa. */}
+                    aqui seria um número paralelo que nunca baixa. Some assim que uma linha de
+                    insumo é adicionada — visto ao vivo alguém digitar "60" aqui pensando que era o
+                    tamanho da dose, quando o campo certo é o de quantidade em "Do que é feito". */}
                 {components.length === 0 && (
                   <TextField
-                    label="Estoque inicial (para item sem ficha técnica, ex.: cerveja lata)"
+                    label="Estoque inicial (só para item SEM insumo escolhido acima, ex.: cerveja lata fechada)"
                     value={stockQuantity}
                     onChange={setStockQuantity}
                     placeholder="0"
@@ -653,13 +670,29 @@ function CardapioPage() {
                           </div>
 
                           {isDeleting && (
-                            <div className="mt-3">
+                            <div className="mt-3 space-y-2">
                               <PasswordConfirm
                                 message={`Tirar “${product.name}” do cardápio? O cadastro e o histórico de vendas continuam guardados — o item só deixa de aparecer para lançamento. Confirme com a senha da equipe.`}
                                 confirmLabel="Remover"
                                 onCancel={() => setDeletingId(null)}
                                 onConfirm={(password) => confirmDelete(product.id, password)}
                               />
+                              {/* Só some do banco quando não há histórico de verdade (vendas/
+                                  movimentos) — a função no servidor recusa se houver, mesmo com
+                                  senha certa. O estoque em si nunca é o que bloqueia. */}
+                              <details className="rounded-xl border border-dashed border-border px-3 py-2">
+                                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-destructive">
+                                  Cadastrei errado — apagar de vez (sem histórico)
+                                </summary>
+                                <div className="mt-2">
+                                  <PasswordConfirm
+                                    message={`Apagar “${product.name}" de vez? Só funciona se ele nunca teve venda nem movimento de estoque registrado — não dá pra desfazer. Confirme com a senha da equipe.`}
+                                    confirmLabel="Apagar de vez"
+                                    onCancel={() => setDeletingId(null)}
+                                    onConfirm={(password) => confirmDeletePermanently(product.id, password)}
+                                  />
+                                </div>
+                              </details>
                             </div>
                           )}
 
