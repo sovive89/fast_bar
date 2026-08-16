@@ -29,10 +29,13 @@ export function OpenTabForm() {
       return;
     }
 
-    await navigate({
-      to: "/c/$sessionId",
-      params: { sessionId: result.sessionId },
-    });
+    // Cliente que já preencheu o perfil antes (reabrindo comanda pelo mesmo celular) não passa
+    // pela segunda tela de novo — ela é pra coletar uma vez, não repetir a cada visita.
+    await navigate(
+      result.profileCompleted
+        ? { to: "/c/$sessionId", params: { sessionId: result.sessionId } }
+        : { to: "/c/$sessionId/perfil", params: { sessionId: result.sessionId } },
+    );
   }
 
   return (
