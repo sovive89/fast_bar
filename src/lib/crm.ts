@@ -38,18 +38,6 @@ export const SEGMENT_BAR_FILL: Record<LeadSegment, string> = {
   perdido: "bg-destructive",
 };
 
-/** Mesmas cores de SEGMENT_BAR_FILL, mas como valor de cor de verdade — recharts pinta via `fill`,
- * não aceita classe Tailwind. Mesma ordem fixa de SEGMENT_ORDER em toda tela que mostra segmento,
- * pra identidade nunca trocar de cor entre um gráfico e outro. */
-export const SEGMENT_CHART_COLOR: Record<LeadSegment, string> = {
-  vip: "var(--primary)",
-  fiel: "#10b981",
-  recorrente: "#0ea5e9",
-  novo: "var(--muted-foreground)",
-  risco: "#f59e0b",
-  perdido: "var(--destructive)",
-};
-
 export const SEGMENT_HINT: Record<LeadSegment, string> = {
   vip: "Gasta muito e continua vindo. Trate como prioridade.",
   fiel: "Vem sempre. Base do faturamento recorrente.",
