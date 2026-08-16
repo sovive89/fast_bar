@@ -13,6 +13,8 @@ import {
   getBaseDrinksOverview,
   listProductCategories,
   setRecipeItems,
+  updateProduct as updateProductFn,
+  updateProductCategory,
   uploadProductPhoto,
   PRODUCT_UNITS,
   PRODUCT_PACKAGE_TYPES,
@@ -146,17 +148,37 @@ function CardapioPage() {
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
   const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [editCategoryName, setEditCategoryName] = useState("");
+  const [editCategorySaving, setEditCategorySaving] = useState(false);
+  const [editCategoryError, setEditCategoryError] = useState<string | null>(null);
+
+  // Edição de um produto já cadastrado — campos próprios, separados dos de "Novo produto", pra
+  // abrir um não pisar no outro se os dois ficarem abertos ao mesmo tempo.
+  const [editingProductId, setEditingProductId] = useState<string | null>(null);
+  const [editProductName, setEditProductName] = useState("");
+  const [editProductCategory, setEditProductCategory] = useState("");
+  const [editProductPrice, setEditProductPrice] = useState("");
+  const [editProductUnit, setEditProductUnit] = useState<(typeof PRODUCT_UNITS)[number]>("un");
+  const [editProductPackageType, setEditProductPackageType] =
+    useState<(typeof PRODUCT_PACKAGE_TYPES)[number]>("Lata");
+  const [editProductPhotoFile, setEditProductPhotoFile] = useState<File | null>(null);
+  const [editProductSaving, setEditProductSaving] = useState(false);
+  const [editProductCompressing, setEditProductCompressing] = useState(false);
+  const [editProductError, setEditProductError] = useState<string | null>(null);
 
   const loadOverview = useServerFn(getStockOverview);
   const loadStock = useServerFn(getBaseDrinksOverview);
   const loadCategories = useServerFn(listProductCategories);
   const createCategory = useServerFn(createProductCategory);
   const deleteCategory = useServerFn(deleteProductCategory);
+  const renameCategory = useServerFn(updateProductCategory);
   const productEntry = useServerFn(addProductEntry);
   const removeProduct = useServerFn(deactivateProduct);
   const deleteProduct = useServerFn(deleteProductFn);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
+  const update = useServerFn(updateProductFn);
   const saveRecipe = useServerFn(setRecipeItems);
 
   async function load() {
@@ -224,6 +246,31 @@ function CardapioPage() {
     return result;
   }
 
+  function openEditCategory(cat: { id: string; name: string }) {
+    setEditingCategoryId(cat.id);
+    setEditCategoryName(cat.name);
+    setEditCategoryError(null);
+    setDeletingCategoryId(null);
+  }
+
+  async function submitEditCategory() {
+    if (!editingCategoryId) return;
+    setEditCategoryError(null);
+    setEditCategorySaving(true);
+    const result = await renameCategory({
+      data: { id: editingCategoryId, name: editCategoryName },
+    });
+    setEditCategorySaving(false);
+    if (!result.ok) return setEditCategoryError(result.message ?? "Não foi possível salvar.");
+    // Se a categoria renomeada é a selecionada no formulário de "Novo produto", acompanha o novo
+    // nome — senão o select ficaria com um valor que não existe mais nas opções.
+    if (categories.some((item) => item.id === editingCategoryId && item.name === category)) {
+      setCategory(editCategoryName.trim());
+    }
+    setEditingCategoryId(null);
+    await load();
+  }
+
   useEffect(() => {
     // listProductCategories agora lança em vez de virar lista vazia silenciosa quando a leitura
     // falha — mas isso significa que o carregamento em segundo plano, sem clique de ninguém pra
@@ -276,6 +323,81 @@ function CardapioPage() {
       await load();
     }
     return result;
+  }
+
+  function openEditProduct(product: Product) {
+    setEditingProductId(product.id);
+    setEditProductName(product.name);
+    setEditProductCategory(product.category);
+    setEditProductPrice(String(product.price).replace(".", ","));
+    setEditProductUnit(
+      PRODUCT_UNITS.includes(product.unit as (typeof PRODUCT_UNITS)[number])
+        ? (product.unit as (typeof PRODUCT_UNITS)[number])
+        : "un",
+    );
+    setEditProductPackageType(
+      PRODUCT_PACKAGE_TYPES.includes(product.package_type as (typeof PRODUCT_PACKAGE_TYPES)[number])
+        ? (product.package_type as (typeof PRODUCT_PACKAGE_TYPES)[number])
+        : "Outro",
+    );
+    setEditProductPhotoFile(null);
+    setEditProductError(null);
+    // Só um painel por produto — abrir editar fecha remover/entrada, e vice-versa (nos handlers
+    // deles), senão os formulários se misturam na mesma linha.
+    setDeletingId(null);
+    setOpenRestockId(null);
+  }
+
+  async function submitEditProduct() {
+    if (!editingProductId) return;
+    setEditProductError(null);
+    const priceNumber = Number(editProductPrice.replace(",", "."));
+    if (editProductName.trim().length < 2) return setEditProductError("Digite o nome do produto.");
+    if (!Number.isFinite(priceNumber) || priceNumber < 0) {
+      return setEditProductError("Preço inválido.");
+    }
+    if (!editProductCategory) return setEditProductError("Escolha uma categoria.");
+
+    setEditProductSaving(true);
+    let imageUrl: string | undefined;
+    if (editProductPhotoFile) {
+      setEditProductCompressing(true);
+      let compressed: { base64: string; contentType: string };
+      try {
+        compressed = await compressImageForUpload(editProductPhotoFile);
+      } catch {
+        setEditProductCompressing(false);
+        setEditProductSaving(false);
+        return setEditProductError("Não foi possível processar a foto. Tente outra imagem.");
+      }
+      setEditProductCompressing(false);
+
+      const jpgFileName = editProductPhotoFile.name.replace(/\.\w+$/, "") + ".jpg";
+      const uploadResult = await uploadPhoto({
+        data: { fileName: jpgFileName, base64: compressed.base64, contentType: compressed.contentType },
+      });
+      if (!uploadResult.ok) {
+        setEditProductSaving(false);
+        return setEditProductError(uploadResult.message);
+      }
+      imageUrl = uploadResult.url;
+    }
+
+    const result = await update({
+      data: {
+        productId: editingProductId,
+        name: editProductName,
+        price: priceNumber,
+        category: editProductCategory,
+        unit: editProductUnit,
+        packageType: editProductPackageType,
+        ...(imageUrl !== undefined ? { imageUrl } : {}),
+      },
+    });
+    setEditProductSaving(false);
+    if (!result.ok) return setEditProductError(result.message);
+    setEditingProductId(null);
+    await load();
   }
 
   async function submitNewProduct() {
@@ -466,25 +588,58 @@ function CardapioPage() {
               <p className="mt-2 text-xs text-muted-foreground">Nenhuma categoria ainda.</p>
             ) : (
               <div className="mt-2 flex flex-wrap gap-2">
-                {categories.map((cat) => (
-                  <span
-                    key={cat.id}
-                    className="inline-flex items-center gap-1.5 rounded-full bg-secondary py-1 pl-3 pr-1.5 text-xs font-medium text-secondary-foreground"
-                  >
-                    {cat.name}
-                    <button
-                      onClick={() =>
-                        setDeletingCategoryId(deletingCategoryId === cat.id ? null : cat.id)
-                      }
-                      aria-label={`Apagar categoria ${cat.name}`}
-                      className="rounded-full px-1 text-muted-foreground hover:text-destructive"
+                {categories.map((cat) =>
+                  editingCategoryId === cat.id ? (
+                    <span
+                      key={cat.id}
+                      className="inline-flex items-center gap-1 rounded-full bg-secondary py-1 pl-2 pr-1.5"
                     >
-                      ×
-                    </button>
-                  </span>
-                ))}
+                      <input
+                        value={editCategoryName}
+                        onChange={(event) => setEditCategoryName(event.target.value)}
+                        autoFocus
+                        onKeyDown={(event) => event.key === "Enter" && void submitEditCategory()}
+                        className="h-7 w-28 rounded-full border border-border bg-background px-2 text-xs outline-none focus:border-ring"
+                      />
+                      <button
+                        onClick={() => void submitEditCategory()}
+                        disabled={editCategorySaving}
+                        aria-label="Salvar nome da categoria"
+                        className="rounded-full px-1 text-primary disabled:opacity-60"
+                      >
+                        ✓
+                      </button>
+                      <button
+                        onClick={() => setEditingCategoryId(null)}
+                        aria-label="Cancelar edição da categoria"
+                        className="rounded-full px-1 text-muted-foreground hover:text-foreground"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ) : (
+                    <span
+                      key={cat.id}
+                      className="inline-flex items-center gap-1.5 rounded-full bg-secondary py-1 pl-3 pr-1.5 text-xs font-medium text-secondary-foreground"
+                    >
+                      <button onClick={() => openEditCategory(cat)} className="hover:underline">
+                        {cat.name}
+                      </button>
+                      <button
+                        onClick={() =>
+                          setDeletingCategoryId(deletingCategoryId === cat.id ? null : cat.id)
+                        }
+                        aria-label={`Apagar categoria ${cat.name}`}
+                        className="rounded-full px-1 text-muted-foreground hover:text-destructive"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ),
+                )}
               </div>
             )}
+            {editCategoryError && <p className="mt-2 text-xs text-destructive">{editCategoryError}</p>}
             {deletingCategoryId && (
               <div className="mt-2">
                 <PasswordConfirm
@@ -759,6 +914,7 @@ function CardapioPage() {
                       const low = !hasRecipe && product.stock_quantity < LOW_STOCK_THRESHOLD;
                       const isOpen = openRestockId === product.id;
                       const isDeleting = deletingId === product.id;
+                      const isEditing = editingProductId === product.id;
                       return (
                         <li key={product.id} className="rounded-2xl border border-border bg-card p-4">
                           {isPending && (
@@ -801,6 +957,7 @@ function CardapioPage() {
                                     setRestockAmount("");
                                     setRestockCost("");
                                     setDeletingId(null);
+                                    setEditingProductId(null);
                                     // Sem isso, o erro de uma linha reaparece no formulário da
                                     // próxima que for aberta.
                                     setRestockError(null);
@@ -814,9 +971,16 @@ function CardapioPage() {
                                 </button>
                               )}
                               <button
+                                onClick={() => (isEditing ? setEditingProductId(null) : openEditProduct(product))}
+                                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                              >
+                                {isEditing ? "Cancelar" : "Editar"}
+                              </button>
+                              <button
                                 onClick={() => {
                                   setDeletingId(isDeleting ? null : product.id);
                                   setOpenRestockId(null);
+                                  setEditingProductId(null);
                                   setRestockError(null);
                                 }}
                                 className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -825,6 +989,84 @@ function CardapioPage() {
                               </button>
                             </div>
                           </div>
+
+                          {isEditing && (
+                            <div className="mt-3 space-y-3 rounded-xl border border-dashed border-border p-3">
+                              <TextField label="Nome" value={editProductName} onChange={setEditProductName} />
+                              <label className="block">
+                                <span className="text-xs font-medium text-muted-foreground">Categoria</span>
+                                <select
+                                  value={editProductCategory}
+                                  onChange={(event) => setEditProductCategory(event.target.value)}
+                                  className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                                >
+                                  {categories.map((option) => (
+                                    <option key={option.id} value={option.name}>
+                                      {option.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                              <TextField label="Preço (R$)" value={editProductPrice} onChange={setEditProductPrice} />
+                              <div className="grid grid-cols-2 gap-3">
+                                <label className="block">
+                                  <span className="text-xs font-medium text-muted-foreground">Unidade de medida</span>
+                                  <select
+                                    value={editProductUnit}
+                                    onChange={(event) =>
+                                      setEditProductUnit(event.target.value as (typeof PRODUCT_UNITS)[number])
+                                    }
+                                    className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                                  >
+                                    {PRODUCT_UNITS.map((option) => (
+                                      <option key={option} value={option}>
+                                        {option}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                                <label className="block">
+                                  <span className="text-xs font-medium text-muted-foreground">Tipo</span>
+                                  <select
+                                    value={editProductPackageType}
+                                    onChange={(event) =>
+                                      setEditProductPackageType(
+                                        event.target.value as (typeof PRODUCT_PACKAGE_TYPES)[number],
+                                      )
+                                    }
+                                    className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                                  >
+                                    {PRODUCT_PACKAGE_TYPES.map((option) => (
+                                      <option key={option} value={option}>
+                                        {option}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </label>
+                              </div>
+                              <label className="block">
+                                <span className="text-xs font-medium text-muted-foreground">
+                                  Trocar foto (opcional)
+                                </span>
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  onChange={(event) => setEditProductPhotoFile(event.target.files?.[0] ?? null)}
+                                  className="mt-1 block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-xs file:font-medium"
+                                />
+                              </label>
+                              {editProductError && (
+                                <p className="text-xs text-destructive">{editProductError}</p>
+                              )}
+                              <PrimaryButton onClick={submitEditProduct} disabled={editProductSaving}>
+                                {editProductCompressing
+                                  ? "Comprimindo foto..."
+                                  : editProductSaving
+                                    ? "Salvando..."
+                                    : "Salvar alterações"}
+                              </PrimaryButton>
+                            </div>
+                          )}
 
                           {isDeleting && (
                             <div className="mt-3 space-y-2">
