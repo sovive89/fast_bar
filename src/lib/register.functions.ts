@@ -51,6 +51,134 @@ export const confirmSession = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/**
+ * Abre uma comanda direto pelo caixa, sem o cliente escanear o QR code. Gera tudo igual ao fluxo
+ * do QR (cliente no CRM, link de acompanhamento, mesma dedupe por celular) — muda só quem digita.
+ *
+ * Já nasce aberta: o status "pending" existe para a equipe conferir que o cliente do QR está mesmo
+ * ali, e quando é a própria equipe que abre, essa conferência já aconteceu. Exigir confirmar
+ * depois seria dois cliques para o mesmo ato.
+ */
+export const openSessionByTeam = createServerFn({ method: "POST" })
+  .inputValidator((data: { name: string; phone: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess, sanitizeName, sanitizePhone, upsertCustomer } =
+      await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+
+    const name = sanitizeName(data.name);
+    const phone = sanitizePhone(data.phone);
+    if (!name || !phone) {
+      return { ok: false as const, message: "Informe nome completo e celular com DDD." };
+    }
+
+    // Mesma regra do fluxo do QR: celular que já tem comanda em andamento volta pra ela, em vez de
+    // abrir uma segunda comanda pro mesmo cliente e dividir o consumo em duas contas.
+    const { data: existing } = await admin()
+      .from("fastbar_sessions")
+      .select("id")
+      .eq("phone", phone)
+      .in("status", ["pending", "open"])
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      return { ok: true as const, sessionId: existing.id, existed: true as const };
+    }
+
+    const customerId = await upsertCustomer(name, phone);
+    const { data: inserted, error } = await admin()
+      .from("fastbar_sessions")
+      .insert({
+        customer_name: name,
+        phone,
+        status: "open",
+        started_at: new Date().toISOString(),
+        customer_id: customerId,
+      })
+      .select("id")
+      .single();
+
+    if (error || !inserted) {
+      return { ok: false as const, message: "Não foi possível abrir a comanda." };
+    }
+    return { ok: true as const, sessionId: inserted.id, existed: false as const };
+  });
+
+/**
+ * Comanda de balcão: uma por dia, para a venda na pressa em que não dá pra cadastrar ninguém.
+ * Registra produto, baixa de estoque e faturamento como qualquer outra — só não é relacionada a
+ * cliente nenhum.
+ *
+ * O que a mantém fora do CRM é `customer_id` nulo: registerCustomerSpend sai na hora quando não há
+ * cliente, então o consumo não é somado a ninguém. O celular vai vazio de propósito, e é ele o
+ * marcador confiável de "é do balcão" — sanitizePhone exige 10-11 dígitos, então "" nunca é o
+ * celular de um cliente de verdade.
+ *
+ * Uma por dia, não uma por venda: reaproveita a do dia se ainda estiver aberta. Se a do dia já foi
+ * fechada ou paga, a próxima venda abre outra — fechar o caixa do turno não pode travar a venda
+ * seguinte.
+ */
+export const openWalkInSession = createServerFn({ method: "POST" })
+  .inputValidator((data: { password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+
+    const now = new Date();
+    // O dia é o do bar (America/Sao_Paulo), não o UTC do servidor: sem isso, entre 21h e a
+    // meia-noite o servidor já estaria no dia seguinte e abriria uma segunda comanda no meio do
+    // movimento — justo no horário de pico.
+    const localDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).format(now); // YYYY-MM-DD
+    const dayStartIso = new Date(`${localDate}T00:00:00-03:00`).toISOString();
+
+    const { data: existing } = await admin()
+      .from("fastbar_sessions")
+      .select("id")
+      .eq("phone", "")
+      .eq("status", "open")
+      .gte("created_at", dayStartIso)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (existing) {
+      return { ok: true as const, sessionId: existing.id, existed: true as const };
+    }
+
+    // A data no nome deixa as comandas de balcão distinguíveis na lista de arquivadas — sem ela,
+    // seriam dezenas de linhas idênticas sem como saber de que dia é cada uma.
+    const [year, month, day] = localDate.split("-");
+    const { data: inserted, error } = await admin()
+      .from("fastbar_sessions")
+      .insert({
+        customer_name: `Comanda Balcão ${day}/${month}/${year}`,
+        phone: "",
+        status: "open",
+        started_at: now.toISOString(),
+        customer_id: null,
+      })
+      .select("id")
+      .single();
+
+    if (error || !inserted) {
+      return { ok: false as const, message: "Não foi possível abrir a comanda de balcão." };
+    }
+    return { ok: true as const, sessionId: inserted.id, existed: false as const };
+  });
+
 export const addTabItem = createServerFn({ method: "POST" })
   .inputValidator((data: { sessionId: string; productId: string }) => data)
   .handler(async ({ data }) => {

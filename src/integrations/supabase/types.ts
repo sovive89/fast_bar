@@ -253,6 +253,16 @@ export type Database = {
           phone: string
           total_spent: number
           total_visits: number
+          full_name: string | null
+          birthday_day: number | null
+          birthday_month: number | null
+          administrative_region: string | null
+          how_found_out: string | null
+          age_range: string | null
+          profession: string | null
+          favorite_music_genre: string | null
+          marketing_opt_in: boolean
+          profile_completed_at: string | null
         }
         Insert: {
           created_at?: string
@@ -264,6 +274,16 @@ export type Database = {
           phone: string
           total_spent?: number
           total_visits?: number
+          full_name?: string | null
+          birthday_day?: number | null
+          birthday_month?: number | null
+          administrative_region?: string | null
+          how_found_out?: string | null
+          age_range?: string | null
+          profession?: string | null
+          favorite_music_genre?: string | null
+          marketing_opt_in?: boolean
+          profile_completed_at?: string | null
         }
         Update: {
           created_at?: string
@@ -275,6 +295,16 @@ export type Database = {
           phone?: string
           total_spent?: number
           total_visits?: number
+          full_name?: string | null
+          birthday_day?: number | null
+          birthday_month?: number | null
+          administrative_region?: string | null
+          how_found_out?: string | null
+          age_range?: string | null
+          profession?: string | null
+          favorite_music_genre?: string | null
+          marketing_opt_in?: boolean
+          profile_completed_at?: string | null
         }
         Relationships: []
       }
@@ -848,6 +878,20 @@ export type Database = {
         }
         Returns: Json
       }
+      fastbar_update_product: {
+        Args: {
+          p_id: string
+          p_name: string
+          p_price: number
+          p_category: string
+          p_unit: string
+          p_package_type: string | null
+          p_image_url: string | null
+          p_change_image: boolean
+        }
+        Returns: Json
+      }
+      fastbar_update_product_category: { Args: { p_id: string; p_name: string }; Returns: Json }
       fastbar_remove_tab_item: { Args: { p_item_id: string }; Returns: Json }
       fastbar_restock_product: {
         Args: { p_product_id: string; p_quantity: number }
