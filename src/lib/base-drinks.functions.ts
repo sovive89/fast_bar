@@ -560,57 +560,32 @@ export const createProduct = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Preço inválido." };
     }
 
-    // Categoria precisa ser uma das cadastradas (comparação sem diferenciar maiúscula/minúscula,
-    // igual ao índice único de fastbar_product_categories) — um valor de cliente adulterado ou
-    // desatualizado não pode gravar um nome de categoria que não existe na entidade própria.
-    // Comparação em JS, não com ilike: `%` e `_` no nome digitado seriam tratados como curinga de
-    // LIKE, casando categoria errada (ou nenhuma) em vez do nome exato.
-    const wantedCategory = data.category.trim().toLowerCase();
-    const { data: allCategories } = await admin()
-      .from("fastbar_product_categories")
-      .select("name");
-    const matchedCategory = (allCategories ?? []).find(
-      (item) => item.name.toLowerCase() === wantedCategory,
-    );
-    if (!matchedCategory) {
-      return { ok: false as const, message: "Escolha uma categoria válida." };
-    }
-    const category = matchedCategory.name;
-
     const initialStock =
       data.stockQuantity && data.stockQuantity > 0 ? Math.floor(data.stockQuantity) : 0;
 
-    const { data: inserted, error } = await admin()
-      .from("fastbar_products")
-      .insert({
-        name,
-        category,
-        price,
-        unit,
-        package_type: data.packageType?.trim() || null,
-        image_url: data.imageUrl?.trim() || null,
-        stock_quantity: initialStock,
-      })
-      .select("id")
-      .single();
-
-    if (error || !inserted) {
-      return { ok: false as const, message: "Não foi possível salvar o produto." };
+    // A checagem de categoria e a inserção do produto acontecem juntas, travando a linha da
+    // categoria (fastbar_create_product), pra fechar a mesma corrida já fechada nas exclusões:
+    // sem isso, a categoria podia ser lida como existente aqui e apagada por outra aba entre a
+    // leitura e o insert, deixando o produto com um nome de categoria que não existe mais.
+    const { data: result, error } = await admin().rpc("fastbar_create_product", {
+      p_name: name,
+      p_price: price,
+      p_category: data.category.trim(),
+      p_unit: unit,
+      p_package_type: data.packageType?.trim() || null,
+      p_image_url: data.imageUrl?.trim() || null,
+      p_initial_stock: initialStock,
+    });
+    const parsed = result as { ok: boolean; code?: string; product_id?: string } | null;
+    if (error || !parsed) return { ok: false as const, message: "Não foi possível salvar o produto." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message: parsed.code === "category_not_found" ? "Escolha uma categoria válida." : "Não foi possível salvar o produto.",
+      };
     }
 
-    // Registra o estoque inicial como movimento: sem isso o saldo apareceria do nada, sem
-    // rastro, e o produto contaria como "sem nenhuma entrada" pra quem checa se já foi
-    // configurado.
-    if (initialStock > 0) {
-      await admin().from("fastbar_stock_movements").insert({
-        product_id: inserted.id,
-        quantity: initialStock,
-        movement_type: "in",
-        note: "Estoque inicial no cadastro",
-      });
-    }
-
-    return { ok: true as const, productId: inserted.id };
+    return { ok: true as const, productId: parsed.product_id! };
   });
 
 /** Recebe uma imagem em base64 (data URL) e sobe pro Storage, devolvendo a URL pública. */

@@ -836,6 +836,18 @@ export type Database = {
       fastbar_delete_ingredient: { Args: { p_id: string }; Returns: Json }
       fastbar_delete_product: { Args: { p_product_id: string }; Returns: Json }
       fastbar_delete_product_category: { Args: { p_id: string }; Returns: Json }
+      fastbar_create_product: {
+        Args: {
+          p_name: string
+          p_price: number
+          p_category: string
+          p_unit: string
+          p_package_type: string | null
+          p_image_url: string | null
+          p_initial_stock: number
+        }
+        Returns: Json
+      }
       fastbar_remove_tab_item: { Args: { p_item_id: string }; Returns: Json }
       fastbar_restock_product: {
         Args: { p_product_id: string; p_quantity: number }

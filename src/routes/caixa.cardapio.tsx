@@ -127,6 +127,9 @@ function CardapioPage() {
   const [compressing, setCompressing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  // Sugestão de item já existente enquanto digita o nome — evita cadastrar de novo algo que já
+  // está no estoque ou no cardápio. "Ignorar" fecha o aviso pra quem realmente quer um item novo.
+  const [nameSuggestionsDismissed, setNameSuggestionsDismissed] = useState(false);
 
   // Insumos do estoque disponíveis para compor o item, e a ficha sendo montada aqui mesmo — sem
   // isso, montar o cardápio exigia digitar o nome do zero e depois ir a outra aba fazer a ligação.
@@ -209,6 +212,11 @@ function CardapioPage() {
     const result = await deleteCategory({ data: { id, password } });
     if (result.ok) {
       setDeletingCategoryId(null);
+      // Se a categoria apagada era a selecionada no formulário de produto, o select ficaria
+      // apontando pra um nome que não existe mais — limpa pra load() escolher outra válida.
+      if (categories.some((item) => item.id === id && item.name === category)) {
+        setCategory("");
+      }
       await load();
     }
     return result;
@@ -360,7 +368,25 @@ function CardapioPage() {
     setStockQuantity("");
     setPhotoFile(null);
     setShowForm(false);
+    setNameSuggestionsDismissed(false);
     await load();
+  }
+
+  const nameMatches = useMemo(() => {
+    const query = name.trim().toLowerCase();
+    if (query.length < 2) return { products: [], stock: [] };
+    return {
+      products: products.filter((item) => item.name.toLowerCase().includes(query)).slice(0, 5),
+      stock: stockOptions.filter((item) => item.name.toLowerCase().includes(query)).slice(0, 5),
+    };
+  }, [name, products, stockOptions]);
+
+  function addComponentFromStock(stockId: string) {
+    setComponents((current) => [
+      ...current,
+      { key: `c-${Date.now()}-${current.length}`, stockId, quantity: "" },
+    ]);
+    setNameSuggestionsDismissed(true);
   }
 
   const grouped = useMemo(() => {
@@ -468,7 +494,10 @@ function CardapioPage() {
           </div>
 
           <button
-            onClick={() => setShowForm((value) => !value)}
+            onClick={() => {
+              setShowForm((value) => !value);
+              setNameSuggestionsDismissed(false);
+            }}
             className="w-full rounded-xl border border-dashed border-border py-3 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
             {showForm ? "Cancelar" : "+ Novo produto"}
@@ -478,6 +507,48 @@ function CardapioPage() {
             <SectionCard title="Novo produto do cardápio">
               <div className="space-y-3">
                 <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
+                {!nameSuggestionsDismissed &&
+                  (nameMatches.products.length > 0 || nameMatches.stock.length > 0) && (
+                    <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold">Já existe algo parecido</p>
+                        <button
+                          onClick={() => setNameSuggestionsDismissed(true)}
+                          className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Ignorar
+                        </button>
+                      </div>
+                      {nameMatches.products.length > 0 && (
+                        <div className="mt-1.5 space-y-1">
+                          <p className="text-xs text-muted-foreground">No cardápio:</p>
+                          {nameMatches.products.map((item) => (
+                            <p key={item.id} className="text-xs">
+                              {item.name} · {item.category}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      {nameMatches.stock.length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          <p className="text-xs text-muted-foreground">No estoque:</p>
+                          {nameMatches.stock.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between gap-2">
+                              <span className="text-xs">
+                                {item.name} ({item.current_stock} {item.unit})
+                              </span>
+                              <button
+                                onClick={() => addComponentFromStock(item.id)}
+                                className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                              >
+                                + Puxar como insumo
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 {/* Categoria é uma entidade própria (ver seção abaixo) — aqui só escolhe entre as
                     que já existem. Sem opção de criar embutida: criar categoria não é criar produto. */}
                 <label className="block">
