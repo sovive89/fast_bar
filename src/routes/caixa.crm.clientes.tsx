@@ -168,7 +168,10 @@ function CustomersOverview() {
         <div className="mt-4 rounded-2xl border border-border bg-card p-4">
           <p className="text-sm font-semibold">Distribuição por segmento</p>
           <Suspense fallback={<div className="mt-3 h-24" />}>
-            <SegmentDistributionChart counts={Object.fromEntries(counts)} />
+            <SegmentDistributionChart
+              values={Object.fromEntries(counts)}
+              emptyLabel="Sem clientes classificados ainda."
+            />
           </Suspense>
         </div>
       )}

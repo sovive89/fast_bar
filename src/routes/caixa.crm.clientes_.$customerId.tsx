@@ -23,6 +23,17 @@ type Customer = {
   first_seen_at: string;
   last_seen_at: string;
   notes: string | null;
+  // Coletados na segunda tela, depois de abrir a comanda — todos opcionais, ninguém é obrigado
+  // a preencher além do consentimento de marketing.
+  full_name: string | null;
+  birthday_day: number | null;
+  birthday_month: number | null;
+  administrative_region: string | null;
+  how_found_out: string | null;
+  age_range: string | null;
+  profession: string | null;
+  favorite_music_genre: string | null;
+  marketing_opt_in: boolean;
 };
 
 type Visit = {
@@ -218,6 +229,72 @@ function CustomerDetail() {
           </div>
         </div>
       </div>
+
+      {/* Dados de marketing: coletados na segunda tela depois de abrir a comanda, todos
+          opcionais — só aparece o que a pessoa realmente preencheu. */}
+      {(customer.full_name ||
+        customer.birthday_day ||
+        customer.administrative_region ||
+        customer.how_found_out ||
+        customer.age_range ||
+        customer.profession ||
+        customer.favorite_music_genre) && (
+        <div className="mt-6 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Dados de cadastro</p>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+            {customer.full_name && (
+              <div>
+                <p className="text-xs text-muted-foreground">Nome completo</p>
+                <p className="mt-0.5 font-semibold">{customer.full_name}</p>
+              </div>
+            )}
+            {customer.birthday_day && customer.birthday_month && (
+              <div>
+                <p className="text-xs text-muted-foreground">Aniversário</p>
+                <p className="mt-0.5 font-semibold">
+                  {String(customer.birthday_day).padStart(2, "0")}/
+                  {String(customer.birthday_month).padStart(2, "0")}
+                </p>
+              </div>
+            )}
+            {customer.administrative_region && (
+              <div>
+                <p className="text-xs text-muted-foreground">Bairro / RA</p>
+                <p className="mt-0.5 font-semibold">{customer.administrative_region}</p>
+              </div>
+            )}
+            {customer.how_found_out && (
+              <div>
+                <p className="text-xs text-muted-foreground">Como conheceu</p>
+                <p className="mt-0.5 font-semibold">{customer.how_found_out}</p>
+              </div>
+            )}
+            {customer.age_range && (
+              <div>
+                <p className="text-xs text-muted-foreground">Faixa etária</p>
+                <p className="mt-0.5 font-semibold">{customer.age_range}</p>
+              </div>
+            )}
+            {customer.profession && (
+              <div>
+                <p className="text-xs text-muted-foreground">Profissão</p>
+                <p className="mt-0.5 font-semibold">{customer.profession}</p>
+              </div>
+            )}
+            {customer.favorite_music_genre && (
+              <div>
+                <p className="text-xs text-muted-foreground">Gênero musical</p>
+                <p className="mt-0.5 font-semibold">{customer.favorite_music_genre}</p>
+              </div>
+            )}
+          </div>
+          <p className="mt-3 border-t border-border pt-3 text-xs text-muted-foreground">
+            {customer.marketing_opt_in
+              ? "✓ Aceita receber promoções por WhatsApp/Instagram"
+              : "✗ Não aceita receber promoções"}
+          </p>
+        </div>
+      )}
 
       <div className="mt-6 rounded-2xl border border-border bg-card p-4">
         <p className="text-sm font-semibold">Anotações</p>

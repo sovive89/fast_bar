@@ -66,6 +66,7 @@ type Overview = {
     returningCount: number;
   };
   segmentCounts: Record<string, number>;
+  revenueBySegment: Record<string, number>;
 };
 
 const PERIODS = [
@@ -261,7 +262,24 @@ function Reports() {
           <div className="rounded-2xl border border-border bg-card p-4">
             <p className="text-sm font-semibold">Base de clientes por segmento</p>
             <Suspense fallback={<div className="mt-3 h-24" />}>
-              <SegmentDistributionChart counts={overview.segmentCounts} />
+              <SegmentDistributionChart
+                values={overview.segmentCounts}
+                emptyLabel="Sem clientes classificados ainda."
+              />
+            </Suspense>
+          </div>
+
+          {/* Cruza segmento com dinheiro: "quantos clientes" já tava acima, isso mostra quem
+              sustenta o caixa em R$ — cliente novo pode ser maioria em contagem e minoria em
+              faturamento, ou o contrário. Comanda de balcão não entra, não tem cliente pra somar. */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <p className="text-sm font-semibold">Faturamento por segmento</p>
+            <Suspense fallback={<div className="mt-3 h-24" />}>
+              <SegmentDistributionChart
+                values={overview.revenueBySegment}
+                formatValue={brl}
+                emptyLabel="Sem comandas de cliente cadastrado nesse período."
+              />
             </Suspense>
           </div>
 
