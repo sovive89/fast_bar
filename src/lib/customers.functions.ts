@@ -26,6 +26,63 @@ export const getCustomersOverview = createServerFn({ method: "POST" }).handler(a
   };
 });
 
+/**
+ * Números agregados da página inicial do CRM — cruza dado que já existe no banco (coletado na
+ * segunda tela pós-abertura de comanda) mas nunca tinha virado informação acionável.
+ */
+export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  const { classifyLead, vipSpendThreshold } = await import("./crm");
+  await assertRegisterAccess();
+
+  const { data: customers } = await admin()
+    .from("fastbar_customers")
+    .select(
+      "id, name, total_visits, total_spent, last_seen_at, birthday_day, birthday_month, how_found_out, marketing_opt_in",
+    );
+  const rows = customers ?? [];
+  const threshold = vipSpendThreshold(rows);
+  const now = Date.now();
+
+  // Faturamento por segmento: total histórico acumulado em fastbar_customers.total_spent, não um
+  // período — diferente do gráfico de Relatórios, que soma comandas pagas dentro do intervalo
+  // escolhido. Aqui é "quem já trouxe mais dinheiro pra casa desde sempre".
+  const revenueBySegment: Record<string, number> = {};
+  for (const customer of rows) {
+    const segment = classifyLead(customer, threshold, now);
+    revenueBySegment[segment] = (revenueBySegment[segment] ?? 0) + Number(customer.total_spent);
+  }
+
+  // Aniversariantes do mês corrente, no fuso do bar — pra campanha de aniversário ou só ligar
+  // desejando feliz aniversário no dia.
+  const currentMonth = Number(
+    new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", month: "numeric" }).format(
+      new Date(),
+    ),
+  );
+  const birthdaysThisMonth = rows
+    .filter((c) => c.birthday_month === currentMonth)
+    .map((c) => ({ id: c.id, name: c.name, day: c.birthday_day! }))
+    .sort((a, b) => a.day - b.day);
+
+  // De onde vem a base — só conta quem respondeu, "Não informado" inflaria um canal que não existe.
+  const howFoundOutCounts: Record<string, number> = {};
+  for (const customer of rows) {
+    if (!customer.how_found_out) continue;
+    howFoundOutCounts[customer.how_found_out] = (howFoundOutCounts[customer.how_found_out] ?? 0) + 1;
+  }
+
+  const marketingOptInCount = rows.filter((c) => c.marketing_opt_in).length;
+
+  return {
+    revenueBySegment,
+    birthdaysThisMonth,
+    howFoundOutCounts,
+    marketingOptInCount,
+    totalCustomers: rows.length,
+  };
+});
+
 export const getCustomerDetail = createServerFn({ method: "POST" })
   .inputValidator((data: { customerId: string }) => data)
   .handler(async ({ data }) => {

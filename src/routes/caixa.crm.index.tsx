@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { brl } from "@/lib/format";
-import { getCustomersOverview } from "@/lib/customers.functions";
+import { getCrmDashboard, getCustomersOverview } from "@/lib/customers.functions";
 import type { LeadSegment } from "@/lib/crm";
 
 // Ver comentário em caixa.crm.clientes.tsx: import estático desse componente em mais de uma rota
@@ -31,15 +31,30 @@ export const Route = createFileRoute("/caixa/crm/")({
  * aba Clientes. Deixa espaço livre pra Campanhas/Fidelidade entrarem aqui do lado dos números,
  * sem competir com uma lista de dezenas de cards.
  */
+type Dashboard = {
+  revenueBySegment: Record<string, number>;
+  birthdaysThisMonth: { id: string; name: string; day: number }[];
+  howFoundOutCounts: Record<string, number>;
+  marketingOptInCount: number;
+  totalCustomers: number;
+};
+
+const MONTH_NAME = new Intl.DateTimeFormat("pt-BR", { month: "long" }).format(new Date());
+
 function CrmOverview() {
   const [customers, setCustomers] = useState<Customer[]>([]);
+  const [dashboard, setDashboard] = useState<Dashboard | null>(null);
   const load = useServerFn(getCustomersOverview);
+  const loadDashboard = useServerFn(getCrmDashboard);
 
   useEffect(() => {
     let cancelled = false;
     async function run() {
-      const result = await load();
-      if (!cancelled) setCustomers(result.customers as Customer[]);
+      const [result, dashboardResult] = await Promise.all([load(), loadDashboard()]);
+      if (!cancelled) {
+        setCustomers(result.customers as Customer[]);
+        setDashboard(dashboardResult as Dashboard);
+      }
     }
     void run();
     const poll = setInterval(() => void run(), 20000);
@@ -102,6 +117,76 @@ function CrmOverview() {
           />
         </Suspense>
       </div>
+
+      {/* Faturamento acumulado por segmento — total histórico (fastbar_customers.total_spent),
+          diferente do gráfico por período em Relatórios. Responde "quem já trouxe mais dinheiro
+          pra casa desde sempre", não "nesse mês". */}
+      {dashboard && (
+        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Faturamento acumulado por segmento</p>
+          <Suspense fallback={<div className="mt-3 h-24" />}>
+            <SegmentDistributionChart
+              values={dashboard.revenueBySegment}
+              formatValue={brl}
+              emptyLabel="Sem faturamento registrado ainda."
+            />
+          </Suspense>
+        </div>
+      )}
+
+      {dashboard && dashboard.birthdaysThisMonth.length > 0 && (
+        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Aniversariantes de {MONTH_NAME}</p>
+          <ul className="mt-3 space-y-1.5 text-sm">
+            {dashboard.birthdaysThisMonth.map((c) => (
+              <li key={c.id} className="flex items-center justify-between gap-3">
+                <span className="min-w-0 truncate">{c.name}</span>
+                <span className="shrink-0 text-muted-foreground">dia {c.day}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {dashboard && Object.keys(dashboard.howFoundOutCounts).length > 0 && (
+        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Como conheceu o bar</p>
+          <ul className="mt-3 space-y-2">
+            {Object.entries(dashboard.howFoundOutCounts)
+              .sort((a, b) => b[1] - a[1])
+              .map(([source, count]) => {
+                const max = Math.max(...Object.values(dashboard.howFoundOutCounts));
+                return (
+                  <li key={source}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span>{source}</span>
+                      <span className="text-muted-foreground">{count}</span>
+                    </div>
+                    <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-secondary">
+                      <div
+                        className="h-full rounded-full bg-primary"
+                        style={{ width: `${(count / max) * 100}%` }}
+                      />
+                    </div>
+                  </li>
+                );
+              })}
+          </ul>
+        </div>
+      )}
+
+      {dashboard && dashboard.totalCustomers > 0 && (
+        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Aceitam receber promoções</p>
+          <p className="mt-1 text-2xl font-bold">
+            {((dashboard.marketingOptInCount / dashboard.totalCustomers) * 100).toFixed(0)}%
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {dashboard.marketingOptInCount} de {dashboard.totalCustomers} clientes — quantos dá
+            pra alcançar numa campanha de WhatsApp/Instagram
+          </p>
+        </div>
+      )}
 
       <Link
         to="/caixa/crm/clientes"
