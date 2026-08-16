@@ -35,6 +35,12 @@ export default defineConfig({
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
+          // Uma aba do caixa aberta durante um deploy não pode ficar presa na versão antiga até
+          // alguém lembrar de dar refresh — skipWaiting ativa o SW novo assim que ele termina de
+          // instalar, e clientsClaim faz ele assumir o controle das abas já abertas na hora,
+          // sem esperar a próxima navegação.
+          skipWaiting: true,
+          clientsClaim: true,
         },
       }),
     ],
