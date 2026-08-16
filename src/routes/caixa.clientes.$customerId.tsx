@@ -35,6 +35,12 @@ type Visit = {
   total: number;
 };
 
+const PAYMENT_LABEL: Record<string, string> = {
+  dinheiro: "Dinheiro",
+  cartao: "Cartão",
+  pix: "Pix",
+};
+
 function formatDate(value: string) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
@@ -49,6 +55,11 @@ function CustomerDetail() {
   const [segment, setSegment] = useState<LeadSegment | null>(null);
   const [averageTicket, setAverageTicket] = useState(0);
   const [idleDays, setIdleDays] = useState(0);
+  const [favoriteCategory, setFavoriteCategory] = useState<string | null>(null);
+  const [preferredPaymentMethod, setPreferredPaymentMethod] = useState<string | null>(null);
+  const [peakHour, setPeakHour] = useState<number | null>(null);
+  const [avgDaysBetweenVisits, setAvgDaysBetweenVisits] = useState<number | null>(null);
+  const [revenueShare, setRevenueShare] = useState(0);
   const [loading, setLoading] = useState(true);
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
@@ -69,6 +80,11 @@ function CustomerDetail() {
         setSegment(result.segment as LeadSegment | null);
         setAverageTicket(result.averageTicket);
         setIdleDays(result.idleDays);
+        setFavoriteCategory(result.favoriteCategory);
+        setPreferredPaymentMethod(result.preferredPaymentMethod);
+        setPeakHour(result.peakHour);
+        setAvgDaysBetweenVisits(result.avgDaysBetweenVisits);
+        setRevenueShare(result.revenueShare);
         setNotes((result.customer as Customer | null)?.notes ?? "");
         setLoading(false);
       }
@@ -166,6 +182,42 @@ function CustomerDetail() {
           </ul>
         </div>
       )}
+
+      {/* Perfil de consumo: o que dá pra saber sobre o hábito dele além de quanto gastou —
+          útil na hora de decidir uma promoção ou puxar assunto no balcão. */}
+      <div className="mt-6 rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold">Perfil de consumo</p>
+        <div className="mt-3 grid grid-cols-2 gap-3 text-sm sm:grid-cols-3">
+          <div>
+            <p className="text-xs text-muted-foreground">Categoria favorita</p>
+            <p className="mt-0.5 font-semibold">{favoriteCategory ?? "—"}</p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Pagamento preferido</p>
+            <p className="mt-0.5 font-semibold">
+              {preferredPaymentMethod ? (PAYMENT_LABEL[preferredPaymentMethod] ?? preferredPaymentMethod) : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Horário que mais vem</p>
+            <p className="mt-0.5 font-semibold">
+              {peakHour !== null ? `${String(peakHour).padStart(2, "0")}h` : "—"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Frequência</p>
+            <p className="mt-0.5 font-semibold">
+              {avgDaysBetweenVisits !== null
+                ? `a cada ${Math.round(avgDaysBetweenVisits)} dias`
+                : "só uma visita"}
+            </p>
+          </div>
+          <div>
+            <p className="text-xs text-muted-foreground">Fatia do faturamento</p>
+            <p className="mt-0.5 font-semibold">{(revenueShare * 100).toFixed(1)}% do total</p>
+          </div>
+        </div>
+      </div>
 
       <div className="mt-6 rounded-2xl border border-border bg-card p-4">
         <p className="text-sm font-semibold">Anotações</p>
