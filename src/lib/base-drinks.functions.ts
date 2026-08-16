@@ -615,15 +615,37 @@ export const createProduct = createServerFn({ method: "POST" })
 /** Edita nome, preço, categoria, unidade, tipo de embalagem e (opcionalmente) foto de um produto
  * já cadastrado. Não mexe na ficha técnica nem no estoque — isso continua em Estoque → Ficha
  * técnica e nos botões de entrada, que já têm suas próprias telas. */
+/** Remove um objeto do bucket fastbar-products, mas só se nenhum outro produto ainda o referencia
+ * — createProduct/updateProduct aceitam a image_url que o cliente manda de volta depois do
+ * upload, sem travar dono único do arquivo, então apagar sem checar isso podia derrubar a foto de
+ * um produto diferente que aproveitou a mesma URL. */
+async function removeProductPhotoIfUnused(
+  admin: (typeof import("./fastbar.server"))["admin"],
+  imageUrl: string,
+) {
+  const { count } = await admin()
+    .from("fastbar_products")
+    .select("id", { count: "exact", head: true })
+    .eq("image_url", imageUrl);
+  if (count) return;
+  const marker = "/fastbar-products/";
+  const index = imageUrl.indexOf(marker);
+  if (index === -1) return;
+  const path = imageUrl.slice(index + marker.length);
+  await admin().storage.from("fastbar-products").remove([path]);
+}
+
 export const updateProduct = createServerFn({ method: "POST" })
   .inputValidator(
+    // packageType é obrigatório aqui (diferente de createProduct): omitir gravaria null e
+    // apagaria o tipo de embalagem que o produto já tinha numa edição que nem mexia nisso.
     (data: {
       productId: string;
       name: string;
       price: number;
       category: string;
       unit: string;
-      packageType?: string;
+      packageType: string;
       imageUrl?: string;
     }) => data,
   )
@@ -642,6 +664,13 @@ export const updateProduct = createServerFn({ method: "POST" })
     }
 
     const changeImage = typeof data.imageUrl === "string";
+    const newImageUrl = changeImage ? data.imageUrl!.trim() || null : null;
+
+    // Busca a foto atual antes de trocar: depois do UPDATE não tem mais como saber qual era.
+    const { data: before } = changeImage
+      ? await admin().from("fastbar_products").select("image_url").eq("id", data.productId).maybeSingle()
+      : { data: null };
+
     const { data: result, error } = await admin().rpc("fastbar_update_product", {
       p_id: data.productId,
       p_name: name,
@@ -649,12 +678,19 @@ export const updateProduct = createServerFn({ method: "POST" })
       p_category: data.category.trim(),
       p_unit: unit,
       p_package_type: data.packageType?.trim() || null,
-      p_image_url: changeImage ? data.imageUrl!.trim() || null : null,
+      p_image_url: newImageUrl,
       p_change_image: changeImage,
     });
     const parsed = result as { ok: boolean; code?: string } | null;
-    if (error || !parsed) return { ok: false as const, message: "Não foi possível salvar as alterações." };
+    if (error || !parsed) {
+      // A troca não foi gravada — o arquivo recém-subido não tem produto nenhum apontando pra
+      // ele. Best-effort: se a limpeza falhar aqui, sobra um órfão no bucket, não um estado
+      // inconsistente no cardápio.
+      if (changeImage && newImageUrl) await removeProductPhotoIfUnused(admin, newImageUrl);
+      return { ok: false as const, message: "Não foi possível salvar as alterações." };
+    }
     if (!parsed.ok) {
+      if (changeImage && newImageUrl) await removeProductPhotoIfUnused(admin, newImageUrl);
       const messages: Record<string, string> = {
         not_found: "Produto não encontrado.",
         category_not_found: "Escolha uma categoria válida.",
@@ -664,6 +700,12 @@ export const updateProduct = createServerFn({ method: "POST" })
         message: messages[parsed.code ?? ""] ?? "Não foi possível salvar as alterações.",
       };
     }
+
+    // Gravou com sucesso: a foto antiga (se havia e é diferente da nova) virou órfã.
+    if (changeImage && before?.image_url && before.image_url !== newImageUrl) {
+      await removeProductPhotoIfUnused(admin, before.image_url);
+    }
+
     return { ok: true as const };
   });
 

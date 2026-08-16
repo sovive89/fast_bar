@@ -257,18 +257,25 @@ function CardapioPage() {
     if (!editingCategoryId) return;
     setEditCategoryError(null);
     setEditCategorySaving(true);
-    const result = await renameCategory({
-      data: { id: editingCategoryId, name: editCategoryName },
-    });
-    setEditCategorySaving(false);
-    if (!result.ok) return setEditCategoryError(result.message ?? "Não foi possível salvar.");
-    // Se a categoria renomeada é a selecionada no formulário de "Novo produto", acompanha o novo
-    // nome — senão o select ficaria com um valor que não existe mais nas opções.
-    if (categories.some((item) => item.id === editingCategoryId && item.name === category)) {
-      setCategory(editCategoryName.trim());
+    try {
+      const result = await renameCategory({
+        data: { id: editingCategoryId, name: editCategoryName },
+      });
+      if (!result.ok) return setEditCategoryError(result.message ?? "Não foi possível salvar.");
+      // Se a categoria renomeada é a selecionada no formulário de "Novo produto" ou no de editar
+      // um produto já existente, acompanha o novo nome — senão o select ficaria com um valor que
+      // não existe mais nas opções e a próxima tentativa de salvar falharia sem explicação.
+      const renamedFrom = categories.find((item) => item.id === editingCategoryId)?.name;
+      const newName = editCategoryName.trim();
+      if (renamedFrom === category) setCategory(newName);
+      if (renamedFrom === editProductCategory) setEditProductCategory(newName);
+      setEditingCategoryId(null);
+      await load();
+    } catch {
+      setEditCategoryError("Não foi possível salvar — tente de novo.");
+    } finally {
+      setEditCategorySaving(false);
     }
-    setEditingCategoryId(null);
-    await load();
   }
 
   useEffect(() => {
@@ -359,45 +366,46 @@ function CardapioPage() {
     if (!editProductCategory) return setEditProductError("Escolha uma categoria.");
 
     setEditProductSaving(true);
-    let imageUrl: string | undefined;
-    if (editProductPhotoFile) {
-      setEditProductCompressing(true);
-      let compressed: { base64: string; contentType: string };
-      try {
-        compressed = await compressImageForUpload(editProductPhotoFile);
-      } catch {
-        setEditProductCompressing(false);
-        setEditProductSaving(false);
-        return setEditProductError("Não foi possível processar a foto. Tente outra imagem.");
-      }
-      setEditProductCompressing(false);
+    try {
+      let imageUrl: string | undefined;
+      if (editProductPhotoFile) {
+        setEditProductCompressing(true);
+        let compressed: { base64: string; contentType: string };
+        try {
+          compressed = await compressImageForUpload(editProductPhotoFile);
+        } catch {
+          return setEditProductError("Não foi possível processar a foto. Tente outra imagem.");
+        } finally {
+          setEditProductCompressing(false);
+        }
 
-      const jpgFileName = editProductPhotoFile.name.replace(/\.\w+$/, "") + ".jpg";
-      const uploadResult = await uploadPhoto({
-        data: { fileName: jpgFileName, base64: compressed.base64, contentType: compressed.contentType },
+        const jpgFileName = editProductPhotoFile.name.replace(/\.\w+$/, "") + ".jpg";
+        const uploadResult = await uploadPhoto({
+          data: { fileName: jpgFileName, base64: compressed.base64, contentType: compressed.contentType },
+        });
+        if (!uploadResult.ok) return setEditProductError(uploadResult.message);
+        imageUrl = uploadResult.url;
+      }
+
+      const result = await update({
+        data: {
+          productId: editingProductId,
+          name: editProductName,
+          price: priceNumber,
+          category: editProductCategory,
+          unit: editProductUnit,
+          packageType: editProductPackageType,
+          ...(imageUrl !== undefined ? { imageUrl } : {}),
+        },
       });
-      if (!uploadResult.ok) {
-        setEditProductSaving(false);
-        return setEditProductError(uploadResult.message);
-      }
-      imageUrl = uploadResult.url;
+      if (!result.ok) return setEditProductError(result.message);
+      setEditingProductId(null);
+      await load();
+    } catch {
+      setEditProductError("Não foi possível salvar — tente de novo.");
+    } finally {
+      setEditProductSaving(false);
     }
-
-    const result = await update({
-      data: {
-        productId: editingProductId,
-        name: editProductName,
-        price: priceNumber,
-        category: editProductCategory,
-        unit: editProductUnit,
-        packageType: editProductPackageType,
-        ...(imageUrl !== undefined ? { imageUrl } : {}),
-      },
-    });
-    setEditProductSaving(false);
-    if (!result.ok) return setEditProductError(result.message);
-    setEditingProductId(null);
-    await load();
   }
 
   async function submitNewProduct() {
