@@ -41,13 +41,18 @@ export const SEGMENT_BAR_FILL: Record<LeadSegment, string> = {
 /** Mesmas cores de SEGMENT_BAR_FILL, mas como valor de cor de verdade — recharts pinta via `fill`,
  * não aceita classe Tailwind. Mesma ordem fixa de SEGMENT_ORDER em toda tela que mostra segmento,
  * pra identidade nunca trocar de cor entre um gráfico e outro. */
+// Validado com scripts/validate_palette.js da diretriz de visualização de dados (skill dataviz)
+// contra o fundo escuro do app — os 6 primeiros slots categóricos da paleta de referência, na
+// ordem dada (não embaralhados: fora dessa ordem, alguns pares vizinhos falham o piso de
+// diferenciação visual pra visão normal, não só daltonismo). Passa nos 5 critérios: banda de
+// luminosidade, piso de croma, separação por daltonismo, piso de visão normal e contraste.
 export const SEGMENT_CHART_COLOR: Record<LeadSegment, string> = {
-  vip: "var(--primary)",
-  fiel: "#10b981",
-  recorrente: "#0ea5e9",
-  novo: "var(--muted-foreground)",
-  risco: "#f59e0b",
-  perdido: "var(--destructive)",
+  vip: "#3987e5",
+  fiel: "#d95926",
+  recorrente: "#199e70",
+  novo: "#c98500",
+  risco: "#d55181",
+  perdido: "#008300",
 };
 
 export const SEGMENT_HINT: Record<LeadSegment, string> = {

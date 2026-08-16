@@ -24,7 +24,7 @@ const SegmentDistributionChart = lazy(() =>
 export const Route = createFileRoute("/caixa/relatorios")({
   head: () => ({
     meta: [
-      { title: "Relatórios | FastBar" },
+      { title: "Relatórios Vendas | FastBar" },
       {
         name: "description",
         content: "Faturamento, ticket médio, produtos mais vendidos e formas de pagamento.",
@@ -130,7 +130,7 @@ function Reports() {
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-          Relatórios
+          Relatórios Vendas
         </p>
         <h1 className="mt-1 text-3xl font-bold">Faturamento</h1>
       </div>

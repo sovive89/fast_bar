@@ -51,7 +51,7 @@ function RegisterLayout() {
             CRM
           </Link>
           <Link to="/caixa/relatorios" className={tabClass("relatorios")}>
-            Relatórios
+            Relatórios Vendas
           </Link>
         </div>
         <button
