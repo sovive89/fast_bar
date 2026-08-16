@@ -172,8 +172,8 @@ export const submitCustomerProfile = createServerFn({ method: "POST" })
       .from("fastbar_customers")
       .update({
         full_name: fullName,
-        birthday_day: hasDay ? data.birthdayDay : null,
-        birthday_month: hasMonth ? data.birthdayMonth : null,
+        birthday_day: data.birthdayDay ?? null,
+        birthday_month: data.birthdayMonth ?? null,
         administrative_region: data.administrativeRegion?.trim() || null,
         how_found_out: data.howFoundOut?.trim() || null,
         age_range: data.ageRange?.trim() || null,

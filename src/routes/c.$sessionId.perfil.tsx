@@ -77,15 +77,15 @@ function CustomerProfilePage() {
     const result = await submit({
       data: {
         sessionId,
-        fullName: fullName || undefined,
-        birthdayDay: birthdayDay ? Number(birthdayDay) : undefined,
-        birthdayMonth: birthdayMonth ? Number(birthdayMonth) : undefined,
-        administrativeRegion: administrativeRegion || undefined,
-        howFoundOut: howFoundOut || undefined,
-        ageRange: ageRange || undefined,
-        profession: profession || undefined,
-        favoriteMusicGenre: favoriteMusicGenre || undefined,
         marketingOptIn,
+        ...(fullName ? { fullName } : {}),
+        ...(birthdayDay ? { birthdayDay: Number(birthdayDay) } : {}),
+        ...(birthdayMonth ? { birthdayMonth: Number(birthdayMonth) } : {}),
+        ...(administrativeRegion ? { administrativeRegion } : {}),
+        ...(howFoundOut ? { howFoundOut } : {}),
+        ...(ageRange ? { ageRange } : {}),
+        ...(profession ? { profession } : {}),
+        ...(favoriteMusicGenre ? { favoriteMusicGenre } : {}),
       },
     });
     if (!result.ok) {
