@@ -5,10 +5,13 @@ import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl } from "@/lib/format";
 import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
-import { deactivateProduct } from "@/lib/register.functions";
+import { deactivateProduct, deleteProduct as deleteProductFn } from "@/lib/register.functions";
 import {
   createProduct,
+  createProductCategory,
+  deleteProductCategory,
   getBaseDrinksOverview,
+  listProductCategories,
   setRecipeItems,
   uploadProductPhoto,
   PRODUCT_UNITS,
@@ -114,7 +117,7 @@ function CardapioPage() {
   const [restockError, setRestockError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
-  const [category, setCategory] = useState("Bebidas");
+  const [category, setCategory] = useState("");
   const [price, setPrice] = useState("");
   const [unit, setUnit] = useState<(typeof PRODUCT_UNITS)[number]>("un");
   const [packageType, setPackageType] = useState<(typeof PRODUCT_PACKAGE_TYPES)[number]>("Lata");
@@ -123,23 +126,46 @@ function CardapioPage() {
   const [saving, setSaving] = useState(false);
   const [compressing, setCompressing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  // Sugestão de item já existente enquanto digita o nome — evita cadastrar de novo algo que já
+  // está no estoque ou no cardápio. "Ignorar"/"+ Puxar como insumo" guardam os ids que já
+  // apareceram, não um booleano: assim, digitar mais letras do mesmo nome (que continua batendo
+  // com os mesmos itens) não faz o aviso reaparecer a cada tecla — só quando surge um item novo.
+  const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<Set<string>>(new Set());
 
   // Insumos do estoque disponíveis para compor o item, e a ficha sendo montada aqui mesmo — sem
   // isso, montar o cardápio exigia digitar o nome do zero e depois ir a outra aba fazer a ligação.
   const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
   const [components, setComponents] = useState<ComponentRow[]>([]);
-  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  // Categoria é uma divisão do menu, não um produto — cadastro próprio, separado do formulário
+  // de produto, pra "criar categoria" nunca virar "criar um produto vazio só pra registrar o nome".
+  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [showCategoryForm, setShowCategoryForm] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [categorySaving, setCategorySaving] = useState(false);
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
 
   const loadOverview = useServerFn(getStockOverview);
   const loadStock = useServerFn(getBaseDrinksOverview);
+  const loadCategories = useServerFn(listProductCategories);
+  const createCategory = useServerFn(createProductCategory);
+  const deleteCategory = useServerFn(deleteProductCategory);
   const productEntry = useServerFn(addProductEntry);
   const removeProduct = useServerFn(deactivateProduct);
+  const deleteProduct = useServerFn(deleteProductFn);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
   const saveRecipe = useServerFn(setRecipeItems);
 
   async function load() {
-    const [result, stock] = await Promise.all([loadOverview(), loadStock()]);
+    const [result, stock, categoriesResult] = await Promise.all([
+      loadOverview(),
+      loadStock(),
+      loadCategories(),
+    ]);
+    setLoadError(null);
     setProducts(result.products as Product[]);
     setRecipeProductIds(new Set(result.recipeProductIds));
     setPendingProductIds(new Set(result.pendingProductIds));
@@ -153,11 +179,60 @@ function CardapioPage() {
         kind: "ingredient" as const,
       })),
     ]);
+    setCategories(categoriesResult.categories);
+    // Primeiro carregamento: começa com a primeira categoria já selecionada, pra não deixar o
+    // formulário de produto abrir sem nenhuma escolhida.
+    setCategory((current) => current || categoriesResult.categories[0]?.name || "");
+  }
+
+  async function submitNewCategory() {
+    // Guarda contra duplo-envio: sem isso, apertar Enter de novo durante o pedido em andamento
+    // dispara uma segunda criação e volta um "já existe" falso pra quem só apertou duas vezes.
+    if (categorySaving) return;
+    setCategoryError(null);
+    setCategorySaving(true);
+    try {
+      const result = await createCategory({ data: { name: newCategoryName } });
+      if (!result.ok) return setCategoryError(result.message ?? "Não foi possível criar.");
+      setNewCategoryName("");
+      setShowCategoryForm(false);
+      // Categoria já foi criada nesse ponto — se o load() que só atualiza a tela falhar, isso não
+      // pode virar "não foi possível criar" no catch de fora, que atribuiria a falha errada.
+      try {
+        await load();
+      } catch {
+        setCategoryError("Categoria criada, mas a lista não atualizou — recarregue a página.");
+      }
+    } catch {
+      setCategoryError("Não foi possível criar — tente de novo.");
+    } finally {
+      setCategorySaving(false);
+    }
+  }
+
+  async function confirmDeleteCategory(id: string, password: string) {
+    const result = await deleteCategory({ data: { id, password } });
+    if (result.ok) {
+      setDeletingCategoryId(null);
+      // Se a categoria apagada era a selecionada no formulário de produto, o select ficaria
+      // apontando pra um nome que não existe mais — limpa pra load() escolher outra válida.
+      if (categories.some((item) => item.id === id && item.name === category)) {
+        setCategory("");
+      }
+      await load();
+    }
+    return result;
   }
 
   useEffect(() => {
-    void load();
-    const poll = setInterval(() => void load(), 15000);
+    // listProductCategories agora lança em vez de virar lista vazia silenciosa quando a leitura
+    // falha — mas isso significa que o carregamento em segundo plano, sem clique de ninguém pra
+    // pegar o erro, precisa de um .catch explícito aqui. Sem isso, a tela não avisa nada e outros
+    // dados carregados (produtos, insumos) também ficam desatualizados sem sinal nenhum.
+    const safeLoad = () =>
+      void load().catch(() => setLoadError("Não foi possível atualizar o cardápio."));
+    safeLoad();
+    const poll = setInterval(safeLoad, 15000);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -194,12 +269,21 @@ function CardapioPage() {
     return result;
   }
 
+  async function confirmDeletePermanently(productId: string, password: string) {
+    const result = await deleteProduct({ data: { productId, password } });
+    if (result.ok) {
+      setDeletingId(null);
+      await load();
+    }
+    return result;
+  }
+
   async function submitNewProduct() {
     setError(null);
     const priceNumber = Number(price.replace(",", "."));
     if (name.trim().length < 2) return setError("Digite o nome do produto.");
     if (!Number.isFinite(priceNumber) || priceNumber < 0) return setError("Preço inválido.");
-    if (category.trim().length < 2) return setError("Digite o nome da categoria.");
+    if (!category) return setError("Escolha uma categoria.");
 
     // Valida a ficha antes de criar o produto: melhor recusar agora do que deixar um produto
     // gravado com a receita pela metade.
@@ -279,16 +363,54 @@ function CardapioPage() {
 
     setSaving(false);
     setComponents([]);
-    setCreatingCategory(false);
     setName("");
-    setCategory("Bebidas");
     setPrice("");
     setUnit("un");
     setPackageType("Lata");
     setStockQuantity("");
     setPhotoFile(null);
     setShowForm(false);
+    setDismissedSuggestionIds(new Set());
     await load();
+  }
+
+  const nameMatches = useMemo(() => {
+    const query = name.trim().toLowerCase();
+    if (query.length < 2) return { products: [], stock: [] };
+    return {
+      products: products
+        .filter((item) => item.name.toLowerCase().includes(query))
+        .filter((item) => !dismissedSuggestionIds.has(item.id))
+        .slice(0, 5),
+      stock: stockOptions
+        .filter((item) => item.name.toLowerCase().includes(query))
+        .filter((item) => !dismissedSuggestionIds.has(item.id))
+        .slice(0, 5),
+    };
+  }, [name, products, stockOptions, dismissedSuggestionIds]);
+
+  function dismissNameSuggestions() {
+    // Ignora TODOS os itens que batem com a busca, não só os 5 exibidos — senão "Ignorar" some
+    // o bloco por um instante e ele reaparece na hora com o próximo lote de itens escondidos.
+    const query = name.trim().toLowerCase();
+    setDismissedSuggestionIds(
+      (current) =>
+        new Set([
+          ...current,
+          ...products.filter((item) => item.name.toLowerCase().includes(query)).map((item) => item.id),
+          ...stockOptions
+            .filter((item) => item.name.toLowerCase().includes(query))
+            .map((item) => item.id),
+        ]),
+    );
+  }
+
+  function addComponentFromStock(stockId: string) {
+    setComponents((current) => [
+      ...current,
+      { key: `c-${Date.now()}-${current.length}`, stockId, quantity: "" },
+    ]);
+    setDismissedSuggestionIds((current) => new Set([...current, stockId]));
   }
 
   const grouped = useMemo(() => {
@@ -301,13 +423,6 @@ function CardapioPage() {
     return Array.from(map.entries());
   }, [products]);
 
-  const existingCategories = useMemo(() => {
-    const set = new Set(products.map((product) => product.category));
-    // Enquanto "+ Nova categoria" está em edição, o nome sendo digitado não é uma opção real do
-    // dropdown — só entra na lista depois de salvo.
-    if (!creatingCategory) set.add(category || "Bebidas");
-    return Array.from(set).sort((a, b) => a.localeCompare(b, "pt-BR"));
-  }, [products, category, creatingCategory]);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
@@ -324,12 +439,89 @@ function CardapioPage() {
         </button>
       </div>
 
+      {loadError && <p className="mt-3 text-sm text-destructive">{loadError}</p>}
+
       {showPreview ? (
         <CustomerMenuPreview grouped={grouped} recipeProductIds={recipeProductIds} />
       ) : (
         <div className="mt-5 space-y-5">
+          {/* Categoria é só a divisão do menu — cadastro próprio, que pede apenas nome. Fica fora
+              e antes do formulário de produto de propósito, pra não parecerem a mesma ação. */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-center justify-between gap-3">
+              <p className="text-sm font-semibold">Categorias</p>
+              <button
+                onClick={() => {
+                  setShowCategoryForm((value) => !value);
+                  setCategoryError(null);
+                  setNewCategoryName("");
+                }}
+                className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+              >
+                {showCategoryForm ? "Cancelar" : "+ Nova categoria"}
+              </button>
+            </div>
+
+            {categories.length === 0 ? (
+              <p className="mt-2 text-xs text-muted-foreground">Nenhuma categoria ainda.</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {categories.map((cat) => (
+                  <span
+                    key={cat.id}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-secondary py-1 pl-3 pr-1.5 text-xs font-medium text-secondary-foreground"
+                  >
+                    {cat.name}
+                    <button
+                      onClick={() =>
+                        setDeletingCategoryId(deletingCategoryId === cat.id ? null : cat.id)
+                      }
+                      aria-label={`Apagar categoria ${cat.name}`}
+                      className="rounded-full px-1 text-muted-foreground hover:text-destructive"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {deletingCategoryId && (
+              <div className="mt-2">
+                <PasswordConfirm
+                  message={`Apagar a categoria "${categories.find((c) => c.id === deletingCategoryId)?.name}"? Só funciona se nenhum produto estiver nela — mude a categoria deles antes. Confirme com a senha da equipe.`}
+                  confirmLabel="Apagar categoria"
+                  onCancel={() => setDeletingCategoryId(null)}
+                  onConfirm={(password) => confirmDeleteCategory(deletingCategoryId, password)}
+                />
+              </div>
+            )}
+            {showCategoryForm && (
+              <div className="mt-3 flex gap-2">
+                <input
+                  value={newCategoryName}
+                  onChange={(event) => setNewCategoryName(event.target.value)}
+                  placeholder="Nome da categoria"
+                  autoFocus
+                  onKeyDown={(event) => event.key === "Enter" && void submitNewCategory()}
+                  className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+                />
+                <button
+                  onClick={() => void submitNewCategory()}
+                  disabled={categorySaving || newCategoryName.trim().length < 2}
+                  className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                >
+                  {categorySaving ? "Salvando..." : "Criar"}
+                </button>
+              </div>
+            )}
+            {categoryError && <p className="mt-2 text-xs text-destructive">{categoryError}</p>}
+          </div>
+
           <button
-            onClick={() => setShowForm((value) => !value)}
+            onClick={() => {
+              setShowForm((value) => !value);
+              setDismissedSuggestionIds(new Set());
+            }}
             className="w-full rounded-xl border border-dashed border-border py-3 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
             {showForm ? "Cancelar" : "+ Novo produto"}
@@ -339,39 +531,70 @@ function CardapioPage() {
             <SectionCard title="Novo produto do cardápio">
               <div className="space-y-3">
                 <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
-                {/* Escolher entre as categorias que já existem evita "Drinks" e "drinks" virarem
-                    duas seções do cardápio por causa de digitação. Criar nova continua possível. */}
+                {(nameMatches.products.length > 0 || nameMatches.stock.length > 0) && (
+                    <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-xs font-semibold">Já existe algo parecido</p>
+                        <button
+                          onClick={dismissNameSuggestions}
+                          className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
+                        >
+                          Ignorar
+                        </button>
+                      </div>
+                      {nameMatches.products.length > 0 && (
+                        <div className="mt-1.5 space-y-1">
+                          <p className="text-xs text-muted-foreground">No cardápio:</p>
+                          {nameMatches.products.map((item) => (
+                            <p key={item.id} className="text-xs">
+                              {item.name} · {item.category}
+                            </p>
+                          ))}
+                        </div>
+                      )}
+                      {nameMatches.stock.length > 0 && (
+                        <div className="mt-2 space-y-1.5">
+                          <p className="text-xs text-muted-foreground">No estoque:</p>
+                          {nameMatches.stock.map((item) => (
+                            <div key={item.id} className="flex items-center justify-between gap-2">
+                              <span className="text-xs">
+                                {item.name} ({item.current_stock} {item.unit})
+                              </span>
+                              <button
+                                onClick={() => addComponentFromStock(item.id)}
+                                className="shrink-0 rounded-full border border-border px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground"
+                              >
+                                + Puxar como insumo
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                {/* Categoria é uma entidade própria (ver seção abaixo) — aqui só escolhe entre as
+                    que já existem. Sem opção de criar embutida: criar categoria não é criar produto. */}
                 <label className="block">
                   <span className="text-xs font-medium text-muted-foreground">Categoria</span>
-                  <select
-                    value={creatingCategory ? "__nova__" : category}
-                    onChange={(event) => {
-                      if (event.target.value === "__nova__") {
-                        setCreatingCategory(true);
-                        setCategory("");
-                      } else {
-                        setCreatingCategory(false);
-                        setCategory(event.target.value);
-                      }
-                    }}
-                    className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
-                  >
-                    {existingCategories.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
-                    <option value="__nova__">+ Nova categoria</option>
-                  </select>
+                  {categories.length === 0 ? (
+                    <p className="mt-1 rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
+                      Nenhuma categoria cadastrada. Crie uma na seção "Categorias" acima antes de
+                      cadastrar o produto.
+                    </p>
+                  ) : (
+                    <select
+                      value={category}
+                      onChange={(event) => setCategory(event.target.value)}
+                      className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                    >
+                      {categories.map((option) => (
+                        <option key={option.id} value={option.name}>
+                          {option.name}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </label>
-                {creatingCategory && (
-                  <TextField
-                    label="Nome da nova categoria"
-                    value={category}
-                    onChange={setCategory}
-                    placeholder="Petiscos"
-                  />
-                )}
                 <TextField label="Preço (R$)" value={price} onChange={setPrice} placeholder="18,00" />
                 <div className="grid grid-cols-2 gap-3">
                   <label className="block">
@@ -405,11 +628,16 @@ function CardapioPage() {
                     </select>
                   </label>
                 </div>
-                <div className="rounded-xl border border-border p-3">
-                  <p className="text-xs font-medium">Do que é feito</p>
+                <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
+                  <p className="text-xs font-semibold">Do que é feito</p>
                   <p className="mt-0.5 text-xs text-muted-foreground">
                     Puxe do estoque o que este item consome. A cada venda a baixa acontece sozinha
-                    nos insumos. Deixe vazio se for algo sem controle de estoque.
+                    nos insumos. Deixe vazio só se for algo sem controle de estoque nenhum.
+                  </p>
+                  <p className="mt-1.5 text-xs font-medium text-primary">
+                    É uma dose? Clique em "+ Puxar insumo do estoque" abaixo, escolha a garrafa de
+                    origem e digite o tamanho da dose em ml no campo ao lado — ex.: Tequila + 50.
+                    Não use "Estoque inicial" mais abaixo pra isso.
                   </p>
 
                   {stockOptions.length === 0 ? (
@@ -481,10 +709,12 @@ function CardapioPage() {
                 </div>
 
                 {/* Produto com ficha técnica tira do estoque dos insumos, então um estoque próprio
-                    aqui seria um número paralelo que nunca baixa. */}
+                    aqui seria um número paralelo que nunca baixa. Some assim que uma linha de
+                    insumo é adicionada — visto ao vivo alguém digitar "60" aqui pensando que era o
+                    tamanho da dose, quando o campo certo é o de quantidade em "Do que é feito". */}
                 {components.length === 0 && (
                   <TextField
-                    label="Estoque inicial (para item sem ficha técnica, ex.: cerveja lata)"
+                    label="Estoque inicial (só para item SEM insumo escolhido acima, ex.: cerveja lata fechada)"
                     value={stockQuantity}
                     onChange={setStockQuantity}
                     placeholder="0"
@@ -597,13 +827,29 @@ function CardapioPage() {
                           </div>
 
                           {isDeleting && (
-                            <div className="mt-3">
+                            <div className="mt-3 space-y-2">
                               <PasswordConfirm
                                 message={`Tirar “${product.name}” do cardápio? O cadastro e o histórico de vendas continuam guardados — o item só deixa de aparecer para lançamento. Confirme com a senha da equipe.`}
                                 confirmLabel="Remover"
                                 onCancel={() => setDeletingId(null)}
                                 onConfirm={(password) => confirmDelete(product.id, password)}
                               />
+                              {/* Só some do banco quando não há histórico de verdade (vendas/
+                                  movimentos) — a função no servidor recusa se houver, mesmo com
+                                  senha certa. O estoque em si nunca é o que bloqueia. */}
+                              <details className="rounded-xl border border-dashed border-border px-3 py-2">
+                                <summary className="cursor-pointer text-xs text-muted-foreground hover:text-destructive">
+                                  Cadastrei errado — apagar de vez (sem histórico)
+                                </summary>
+                                <div className="mt-2">
+                                  <PasswordConfirm
+                                    message={`Apagar “${product.name}” de vez? Só funciona se ele nunca teve venda nem movimento de estoque registrado — não dá pra desfazer. Confirme com a senha da equipe.`}
+                                    confirmLabel="Apagar de vez"
+                                    onCancel={() => setDeletingId(null)}
+                                    onConfirm={(password) => confirmDeletePermanently(product.id, password)}
+                                  />
+                                </div>
+                              </details>
                             </div>
                           )}
 

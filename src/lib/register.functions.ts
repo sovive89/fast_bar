@@ -18,6 +18,8 @@ const RPC_MESSAGES: Record<string, string> = {
   invalid_quantity: "Informe uma quantidade válida.",
   product_not_configured:
     "Item sem configuração de estoque — defina no Cardápio (ficha técnica ou uma entrada) antes de vender.",
+  has_history:
+    "Esse produto já tem histórico de vendas ou movimentos de estoque — não dá pra apagar sem perder rastro. Use 'Remover' pra tirar do cardápio sem apagar o histórico.",
 };
 
 type RpcResult = { ok: boolean; code?: string; removed?: number; new_quantity?: number };
@@ -298,6 +300,59 @@ export const deactivateProduct = createServerFn({ method: "POST" })
       .eq("id", data.productId);
     if (error) return { ok: false as const, message: "Não foi possível remover o produto." };
     return { ok: true as const };
+  });
+
+/**
+ * Apaga o produto de vez, sem deixar rastro no cardápio. Diferente de "remover" (que só desativa):
+ * o número de estoque nunca bloqueia essa ação — a trava real é ter movimento de estoque ou
+ * lançamento numa comanda, o que de fato representaria perda de histórico. Sem isso, um cadastro
+ * feito por engano (nome errado, categoria errada) fica pra sempre como lixo inativo no banco.
+ */
+export const deleteProduct = createServerFn({ method: "POST" })
+  .inputValidator((data: { productId: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+
+    // Busca a foto antes de apagar a linha: depois de apagada não tem mais como saber qual
+    // arquivo era dela. O Postgres não mexe em Storage, então essa parte só pode rodar aqui.
+    const { data: before } = await admin()
+      .from("fastbar_products")
+      .select("image_url")
+      .eq("id", data.productId)
+      .maybeSingle();
+
+    const { data: result, error } = await admin().rpc("fastbar_delete_product", {
+      p_product_id: data.productId,
+    });
+    const parsed = fromRpc(result as RpcResult | null, error, "Não foi possível apagar o produto.");
+    if (!parsed.ok) return parsed;
+
+    // Best-effort: se a remoção da foto falhar, o produto já foi apagado do cardápio (o que
+    // importa pra equipe) — só fica um arquivo órfão no bucket, não um estado inconsistente.
+    // createProduct aceita a image_url que o cliente manda de volta depois do upload, sem travar
+    // qual arquivo é "dono" de qual produto — então antes de apagar, confirma que nenhum OUTRO
+    // produto ainda referencia essa mesma foto (evita apagar um arquivo reaproveitado/reutilizado).
+    if (before?.image_url) {
+      const { count } = await admin()
+        .from("fastbar_products")
+        .select("id", { count: "exact", head: true })
+        .eq("image_url", before.image_url);
+      if (!count) {
+        const marker = "/fastbar-products/";
+        const index = before.image_url.indexOf(marker);
+        if (index !== -1) {
+          const path = before.image_url.slice(index + marker.length);
+          await admin().storage.from("fastbar-products").remove([path]);
+        }
+      }
+    }
+
+    return parsed;
   });
 
 export const reopenSession = createServerFn({ method: "POST" })

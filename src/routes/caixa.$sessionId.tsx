@@ -55,6 +55,10 @@ function RegisterTabDetail() {
 
   useEffect(() => {
     void fetchProducts().then(setProducts);
+    // Sem isso, um produto criado depois que essa comanda já estava aberta na tela nunca
+    // aparecia pra lançar — a lista só carregava uma vez, no primeiro acesso à página.
+    const poll = setInterval(() => void fetchProducts().then(setProducts), 15000);
+    return () => clearInterval(poll);
   }, []);
 
   async function run(action: () => Promise<{ ok: boolean; message?: string }>) {

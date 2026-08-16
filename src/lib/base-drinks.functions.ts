@@ -157,6 +157,41 @@ export const updateBaseDrinkPackaging = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+const DELETE_MESSAGES: Record<string, string> = {
+  in_use_by_recipe: "Esse insumo está numa ficha técnica — remova a ligação antes de apagar.",
+  has_sales_history: "Esse insumo já saiu em vendas de verdade — apagar perderia o rastro.",
+  not_found: "Insumo não encontrado.",
+};
+
+/**
+ * Apaga a bebida base de vez. O número de estoque nunca bloqueia — o que impede é uso real: estar
+ * numa ficha técnica ou já ter saído por venda. Uma entrada de compra errada sozinha (sem venda)
+ * não bloqueia, porque é exatamente o caso que essa ação existe pra resolver: "cadastrei garrafa
+ * de 1L com conteúdo 1 em vez de 1000, quero apagar e refazer certo".
+ */
+export const deleteBaseDrink = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+    const { data: result, error } = await admin().rpc("fastbar_delete_base_drink", {
+      p_id: data.id,
+    });
+    const parsed = result as { ok: boolean; code?: string } | null;
+    if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message: DELETE_MESSAGES[parsed.code ?? ""] ?? "Não foi possível apagar.",
+      };
+    }
+    return { ok: true as const };
+  });
+
 /**
  * Dá entrada de estoque numa bebida base (compra). A equipe informa quantas embalagens de compra
  * (ex.: garrafas, caixas) e o custo total pago — a quantidade em `unit` e o custo por `unit` são
@@ -313,6 +348,30 @@ export const updateIngredientPackaging = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/** Apaga o ingrediente de vez. Mesmo critério da bebida base: histórico real bloqueia, número de estoque não. */
+export const deleteIngredient = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+    const { data: result, error } = await admin().rpc("fastbar_delete_ingredient", {
+      p_id: data.id,
+    });
+    const parsed = result as { ok: boolean; code?: string } | null;
+    if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message: DELETE_MESSAGES[parsed.code ?? ""] ?? "Não foi possível apagar.",
+      };
+    }
+    return { ok: true as const };
+  });
+
 /**
  * Dá entrada de estoque num ingrediente (compra) — mesmo padrão da bebida base: embalagens de
  * compra + custo total pago, com quantidade e custo por `unit` sempre calculados.
@@ -397,6 +456,73 @@ export const listAllProducts = createServerFn({ method: "POST" }).handler(async 
   return { products: data ?? [] };
 });
 
+/**
+ * Categoria do cardápio é a divisão do menu (Bebidas, Doses, Drinks) — nada além de um nome.
+ * Entidade própria, separada do formulário de produto, pra criar uma categoria nova nunca exigir
+ * preencher preço/unidade/foto de um produto que não existe.
+ */
+export const listProductCategories = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  await assertRegisterAccess();
+  const { data, error } = await admin()
+    .from("fastbar_product_categories")
+    .select("id, name")
+    .order("name");
+  // Falha de leitura não pode virar "lista vazia" — isso faria a tela mandar a equipe "criar uma
+  // categoria" quando o problema real é o banco fora do ar, escondendo o erro em vez de mostrar.
+  if (error) throw new Error("Não foi possível carregar as categorias.");
+  return { categories: data ?? [] };
+});
+
+export const createProductCategory = createServerFn({ method: "POST" })
+  .inputValidator((data: { name: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    if (typeof data.name !== "string") {
+      return { ok: false as const, message: "Digite um nome de categoria." };
+    }
+    const name = data.name.trim();
+    if (name.length < 2) return { ok: false as const, message: "Digite um nome de categoria." };
+
+    const { error } = await admin().from("fastbar_product_categories").insert({ name });
+    if (error) {
+      // Nome único: categoria repetida (mesmo com maiúscula/minúscula diferente) cai aqui.
+      if (error.code === "23505") {
+        return { ok: false as const, message: "Já existe uma categoria com esse nome." };
+      }
+      return { ok: false as const, message: "Não foi possível criar a categoria." };
+    }
+    return { ok: true as const };
+  });
+
+/** Apaga a categoria — só se nenhum produto estiver nela. Reatribua os produtos antes de apagar. */
+export const deleteProductCategory = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+    const { data: result, error } = await admin().rpc("fastbar_delete_product_category", {
+      p_id: data.id,
+    });
+    const parsed = result as { ok: boolean; code?: string; count?: number } | null;
+    if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message:
+          parsed.code === "in_use"
+            ? `Ainda tem ${parsed.count} produto(s) nessa categoria — mude a categoria deles antes de apagar.`
+            : "Categoria não encontrada.",
+      };
+    }
+    return { ok: true as const };
+  });
+
 export const PRODUCT_UNITS = ["un", "ml", "L", "g", "kg"] as const;
 export const PRODUCT_PACKAGE_TYPES = [
   "Lata",
@@ -425,7 +551,6 @@ export const createProduct = createServerFn({ method: "POST" })
     await assertRegisterAccess();
 
     const name = data.name.trim();
-    const category = data.category.trim() || "Bebidas";
     const price = Number(data.price);
     const unit = PRODUCT_UNITS.includes(data.unit as (typeof PRODUCT_UNITS)[number])
       ? data.unit
@@ -438,37 +563,29 @@ export const createProduct = createServerFn({ method: "POST" })
     const initialStock =
       data.stockQuantity && data.stockQuantity > 0 ? Math.floor(data.stockQuantity) : 0;
 
-    const { data: inserted, error } = await admin()
-      .from("fastbar_products")
-      .insert({
-        name,
-        category,
-        price,
-        unit,
-        package_type: data.packageType?.trim() || null,
-        image_url: data.imageUrl?.trim() || null,
-        stock_quantity: initialStock,
-      })
-      .select("id")
-      .single();
-
-    if (error || !inserted) {
-      return { ok: false as const, message: "Não foi possível salvar o produto." };
+    // A checagem de categoria e a inserção do produto acontecem juntas, travando a linha da
+    // categoria (fastbar_create_product), pra fechar a mesma corrida já fechada nas exclusões:
+    // sem isso, a categoria podia ser lida como existente aqui e apagada por outra aba entre a
+    // leitura e o insert, deixando o produto com um nome de categoria que não existe mais.
+    const { data: result, error } = await admin().rpc("fastbar_create_product", {
+      p_name: name,
+      p_price: price,
+      p_category: data.category.trim(),
+      p_unit: unit,
+      p_package_type: data.packageType?.trim() || null,
+      p_image_url: data.imageUrl?.trim() || null,
+      p_initial_stock: initialStock,
+    });
+    const parsed = result as { ok: boolean; code?: string; product_id?: string } | null;
+    if (error || !parsed) return { ok: false as const, message: "Não foi possível salvar o produto." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message: parsed.code === "category_not_found" ? "Escolha uma categoria válida." : "Não foi possível salvar o produto.",
+      };
     }
 
-    // Registra o estoque inicial como movimento: sem isso o saldo apareceria do nada, sem
-    // rastro, e o produto contaria como "sem nenhuma entrada" pra quem checa se já foi
-    // configurado.
-    if (initialStock > 0) {
-      await admin().from("fastbar_stock_movements").insert({
-        product_id: inserted.id,
-        quantity: initialStock,
-        movement_type: "in",
-        note: "Estoque inicial no cadastro",
-      });
-    }
-
-    return { ok: true as const, productId: inserted.id };
+    return { ok: true as const, productId: parsed.product_id! };
   });
 
 /** Recebe uma imagem em base64 (data URL) e sobe pro Storage, devolvendo a URL pública. */
