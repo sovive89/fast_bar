@@ -27,6 +27,17 @@ export const SEGMENT_STYLE: Record<LeadSegment, string> = {
   perdido: "bg-destructive/15 text-destructive",
 };
 
+/** Preenchimento sólido — usado na barra proporcional, onde o tom translúcido de SEGMENT_STYLE
+ * fica claro demais pra ler numa faixa de 8px. */
+export const SEGMENT_BAR_FILL: Record<LeadSegment, string> = {
+  vip: "bg-primary",
+  fiel: "bg-emerald-500",
+  recorrente: "bg-sky-500",
+  novo: "bg-muted-foreground/40",
+  risco: "bg-amber-500",
+  perdido: "bg-destructive",
+};
+
 export const SEGMENT_HINT: Record<LeadSegment, string> = {
   vip: "Gasta muito e continua vindo. Trate como prioridade.",
   fiel: "Vem sempre. Base do faturamento recorrente.",

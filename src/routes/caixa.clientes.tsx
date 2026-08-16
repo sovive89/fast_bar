@@ -4,6 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { brl, digits, formatPhone } from "@/lib/format";
 import { getCustomersOverview } from "@/lib/customers.functions";
 import {
+  SEGMENT_BAR_FILL,
   SEGMENT_HINT,
   SEGMENT_LABEL,
   SEGMENT_STYLE,
@@ -161,6 +162,21 @@ function CustomersOverview() {
         <p className="mt-2 text-xs text-muted-foreground">{SEGMENT_HINT[segment]}</p>
       )}
 
+      {/* Barra proporcional: lê a mistura da base num olhar só, sem exigir uma legenda separada
+          — a legenda já são os próprios chips de filtro logo acima. */}
+      {customers.length > 0 && (
+        <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-secondary">
+          {SEGMENT_ORDER.filter((id) => (counts.get(id) ?? 0) > 0).map((id) => (
+            <div
+              key={id}
+              title={`${SEGMENT_LABEL[id]}: ${counts.get(id)}`}
+              className={`h-full ${SEGMENT_BAR_FILL[id]}`}
+              style={{ width: `${((counts.get(id) ?? 0) / customers.length) * 100}%` }}
+            />
+          ))}
+        </div>
+      )}
+
       <input
         value={search}
         onChange={(event) => setSearch(event.target.value)}
@@ -173,43 +189,86 @@ function CustomersOverview() {
           Nenhum cliente encontrado.
         </p>
       ) : (
-        <ul className="mt-5 space-y-3">
+        <ul className="mt-5 space-y-2">
           {filtered.map((customer) => (
-            <li key={customer.id}>
-              <Link
-                to="/caixa/clientes/$customerId"
-                params={{ customerId: customer.id }}
-                className="block rounded-2xl border border-border bg-card p-4 transition-colors hover:border-ring"
-              >
-                <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <p className="truncate font-semibold">{customer.name}</p>
-                      <span
-                        className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${SEGMENT_STYLE[customer.segment]}`}
-                      >
-                        {SEGMENT_LABEL[customer.segment]}
-                      </span>
-                    </div>
-                    <p className="text-xs text-muted-foreground">{formatPhone(customer.phone)}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-bold">{brl(customer.total_spent)}</p>
-                    <p className="text-xs text-muted-foreground">
-                      {customer.total_visits} {customer.total_visits === 1 ? "visita" : "visitas"}
-                    </p>
-                  </div>
-                </div>
-                <p className="mt-2 text-xs text-muted-foreground">
-                  Ticket médio {brl(customer.averageTicket)} · última visita{" "}
-                  {formatDate(customer.last_seen_at)}
-                  {customer.idleDays > 0 ? ` (${customer.idleDays}d atrás)` : ""}
-                </p>
-              </Link>
-            </li>
+            <CustomerCard key={customer.id} customer={customer} />
           ))}
         </ul>
       )}
     </main>
+  );
+}
+
+/**
+ * Card fechado mostra só o essencial (nome, segmento, gasto); expandir revela o resto sem sair da
+ * lista — pra conferir vários clientes em sequência sem ida-e-volta de página. A ficha completa
+ * (histórico de visitas, anotações) continua numa rota própria: pesada demais pra caber num card.
+ */
+function CustomerCard({ customer }: { customer: Customer }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <li className="rounded-2xl border border-border bg-card transition-colors hover:border-ring">
+      <button
+        onClick={() => setExpanded((value) => !value)}
+        className="flex w-full items-center justify-between gap-4 p-4 text-left"
+        aria-expanded={expanded}
+      >
+        <div className="min-w-0">
+          <div className="flex items-center gap-2">
+            <p className="truncate font-semibold">{customer.name}</p>
+            <span
+              className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${SEGMENT_STYLE[customer.segment]}`}
+            >
+              {SEGMENT_LABEL[customer.segment]}
+            </span>
+          </div>
+          <p className="text-xs text-muted-foreground">{formatPhone(customer.phone)}</p>
+        </div>
+        <div className="flex shrink-0 items-center gap-3">
+          <div className="text-right">
+            <p className="font-bold">{brl(customer.total_spent)}</p>
+            <p className="text-xs text-muted-foreground">
+              {customer.total_visits} {customer.total_visits === 1 ? "visita" : "visitas"}
+            </p>
+          </div>
+          <span
+            className={`text-muted-foreground transition-transform ${expanded ? "rotate-180" : ""}`}
+            aria-hidden
+          >
+            ▾
+          </span>
+        </div>
+      </button>
+
+      {expanded && (
+        <div className="space-y-3 border-t border-border px-4 pb-4 pt-3">
+          <p className="text-xs text-muted-foreground">{SEGMENT_HINT[customer.segment]}</p>
+          <div className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-xl bg-secondary p-2">
+              <p className="text-[10px] text-muted-foreground">Ticket médio</p>
+              <p className="mt-0.5 text-sm font-bold">{brl(customer.averageTicket)}</p>
+            </div>
+            <div className="rounded-xl bg-secondary p-2">
+              <p className="text-[10px] text-muted-foreground">Última visita</p>
+              <p className="mt-0.5 text-sm font-bold">{formatDate(customer.last_seen_at)}</p>
+            </div>
+            <div className="rounded-xl bg-secondary p-2">
+              <p className="text-[10px] text-muted-foreground">Sem aparecer</p>
+              <p className="mt-0.5 text-sm font-bold">
+                {customer.idleDays > 0 ? `${customer.idleDays}d` : "hoje"}
+              </p>
+            </div>
+          </div>
+          <Link
+            to="/caixa/clientes/$customerId"
+            params={{ customerId: customer.id }}
+            className="block rounded-xl border border-border py-2 text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          >
+            Ver ficha completa (histórico, anotações, favoritos)
+          </Link>
+        </div>
+      )}
+    </li>
   );
 }
