@@ -9,6 +9,7 @@ import { deactivateProduct, deleteProduct as deleteProductFn } from "@/lib/regis
 import {
   createProduct,
   createProductCategory,
+  deleteProductCategory,
   getBaseDrinksOverview,
   listProductCategories,
   setRecipeItems,
@@ -139,11 +140,13 @@ function CardapioPage() {
   const [newCategoryName, setNewCategoryName] = useState("");
   const [categorySaving, setCategorySaving] = useState(false);
   const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [deletingCategoryId, setDeletingCategoryId] = useState<string | null>(null);
 
   const loadOverview = useServerFn(getStockOverview);
   const loadStock = useServerFn(getBaseDrinksOverview);
   const loadCategories = useServerFn(listProductCategories);
   const createCategory = useServerFn(createProductCategory);
+  const deleteCategory = useServerFn(deleteProductCategory);
   const productEntry = useServerFn(addProductEntry);
   const removeProduct = useServerFn(deactivateProduct);
   const deleteProduct = useServerFn(deleteProductFn);
@@ -200,6 +203,15 @@ function CardapioPage() {
     } finally {
       setCategorySaving(false);
     }
+  }
+
+  async function confirmDeleteCategory(id: string, password: string) {
+    const result = await deleteCategory({ data: { id, password } });
+    if (result.ok) {
+      setDeletingCategoryId(null);
+      await load();
+    }
+    return result;
   }
 
   useEffect(() => {
@@ -387,14 +399,7 @@ function CardapioPage() {
               e antes do formulário de produto de propósito, pra não parecerem a mesma ação. */}
           <div className="rounded-2xl border border-border bg-card p-4">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-sm font-semibold">Categorias</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">
-                  {categories.length === 0
-                    ? "Nenhuma categoria ainda."
-                    : categories.map((c) => c.name).join(" · ")}
-                </p>
-              </div>
+              <p className="text-sm font-semibold">Categorias</p>
               <button
                 onClick={() => {
                   setShowCategoryForm((value) => !value);
@@ -406,6 +411,40 @@ function CardapioPage() {
                 {showCategoryForm ? "Cancelar" : "+ Nova categoria"}
               </button>
             </div>
+
+            {categories.length === 0 ? (
+              <p className="mt-2 text-xs text-muted-foreground">Nenhuma categoria ainda.</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {categories.map((cat) => (
+                  <span
+                    key={cat.id}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-secondary py-1 pl-3 pr-1.5 text-xs font-medium text-secondary-foreground"
+                  >
+                    {cat.name}
+                    <button
+                      onClick={() =>
+                        setDeletingCategoryId(deletingCategoryId === cat.id ? null : cat.id)
+                      }
+                      aria-label={`Apagar categoria ${cat.name}`}
+                      className="rounded-full px-1 text-muted-foreground hover:text-destructive"
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
+            {deletingCategoryId && (
+              <div className="mt-2">
+                <PasswordConfirm
+                  message={`Apagar a categoria "${categories.find((c) => c.id === deletingCategoryId)?.name}"? Só funciona se nenhum produto estiver nela — mude a categoria deles antes. Confirme com a senha da equipe.`}
+                  confirmLabel="Apagar categoria"
+                  onCancel={() => setDeletingCategoryId(null)}
+                  onConfirm={(password) => confirmDeleteCategory(deletingCategoryId, password)}
+                />
+              </div>
+            )}
             {showCategoryForm && (
               <div className="mt-3 flex gap-2">
                 <input

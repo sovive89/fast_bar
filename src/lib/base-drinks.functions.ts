@@ -496,6 +496,33 @@ export const createProductCategory = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/** Apaga a categoria — só se nenhum produto estiver nela. Reatribua os produtos antes de apagar. */
+export const deleteProductCategory = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!teamPasswordMatches(data.password)) {
+      return { ok: false as const, message: "Senha incorreta." };
+    }
+    const { data: result, error } = await admin().rpc("fastbar_delete_product_category", {
+      p_id: data.id,
+    });
+    const parsed = result as { ok: boolean; code?: string; count?: number } | null;
+    if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
+    if (!parsed.ok) {
+      return {
+        ok: false as const,
+        message:
+          parsed.code === "in_use"
+            ? `Ainda tem ${parsed.count} produto(s) nessa categoria — mude a categoria deles antes de apagar.`
+            : "Categoria não encontrada.",
+      };
+    }
+    return { ok: true as const };
+  });
+
 export const PRODUCT_UNITS = ["un", "ml", "L", "g", "kg"] as const;
 export const PRODUCT_PACKAGE_TYPES = [
   "Lata",
