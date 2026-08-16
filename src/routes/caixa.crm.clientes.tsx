@@ -3,13 +3,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { brl, digits, formatPhone } from "@/lib/format";
 import { getCustomersOverview } from "@/lib/customers.functions";
-import {
-  SEGMENT_BAR_FILL,
-  SEGMENT_HINT,
-  SEGMENT_LABEL,
-  SEGMENT_STYLE,
-  type LeadSegment,
-} from "@/lib/crm";
+import { SEGMENT_HINT, SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
+import { SegmentDistributionChart } from "@/components/shared/SegmentDistributionChart";
 
 type Customer = {
   id: string;
@@ -31,7 +26,7 @@ function formatDate(value: string) {
 /** Ordem de exibição dos filtros: primeiro quem sustenta a casa, depois quem precisa de resgate. */
 const SEGMENT_ORDER: LeadSegment[] = ["vip", "fiel", "recorrente", "novo", "risco", "perdido"];
 
-export const Route = createFileRoute("/caixa/clientes")({
+export const Route = createFileRoute("/caixa/crm/clientes")({
   head: () => ({
     meta: [
       { title: "Clientes (CRM) | FastBar" },
@@ -105,10 +100,7 @@ function CustomersOverview() {
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-          Clientes (CRM)
-        </p>
-        <h1 className="mt-1 text-3xl font-bold">Base de clientes</h1>
+        <h1 className="text-3xl font-bold">Base de clientes</h1>
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -162,18 +154,11 @@ function CustomersOverview() {
         <p className="mt-2 text-xs text-muted-foreground">{SEGMENT_HINT[segment]}</p>
       )}
 
-      {/* Barra proporcional: lê a mistura da base num olhar só, sem exigir uma legenda separada
-          — a legenda já são os próprios chips de filtro logo acima. */}
+      {/* Mesma cor por segmento do gráfico em Relatórios — reconhecível de uma tela pra outra. */}
       {customers.length > 0 && (
-        <div className="mt-3 flex h-2 overflow-hidden rounded-full bg-secondary">
-          {SEGMENT_ORDER.filter((id) => (counts.get(id) ?? 0) > 0).map((id) => (
-            <div
-              key={id}
-              title={`${SEGMENT_LABEL[id]}: ${counts.get(id)}`}
-              className={`h-full ${SEGMENT_BAR_FILL[id]}`}
-              style={{ width: `${((counts.get(id) ?? 0) / customers.length) * 100}%` }}
-            />
-          ))}
+        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Distribuição por segmento</p>
+          <SegmentDistributionChart counts={Object.fromEntries(counts)} />
         </div>
       )}
 
@@ -261,7 +246,7 @@ function CustomerCard({ customer }: { customer: Customer }) {
             </div>
           </div>
           <Link
-            to="/caixa/clientes/$customerId"
+            to="/caixa/crm/clientes/$customerId"
             params={{ customerId: customer.id }}
             className="block rounded-xl border border-border py-2 text-center text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
           >
