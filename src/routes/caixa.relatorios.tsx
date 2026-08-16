@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Bar,
@@ -12,9 +12,14 @@ import {
 } from "recharts";
 import { brl } from "@/lib/format";
 import { getReportsOverview } from "@/lib/reports.functions";
-import { SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
 
-const SEGMENT_ORDER: LeadSegment[] = ["vip", "fiel", "recorrente", "novo", "risco", "perdido"];
+// Ver o comentário em caixa.crm.clientes.tsx: import estático desse componente nas duas rotas
+// gerava chunks circulares no servidor e derrubava a produção inteira.
+const SegmentDistributionChart = lazy(() =>
+  import("@/components/shared/SegmentDistributionChart").then((m) => ({
+    default: m.SegmentDistributionChart,
+  })),
+);
 
 export const Route = createFileRoute("/caixa/relatorios")({
   head: () => ({
@@ -249,18 +254,15 @@ function Reports() {
                 </span>
               </div>
             </div>
-            {Object.keys(overview.segmentCounts).length > 0 && (
-              <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border pt-3">
-                {SEGMENT_ORDER.filter((id) => (overview.segmentCounts[id] ?? 0) > 0).map((id) => (
-                  <span
-                    key={id}
-                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${SEGMENT_STYLE[id]}`}
-                  >
-                    {SEGMENT_LABEL[id]}: {overview.segmentCounts[id]}
-                  </span>
-                ))}
-              </div>
-            )}
+          </div>
+
+          {/* Distribuição de segmentos: mesma cor por segmento do CRM, pra quem olha os dois
+              lugares reconhecer o padrão sem reler a legenda. */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <p className="text-sm font-semibold">Base de clientes por segmento</p>
+            <Suspense fallback={<div className="mt-3 h-24" />}>
+              <SegmentDistributionChart counts={overview.segmentCounts} />
+            </Suspense>
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-4">
