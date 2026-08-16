@@ -15,6 +15,7 @@ dist-ssr
 .tanstack/**
 .nitro
 *.local
+.env
 
 # Claude Code local/session state (machine-specific, not for the team)
 .claude/settings.local.json
