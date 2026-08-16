@@ -83,6 +83,41 @@ export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async 
   };
 });
 
+/**
+ * Sinal do CRM pro módulo Alertas: quem precisa de ação hoje, não um dashboard completo. Em risco
+ * e perdido já são os segmentos que pedem ação por definição (ver crm.ts); aniversariante é "hoje",
+ * não "esse mês" como no dashboard — ligar no dia certo é o que importa aqui.
+ */
+export const getCrmAlerts = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  const { classifyLead, vipSpendThreshold } = await import("./crm");
+  await assertRegisterAccess();
+
+  const { data: customers } = await admin()
+    .from("fastbar_customers")
+    .select("id, name, phone, total_visits, total_spent, last_seen_at, birthday_day, birthday_month");
+  const rows = customers ?? [];
+  const threshold = vipSpendThreshold(rows);
+  const now = Date.now();
+
+  const atRisk = rows
+    .map((c) => ({ ...c, segment: classifyLead(c, threshold, now) }))
+    .filter((c) => c.segment === "risco" || c.segment === "perdido")
+    .map((c) => ({ id: c.id, name: c.name, phone: c.phone, segment: c.segment }));
+
+  const today = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo" })
+    .formatToParts(new Date())
+    .reduce<Record<string, string>>((acc, part) => ({ ...acc, [part.type]: part.value }), {});
+  const todayDay = Number(today["day"]);
+  const todayMonth = Number(today["month"]);
+
+  const birthdaysToday = rows
+    .filter((c) => c.birthday_day === todayDay && c.birthday_month === todayMonth)
+    .map((c) => ({ id: c.id, name: c.name, phone: c.phone }));
+
+  return { atRisk, birthdaysToday };
+});
+
 export const getCustomerDetail = createServerFn({ method: "POST" })
   .inputValidator((data: { customerId: string }) => data)
   .handler(async ({ data }) => {

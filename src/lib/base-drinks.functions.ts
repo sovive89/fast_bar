@@ -848,3 +848,82 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
     })),
   };
 });
+
+/**
+ * Relatório do módulo Estoque: valor parado em estoque e o que está abaixo do mínimo. Cruza as
+ * três tabelas de inventário (bebidas base, ingredientes, produtos de revenda) — cada uma com sua
+ * própria noção de custo médio, mas só bebidas base e ingredientes têm min_stock cadastrado;
+ * produto de revenda só entra no alerta de "zerado", não de "abaixo do mínimo".
+ */
+export const getStockReport = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  await assertRegisterAccess();
+
+  const [{ data: baseDrinks }, { data: ingredients }, { data: products }] = await Promise.all([
+    admin()
+      .from("fastbar_base_drinks")
+      .select("id, name, unit, current_stock, min_stock, average_cost")
+      .eq("active", true),
+    admin()
+      .from("fastbar_drink_ingredients")
+      .select("id, name, unit, current_stock, min_stock, average_cost")
+      .eq("active", true),
+    admin()
+      .from("fastbar_products")
+      .select("id, name, category, stock_quantity, average_cost")
+      .eq("is_active", true),
+  ]);
+
+  const valueOf = (qty: number, cost: number | null) => Number(qty) * (Number(cost) || 0);
+
+  const baseDrinksValue = (baseDrinks ?? []).reduce(
+    (sum, i) => sum + valueOf(i.current_stock, i.average_cost),
+    0,
+  );
+  const ingredientsValue = (ingredients ?? []).reduce(
+    (sum, i) => sum + valueOf(i.current_stock, i.average_cost),
+    0,
+  );
+  const productsValue = (products ?? []).reduce(
+    (sum, i) => sum + valueOf(i.stock_quantity, i.average_cost),
+    0,
+  );
+
+  const lowStock = [
+    ...(baseDrinks ?? [])
+      .filter((i) => Number(i.current_stock) < Number(i.min_stock))
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        unit: i.unit,
+        current: Number(i.current_stock),
+        min: Number(i.min_stock),
+        kind: "Bebida base" as const,
+      })),
+    ...(ingredients ?? [])
+      .filter((i) => Number(i.current_stock) < Number(i.min_stock))
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        unit: i.unit,
+        current: Number(i.current_stock),
+        min: Number(i.min_stock),
+        kind: "Ingrediente" as const,
+      })),
+  ].sort((a, b) => a.current / a.min - b.current / b.min);
+
+  const outOfStockProducts = (products ?? [])
+    .filter((p) => Number(p.stock_quantity) <= 0)
+    .map((p) => ({ id: p.id, name: p.name, category: p.category }));
+
+  return {
+    totalValue: baseDrinksValue + ingredientsValue + productsValue,
+    valueByKind: {
+      "Bebidas base": baseDrinksValue,
+      Ingredientes: ingredientsValue,
+      "Produtos de revenda": productsValue,
+    },
+    lowStock,
+    outOfStockProducts,
+  };
+});

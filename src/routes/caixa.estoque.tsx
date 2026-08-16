@@ -14,6 +14,7 @@ import {
   deleteIngredient,
   getRecipeItems,
   getBaseDrinksOverview,
+  getStockReport,
   listAllProducts,
   listSuppliers,
   setRecipeItems,
@@ -34,13 +35,14 @@ export const Route = createFileRoute("/caixa/estoque")({
   component: StockOverview,
 });
 
-type Tab = "bebidas" | "ingredientes" | "fornecedores" | "fichas";
+type Tab = "bebidas" | "ingredientes" | "fornecedores" | "fichas" | "relatorios";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "bebidas", label: "Bebidas base" },
   { id: "ingredientes", label: "Ingredientes" },
   { id: "fornecedores", label: "Fornecedores" },
   { id: "fichas", label: "Ficha técnica (Receitas)" },
+  { id: "relatorios", label: "Relatórios" },
 ];
 
 function StockOverview() {
@@ -74,6 +76,7 @@ function StockOverview() {
         {tab === "ingredientes" && <IngredientesTab />}
         {tab === "fornecedores" && <FornecedoresTab />}
         {tab === "fichas" && <FichasTecnicasTab />}
+        {tab === "relatorios" && <RelatoriosTab />}
       </div>
     </main>
   );
@@ -782,6 +785,101 @@ function IngredientesTab() {
       }
       deleteFn={(input) => deleteFn({ data: input.data })}
     />
+  );
+}
+
+// ============================================================
+// Aba: Relatórios
+// ============================================================
+
+type StockReport = {
+  totalValue: number;
+  valueByKind: Record<string, number>;
+  lowStock: Array<{
+    id: string;
+    name: string;
+    unit: string;
+    current: number;
+    min: number;
+    kind: "Bebida base" | "Ingrediente";
+  }>;
+  outOfStockProducts: Array<{ id: string; name: string; category: string }>;
+};
+
+function RelatoriosTab() {
+  const [report, setReport] = useState<StockReport | null>(null);
+  const load = useServerFn(getStockReport);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      const result = await load();
+      if (!cancelled) setReport(result as StockReport);
+    }
+    void run();
+    const poll = setInterval(() => void run(), 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!report) {
+    return <p className="text-sm text-muted-foreground">Carregando relatório...</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-xs text-muted-foreground">Valor total parado em estoque</p>
+        <p className="mt-1 text-2xl font-bold">{brl(report.totalValue)}</p>
+        <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm">
+          {Object.entries(report.valueByKind).map(([kind, value]) => (
+            <div key={kind} className="flex items-center justify-between">
+              <span className="text-muted-foreground">{kind}</span>
+              <span className="font-medium">{brl(value)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold">Abaixo do mínimo</p>
+        {report.lowStock.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">Tudo dentro do mínimo cadastrado.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {report.lowStock.map((item) => (
+              <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">
+                  {item.name} <span className="text-muted-foreground">· {item.kind}</span>
+                </span>
+                <span className="shrink-0 font-semibold text-amber-500">
+                  {item.current} / {item.min} {item.unit}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold">Produtos zerados</p>
+        {report.outOfStockProducts.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">Nenhum produto de revenda zerado.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {report.outOfStockProducts.map((product) => (
+              <li key={product.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">{product.name}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{product.category}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 
