@@ -22,6 +22,7 @@ import { Route as CaixaEstoqueRouteImport } from './routes/caixa.estoque'
 import { Route as CaixaRelatoriosRouteImport } from './routes/caixa.relatorios'
 import { Route as ComandaSessionIdRouteImport } from './routes/comanda.$sessionId'
 import { Route as CSessionIdPerfilRouteImport } from './routes/c.$sessionId_.perfil'
+import { Route as CaixaCrmIndexRouteImport } from './routes/caixa.crm.index'
 import { Route as CaixaCrmClientesRouteImport } from './routes/caixa.crm.clientes'
 import { Route as CaixaCrmClientesCustomerIdRouteImport } from './routes/caixa.crm.clientes_.$customerId'
 
@@ -90,6 +91,11 @@ const CSessionIdPerfilRoute = CSessionIdPerfilRouteImport.update({
   path: '/c/$sessionId/perfil',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CaixaCrmIndexRoute = CaixaCrmIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CaixaCrmRoute,
+} as any)
 const CaixaCrmClientesRoute = CaixaCrmClientesRouteImport.update({
   id: '/clientes',
   path: '/clientes',
@@ -117,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/caixa/': typeof CaixaIndexRoute
   '/c/$sessionId/perfil': typeof CSessionIdPerfilRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
+  '/caixa/crm/': typeof CaixaCrmIndexRoute
   '/caixa/crm/clientes/$customerId': typeof CaixaCrmClientesCustomerIdRoute
 }
 export interface FileRoutesByTo {
@@ -126,13 +133,13 @@ export interface FileRoutesByTo {
   '/c/$sessionId': typeof CSessionIdRoute
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
-  '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa': typeof CaixaIndexRoute
   '/c/$sessionId/perfil': typeof CSessionIdPerfilRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
+  '/caixa/crm': typeof CaixaCrmIndexRoute
   '/caixa/crm/clientes/$customerId': typeof CaixaCrmClientesCustomerIdRoute
 }
 export interface FileRoutesById {
@@ -151,6 +158,7 @@ export interface FileRoutesById {
   '/caixa/': typeof CaixaIndexRoute
   '/c/$sessionId_/perfil': typeof CSessionIdPerfilRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
+  '/caixa/crm/': typeof CaixaCrmIndexRoute
   '/caixa/crm/clientes_/$customerId': typeof CaixaCrmClientesCustomerIdRoute
 }
 export interface FileRouteTypes {
@@ -170,6 +178,7 @@ export interface FileRouteTypes {
     | '/caixa/'
     | '/c/$sessionId/perfil'
     | '/caixa/crm/clientes'
+    | '/caixa/crm/'
     | '/caixa/crm/clientes/$customerId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -179,13 +188,13 @@ export interface FileRouteTypes {
     | '/c/$sessionId'
     | '/caixa/$sessionId'
     | '/caixa/cardapio'
-    | '/caixa/crm'
     | '/caixa/estoque'
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
     | '/caixa'
     | '/c/$sessionId/perfil'
     | '/caixa/crm/clientes'
+    | '/caixa/crm'
     | '/caixa/crm/clientes/$customerId'
   id:
     | '__root__'
@@ -203,6 +212,7 @@ export interface FileRouteTypes {
     | '/caixa/'
     | '/c/$sessionId_/perfil'
     | '/caixa/crm/clientes'
+    | '/caixa/crm/'
     | '/caixa/crm/clientes_/$customerId'
   fileRoutesById: FileRoutesById
 }
@@ -309,6 +319,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CSessionIdPerfilRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/caixa/crm/': {
+      id: '/caixa/crm/'
+      path: '/'
+      fullPath: '/caixa/crm/'
+      preLoaderRoute: typeof CaixaCrmIndexRouteImport
+      parentRoute: typeof CaixaCrmRoute
+    }
     '/caixa/crm/clientes': {
       id: '/caixa/crm/clientes'
       path: '/clientes'
@@ -328,11 +345,13 @@ declare module '@tanstack/react-router' {
 
 interface CaixaCrmRouteChildren {
   CaixaCrmClientesRoute: typeof CaixaCrmClientesRoute
+  CaixaCrmIndexRoute: typeof CaixaCrmIndexRoute
   CaixaCrmClientesCustomerIdRoute: typeof CaixaCrmClientesCustomerIdRoute
 }
 
 const CaixaCrmRouteChildren: CaixaCrmRouteChildren = {
   CaixaCrmClientesRoute: CaixaCrmClientesRoute,
+  CaixaCrmIndexRoute: CaixaCrmIndexRoute,
   CaixaCrmClientesCustomerIdRoute: CaixaCrmClientesCustomerIdRoute,
 }
 

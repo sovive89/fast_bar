@@ -1,19 +1,9 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { brl, digits, formatPhone } from "@/lib/format";
 import { getCustomersOverview } from "@/lib/customers.functions";
 import { SEGMENT_HINT, SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
-
-// Carregado sob demanda de propósito: o gráfico puxa recharts, e importá-lo estaticamente num
-// módulo compartilhado por duas rotas fazia o bundler gerar dois chunks de servidor em dependência
-// circular — o build passava, mas a produção respondia 500 em toda página com
-// "__exportAll is not a function". Reproduzido e confirmado rodando o bundle do .output direto.
-const SegmentDistributionChart = lazy(() =>
-  import("@/components/shared/SegmentDistributionChart").then((m) => ({
-    default: m.SegmentDistributionChart,
-  })),
-);
 
 type Customer = {
   id: string;
@@ -78,20 +68,6 @@ function CustomersOverview() {
     return map;
   }, [customers]);
 
-  const summary = useMemo(() => {
-    const totalSpent = customers.reduce((sum, c) => sum + Number(c.total_spent), 0);
-    const withVisits = customers.filter((c) => c.total_visits > 0);
-    // "Recompra" é o que diz se o bar fideliza ou só recebe gente de passagem: a fatia da base
-    // que voltou pelo menos uma segunda vez.
-    const returning = customers.filter((c) => c.total_visits >= 2).length;
-    return {
-      total: customers.length,
-      ltv: withVisits.length > 0 ? totalSpent / withVisits.length : 0,
-      returnRate: customers.length > 0 ? (returning / customers.length) * 100 : 0,
-      atRisk: (counts.get("risco") ?? 0) + (counts.get("perdido") ?? 0),
-    };
-  }, [customers, counts]);
-
   const filtered = useMemo(() => {
     const term = search.trim().toLowerCase();
     const termDigits = digits(search);
@@ -109,30 +85,7 @@ function CustomersOverview() {
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
       <div>
-        <h1 className="text-3xl font-bold">Base de clientes</h1>
-      </div>
-
-      <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <div className="rounded-2xl border border-border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Clientes</p>
-          <p className="mt-1 text-lg font-bold">{summary.total}</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Gasto médio</p>
-          <p className="mt-1 text-lg font-bold">{brl(summary.ltv)}</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Recompra</p>
-          <p className="mt-1 text-lg font-bold">{summary.returnRate.toFixed(0)}%</p>
-        </div>
-        <div className="rounded-2xl border border-border bg-card p-3">
-          <p className="text-xs text-muted-foreground">Sumidos</p>
-          <p
-            className={`mt-1 text-lg font-bold ${summary.atRisk > 0 ? "text-amber-500" : ""}`}
-          >
-            {summary.atRisk}
-          </p>
-        </div>
+        <h1 className="text-3xl font-bold">Clientes</h1>
       </div>
 
       <div className="mt-4 flex flex-wrap gap-2">
@@ -161,19 +114,6 @@ function CustomersOverview() {
 
       {segment !== "todos" && (
         <p className="mt-2 text-xs text-muted-foreground">{SEGMENT_HINT[segment]}</p>
-      )}
-
-      {/* Mesma cor por segmento do gráfico em Relatórios — reconhecível de uma tela pra outra. */}
-      {customers.length > 0 && (
-        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
-          <p className="text-sm font-semibold">Distribuição por segmento</p>
-          <Suspense fallback={<div className="mt-3 h-24" />}>
-            <SegmentDistributionChart
-              values={Object.fromEntries(counts)}
-              emptyLabel="Sem clientes classificados ainda."
-            />
-          </Suspense>
-        </div>
       )}
 
       <input
