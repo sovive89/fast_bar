@@ -12,6 +12,9 @@ import {
 } from "recharts";
 import { brl } from "@/lib/format";
 import { getReportsOverview } from "@/lib/reports.functions";
+import { SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
+
+const SEGMENT_ORDER: LeadSegment[] = ["vip", "fiel", "recorrente", "novo", "risco", "perdido"];
 
 export const Route = createFileRoute("/caixa/relatorios")({
   head: () => ({
@@ -30,10 +33,32 @@ type Overview = {
   totalRevenue: number;
   paidSessionsCount: number;
   averageTicket: number;
+  totalCost: number;
+  grossProfit: number;
+  cmvPercent: number;
+  marginPercent: number;
+  revenueWithoutCost: number;
+  missingCostProducts: string[];
   revenueByDay: { date: string; revenue: number }[];
   revenueByMethod: { method: string; revenue: number }[];
-  revenueByCategory: { category: string; revenue: number }[];
-  topProducts: { name: string; quantity: number; revenue: number }[];
+  revenueByCategory: { category: string; revenue: number; cost: number; profit: number }[];
+  revenueByHour: { hour: number; revenue: number }[];
+  topProducts: {
+    name: string;
+    quantity: number;
+    revenue: number;
+    cost: number;
+    profit: number;
+    marginPercent: number;
+  }[];
+  customerMix: {
+    newRevenue: number;
+    returningRevenue: number;
+    walkInRevenue: number;
+    newCount: number;
+    returningCount: number;
+  };
+  segmentCounts: Record<string, number>;
 };
 
 const PERIODS = [
@@ -137,6 +162,96 @@ function Reports() {
             </div>
           </div>
 
+          {/* CMV e margem: o que sobra depois de pagar a mercadoria. Sem isso, faturamento alto
+              com margem ruim passa despercebido. */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <div className="flex items-baseline justify-between gap-3">
+              <p className="text-sm font-semibold">CMV e margem</p>
+              <span className="text-xs text-muted-foreground">
+                custo da mercadoria vendida
+              </span>
+            </div>
+            <div className="mt-3 grid grid-cols-3 gap-3">
+              <div>
+                <p className="text-xs text-muted-foreground">CMV</p>
+                <p className="mt-0.5 text-lg font-bold">{brl(overview.totalCost)}</p>
+                <p className="text-xs text-muted-foreground">
+                  {overview.cmvPercent.toFixed(1)}% da venda
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Lucro bruto</p>
+                <p
+                  className={`mt-0.5 text-lg font-bold ${overview.grossProfit < 0 ? "text-destructive" : "text-emerald-500"}`}
+                >
+                  {brl(overview.grossProfit)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {overview.marginPercent.toFixed(1)}% de margem
+                </p>
+              </div>
+              <div>
+                <p className="text-xs text-muted-foreground">Faturamento</p>
+                <p className="mt-0.5 text-lg font-bold">{brl(overview.totalRevenue)}</p>
+              </div>
+            </div>
+            {overview.revenueWithoutCost > 0 && (
+              <p className="mt-3 rounded-lg border border-dashed border-amber-500/40 bg-amber-500/5 p-2.5 text-xs text-amber-500">
+                ⚠ {brl(overview.revenueWithoutCost)} vendidos sem custo cadastrado — o CMV real é
+                maior e a margem, menor. Registre o custo na entrada de estoque de:{" "}
+                {overview.missingCostProducts.join(", ")}.
+              </p>
+            )}
+          </div>
+
+          {/* Novo x recorrente: diz se o faturamento vem de gente nova (que exige tráfego pago
+              todo mês) ou de quem já volta sozinho. */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <p className="text-sm font-semibold">De onde veio o faturamento</p>
+            <div className="mt-3 space-y-2 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  Clientes novos{" "}
+                  <span className="text-muted-foreground">
+                    · {overview.customerMix.newCount}
+                  </span>
+                </span>
+                <span className="shrink-0 font-semibold">{brl(overview.customerMix.newRevenue)}</span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  Clientes que voltaram{" "}
+                  <span className="text-muted-foreground">
+                    · {overview.customerMix.returningCount}
+                  </span>
+                </span>
+                <span className="shrink-0 font-semibold">
+                  {brl(overview.customerMix.returningRevenue)}
+                </span>
+              </div>
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  Balcão <span className="text-muted-foreground">· sem cadastro</span>
+                </span>
+                <span className="shrink-0 font-semibold">
+                  {brl(overview.customerMix.walkInRevenue)}
+                </span>
+              </div>
+            </div>
+            {Object.keys(overview.segmentCounts).length > 0 && (
+              <div className="mt-3 flex flex-wrap gap-1.5 border-t border-border pt-3">
+                {SEGMENT_ORDER.filter((id) => (overview.segmentCounts[id] ?? 0) > 0).map((id) => (
+                  <span
+                    key={id}
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${SEGMENT_STYLE[id]}`}
+                  >
+                    {SEGMENT_LABEL[id]}: {overview.segmentCounts[id]}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="rounded-2xl border border-border bg-card p-4">
             <p className="text-sm font-semibold">Faturamento por dia</p>
             {chartData.length === 0 ? (
@@ -178,11 +293,18 @@ function Reports() {
               <ul className="mt-3 space-y-2">
                 {overview.topProducts.map((product) => (
                   <li key={product.name} className="flex items-center justify-between gap-3 text-sm">
-                    <span className="truncate">
+                    <span className="min-w-0 truncate">
                       {product.name}{" "}
                       <span className="text-muted-foreground">· {product.quantity}x</span>
                     </span>
-                    <span className="shrink-0 font-semibold">{brl(product.revenue)}</span>
+                    <span className="shrink-0 text-right">
+                      <span className="font-semibold">{brl(product.revenue)}</span>
+                      {product.cost > 0 && (
+                        <span className="block text-xs text-muted-foreground">
+                          lucro {brl(product.profit)} · {product.marginPercent.toFixed(0)}%
+                        </span>
+                      )}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -197,9 +319,16 @@ function Reports() {
               ) : (
                 <ul className="mt-3 space-y-2">
                   {overview.revenueByCategory.map((row) => (
-                    <li key={row.category} className="flex items-center justify-between text-sm">
-                      <span className="truncate">{row.category}</span>
-                      <span className="shrink-0 font-semibold">{brl(row.revenue)}</span>
+                    <li key={row.category} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate">{row.category}</span>
+                      <span className="shrink-0 text-right">
+                        <span className="font-semibold">{brl(row.revenue)}</span>
+                        {row.cost > 0 && (
+                          <span className="block text-xs text-muted-foreground">
+                            lucro {brl(row.profit)}
+                          </span>
+                        )}
+                      </span>
                     </li>
                   ))}
                 </ul>
@@ -222,6 +351,37 @@ function Reports() {
               )}
             </div>
           </div>
+
+          {/* Horário de pico: onde concentrar equipe, e em que faixa vale anunciar promoção. */}
+          {overview.revenueByHour.length > 0 && (
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-sm font-semibold">Movimento por hora</p>
+              <div className="mt-3 h-40">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart
+                    data={overview.revenueByHour.map((row) => ({
+                      ...row,
+                      label: `${String(row.hour).padStart(2, "0")}h`,
+                    }))}
+                    margin={{ left: -20 }}
+                  >
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} className="stroke-border" />
+                    <XAxis dataKey="label" tick={{ fontSize: 11 }} tickLine={false} axisLine={false} />
+                    <YAxis tick={{ fontSize: 11 }} tickLine={false} axisLine={false} width={56} />
+                    <Tooltip
+                      formatter={(value: number) => brl(value)}
+                      contentStyle={{
+                        borderRadius: 12,
+                        border: "1px solid var(--border)",
+                        fontSize: 12,
+                      }}
+                    />
+                    <Bar dataKey="revenue" fill="var(--primary)" radius={[6, 6, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </main>
