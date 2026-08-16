@@ -1,4 +1,4 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
@@ -10,6 +10,8 @@ import {
   archiveSession,
   cancelSession,
   clearTabItems,
+  openSessionByTeam,
+  openWalkInSession,
   removeTabItem,
   unarchiveSession,
   undoLastTabItem,
@@ -71,6 +73,13 @@ function RegisterList() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Abertura pela equipe (sem QR) e comanda de balcão. Campos próprios, fora do `confirming`
+  // genérico, porque aqui não é confirmar uma ação numa comanda que já existe — é criar uma.
+  const [opening, setOpening] = useState<null | "manual" | "walkin">(null);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+
+  const navigate = useNavigate();
   const loadOverview = useServerFn(getRegisterOverview);
   const undoLast = useServerFn(undoLastTabItem);
   const removeItem = useServerFn(removeTabItem);
@@ -79,6 +88,8 @@ function RegisterList() {
   const archiveOne = useServerFn(archiveSession);
   const unarchiveOne = useServerFn(unarchiveSession);
   const archiveClosed = useServerFn(archiveClosedSessions);
+  const openManual = useServerFn(openSessionByTeam);
+  const openWalkIn = useServerFn(openWalkInSession);
 
   async function load() {
     const result = await loadOverview();
@@ -145,6 +156,27 @@ function RegisterList() {
       !session.archived_at && ["closed", "paid", "cancelled"].includes(session.status),
   ).length;
 
+  /** Abre e já leva pra comanda: quem abre quer lançar em seguida, não voltar pra lista. */
+  async function confirmOpenManual(password: string) {
+    const result = await openManual({ data: { name: newName, phone: newPhone, password } });
+    if (result.ok) {
+      setOpening(null);
+      setNewName("");
+      setNewPhone("");
+      await navigate({ to: "/caixa/$sessionId", params: { sessionId: result.sessionId } });
+    }
+    return result;
+  }
+
+  async function confirmOpenWalkIn(password: string) {
+    const result = await openWalkIn({ data: { password } });
+    if (result.ok) {
+      setOpening(null);
+      await navigate({ to: "/caixa/$sessionId", params: { sessionId: result.sessionId } });
+    }
+    return result;
+  }
+
   async function run(action: () => Promise<{ ok: boolean; message?: string }>) {
     setError(null);
     setBusy(true);
@@ -172,6 +204,71 @@ function RegisterList() {
           <p className="font-semibold">{brl(openTotal)}</p>
         </div>
       </div>
+
+      <div className="mt-6 flex gap-2">
+        <button
+          onClick={() => {
+            setOpening(opening === "manual" ? null : "manual");
+            setNewName("");
+            setNewPhone("");
+            setError(null);
+          }}
+          className="h-11 flex-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground shadow-soft"
+        >
+          {opening === "manual" ? "Cancelar" : "+ Abrir comanda"}
+        </button>
+        <button
+          onClick={() => {
+            setOpening(opening === "walkin" ? null : "walkin");
+            setError(null);
+          }}
+          className="h-11 flex-1 rounded-xl border border-border text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+        >
+          {opening === "walkin" ? "Cancelar" : "Comanda balcão"}
+        </button>
+      </div>
+
+      {opening === "manual" && (
+        <div className="mt-3 space-y-3 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Abrir comanda sem QR code</p>
+          <p className="text-xs text-muted-foreground">
+            Gera tudo igual ao QR code — cliente no cadastro e link de acompanhamento. Muda só quem
+            digita. Se esse celular já tiver comanda em andamento, você vai direto pra ela.
+          </p>
+          <input
+            value={newName}
+            onChange={(event) => setNewName(event.target.value)}
+            placeholder="Nome completo"
+            autoFocus
+            maxLength={80}
+            className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+          />
+          <input
+            value={newPhone}
+            onChange={(event) => setNewPhone(formatPhone(event.target.value))}
+            placeholder="(11) 91234-5678"
+            inputMode="tel"
+            className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+          />
+          <PasswordConfirm
+            message="Confirme com a senha da equipe para abrir a comanda."
+            confirmLabel="Abrir comanda"
+            onCancel={() => setOpening(null)}
+            onConfirm={confirmOpenManual}
+          />
+        </div>
+      )}
+
+      {opening === "walkin" && (
+        <div className="mt-3 rounded-2xl border border-border bg-card p-4">
+          <PasswordConfirm
+            message="Abrir a comanda de balcão do dia? Ela registra produto, estoque e faturamento como qualquer outra — só não fica relacionada a nenhum cliente. Se a de hoje já estiver aberta, você vai direto pra ela."
+            confirmLabel="Abrir balcão"
+            onCancel={() => setOpening(null)}
+            onConfirm={confirmOpenWalkIn}
+          />
+        </div>
+      )}
 
       <input
         value={search}
