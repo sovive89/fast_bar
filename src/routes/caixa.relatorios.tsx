@@ -33,6 +33,8 @@ type Overview = {
   totalRevenue: number;
   paidSessionsCount: number;
   averageTicket: number;
+  crmDiscountTotal: number;
+  crmDiscountSessions: number;
   totalCost: number;
   grossProfit: number;
   cmvPercent: number;
@@ -200,6 +202,15 @@ function Reports() {
                 ⚠ {brl(overview.revenueWithoutCost)} vendidos sem custo cadastrado — o CMV real é
                 maior e a margem, menor. Registre o custo na entrada de estoque de:{" "}
                 {overview.missingCostProducts.join(", ")}.
+              </p>
+            )}
+            {overview.crmDiscountTotal > 0 && (
+              <p className="mt-3 rounded-lg border border-dashed border-primary/30 bg-primary/5 p-2.5 text-xs text-muted-foreground">
+                🎁 {brl(overview.crmDiscountTotal)} em desconto de boas-vindas do CRM, em{" "}
+                {overview.crmDiscountSessions}{" "}
+                {overview.crmDiscountSessions === 1 ? "comanda" : "comandas"} — já saiu do dinheiro
+                que entrou no caixa, mas não mexe no CMV/margem acima (é custo de aquisição de
+                cliente, não do produto).
               </p>
             )}
           </div>

@@ -263,6 +263,7 @@ export type Database = {
           favorite_music_genre: string | null
           marketing_opt_in: boolean
           profile_completed_at: string | null
+          welcome_discount_earned_at: string | null
         }
         Insert: {
           created_at?: string
@@ -284,6 +285,7 @@ export type Database = {
           favorite_music_genre?: string | null
           marketing_opt_in?: boolean
           profile_completed_at?: string | null
+          welcome_discount_earned_at?: string | null
         }
         Update: {
           created_at?: string
@@ -305,6 +307,7 @@ export type Database = {
           favorite_music_genre?: string | null
           marketing_opt_in?: boolean
           profile_completed_at?: string | null
+          welcome_discount_earned_at?: string | null
         }
         Relationships: []
       }
@@ -529,6 +532,7 @@ export type Database = {
           created_at: string
           customer_id: string | null
           customer_name: string
+          discount_percent: number
           id: string
           paid_at: string | null
           payment_method: string | null
@@ -543,6 +547,7 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           customer_name: string
+          discount_percent?: number
           id?: string
           paid_at?: string | null
           payment_method?: string | null
@@ -557,6 +562,7 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           customer_name?: string
+          discount_percent?: number
           id?: string
           paid_at?: string | null
           payment_method?: string | null

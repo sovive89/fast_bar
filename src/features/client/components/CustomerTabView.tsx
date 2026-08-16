@@ -4,7 +4,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TabItemList } from "@/components/shared/TabItemList";
 import { MenuList } from "@/features/client/components/MenuList";
 import { brl, elapsed, formatPhone, hhmm } from "@/lib/format";
-import { tabTotal } from "@/services/supabase/tabItems";
+import { tabTotal, tabTotalWithDiscount } from "@/services/supabase/tabItems";
 import type { BarSession, BarTabItem } from "@/types/fastbar";
 
 export interface CustomerTabViewProps {
@@ -59,7 +59,19 @@ export function CustomerTabView({ loading, session, items, now }: CustomerTabVie
 
       <div className="mt-6 rounded-2xl border border-border bg-card p-5">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">Total consumido</p>
-        <p className="mt-1 text-4xl font-bold">{brl(tabTotal(items))}</p>
+        {session.discount_percent ? (
+          <>
+            <p className="mt-1 text-sm text-muted-foreground line-through">{brl(tabTotal(items))}</p>
+            <p className="text-4xl font-bold">
+              {brl(tabTotalWithDiscount(items, session.discount_percent))}
+            </p>
+            <p className="mt-1 text-xs font-medium text-success">
+              {session.discount_percent}% de desconto de boas-vindas aplicado
+            </p>
+          </>
+        ) : (
+          <p className="mt-1 text-4xl font-bold">{brl(tabTotal(items))}</p>
+        )}
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
           <div>
             <p className="text-muted-foreground">Abertura</p>

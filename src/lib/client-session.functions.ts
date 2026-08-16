@@ -118,6 +118,10 @@ export const MUSIC_GENRE_OPTIONS = [
   "Outro",
 ] as const;
 
+// Compartilhado com a UI da tela de perfil, que anuncia esse número pro cliente antes de pedir os
+// dados — mudar aqui sem mudar lá deixaria a promessa e a conta descasadas.
+export const WELCOME_DISCOUNT_PERCENT = 10;
+
 /**
  * Segunda tela, separada da abertura da comanda de propósito — é aqui que o consentimento de
  * marketing é um ato próprio, não algo aceito sem perceber junto com nome+celular.
@@ -167,23 +171,52 @@ export const submitCustomerProfile = createServerFn({ method: "POST" })
     }
 
     const fullName = data.fullName ? sanitizeName(data.fullName) : null;
+    const nowIso = new Date().toISOString();
+
+    const profile = {
+      full_name: fullName,
+      birthday_day: data.birthdayDay ?? null,
+      birthday_month: data.birthdayMonth ?? null,
+      administrative_region: data.administrativeRegion?.trim() || null,
+      how_found_out: data.howFoundOut?.trim() || null,
+      age_range: data.ageRange?.trim() || null,
+      profession: data.profession?.trim() || null,
+      favorite_music_genre: data.favoriteMusicGenre?.trim() || null,
+    };
+
+    // O desconto sai por cadastro completo E aceite de promoções — é a troca anunciada na tela.
+    // Checa o objeto já normalizado (trim + null), senão um campo só com espaços passaria.
+    const filledEverything = Object.values(profile).every((value) => value !== null);
+    const earnsDiscount = filledEverything && data.marketingOptIn;
+
+    const { data: customer } = await admin()
+      .from("fastbar_customers")
+      .select("welcome_discount_earned_at")
+      .eq("id", session.customer_id)
+      .maybeSingle();
+    // Só concede uma vez na vida do cliente, mesmo que ele reencontre a tela por outro caminho.
+    const grantDiscount = earnsDiscount && !customer?.welcome_discount_earned_at;
 
     const { error } = await admin()
       .from("fastbar_customers")
       .update({
-        full_name: fullName,
-        birthday_day: data.birthdayDay ?? null,
-        birthday_month: data.birthdayMonth ?? null,
-        administrative_region: data.administrativeRegion?.trim() || null,
-        how_found_out: data.howFoundOut?.trim() || null,
-        age_range: data.ageRange?.trim() || null,
-        profession: data.profession?.trim() || null,
-        favorite_music_genre: data.favoriteMusicGenre?.trim() || null,
+        ...profile,
         marketing_opt_in: data.marketingOptIn,
-        profile_completed_at: new Date().toISOString(),
+        profile_completed_at: nowIso,
+        ...(grantDiscount ? { welcome_discount_earned_at: nowIso } : {}),
       })
       .eq("id", session.customer_id);
 
     if (error) return { ok: false as const, message: "Não foi possível salvar." };
-    return { ok: true as const };
+
+    if (grantDiscount) {
+      // Aplicado depois do cadastro salvar: se o desconto falhar, o cliente não perde os dados
+      // que digitou — e o pior caso é ficar sem o abatimento, não com cadastro pela metade.
+      await admin()
+        .from("fastbar_sessions")
+        .update({ discount_percent: WELCOME_DISCOUNT_PERCENT })
+        .eq("id", data.sessionId);
+    }
+
+    return { ok: true as const, discountGranted: grantDiscount };
   });

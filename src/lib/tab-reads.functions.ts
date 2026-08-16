@@ -1,7 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 
 /** Public (client-safe) shape — never includes customer_id or other internal/CRM identifiers. */
-const PUBLIC_SESSION_COLUMNS = "id, customer_name, phone, status, started_at, closed_at, paid_at";
+const PUBLIC_SESSION_COLUMNS =
+  "id, customer_name, phone, status, started_at, closed_at, paid_at, discount_percent";
 
 /** Caixa-only shape — internal identifiers ok since it's behind assertRegisterAccess. */
 const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at, payment_method`;
