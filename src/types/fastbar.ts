@@ -12,6 +12,7 @@ export type BarSession = {
   payment_method?: string | null;
   customer_id?: string | null;
   archived_at?: string | null;
+  discount_percent?: number;
 };
 
 export type BarTabItem = {

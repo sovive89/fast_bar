@@ -66,7 +66,7 @@ export async function upsertCustomer(name: string, phone: string): Promise<strin
 export async function registerCustomerSpend(sessionId: string) {
   const { data: session } = await supabaseAdmin
     .from("fastbar_sessions")
-    .select("customer_id")
+    .select("customer_id, discount_percent")
     .eq("id", sessionId)
     .maybeSingle();
   if (!session?.customer_id) return;
@@ -76,7 +76,11 @@ export async function registerCustomerSpend(sessionId: string) {
     .select("unit_price, quantity")
     .eq("session_id", sessionId);
 
-  const total = (items ?? []).reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  const subtotal = (items ?? []).reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+  // Credita o que foi de fato cobrado, não o preço de tabela — senão o CRM e o faturamento
+  // ficariam maiores do que o dinheiro que realmente entrou no caixa.
+  const discountPercent = Number(session.discount_percent ?? 0);
+  const total = discountPercent > 0 ? subtotal * (1 - discountPercent / 100) : subtotal;
   if (total <= 0) return;
 
   const { data: customer } = await supabaseAdmin

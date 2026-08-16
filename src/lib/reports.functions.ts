@@ -21,12 +21,18 @@ export const getReportsOverview = createServerFn({ method: "POST" })
 
     const { data: sessions } = await admin()
       .from("fastbar_sessions")
-      .select("id, paid_at, payment_method, customer_id")
+      .select("id, paid_at, payment_method, customer_id, discount_percent")
       .eq("status", "paid")
       .gte("paid_at", data.from)
       .lte("paid_at", data.to);
 
     const sessionIds = (sessions ?? []).map((session) => session.id);
+
+    // Desconto de boas-vindas do CRM não entra na receita por produto/categoria/hora: é um custo de
+    // aquisição de cliente, não do produto — descontar ali puxaria pra baixo a margem de itens que
+    // não têm nada a ver com a promoção. Fica separado como uma linha própria ("Desconto CRM").
+    const revenueOf = (item: { unit_price: number; quantity: number }) =>
+      Number(item.unit_price) * item.quantity;
 
     const [{ data: items }, { data: products }, { data: recipeItems }] = await Promise.all([
       sessionIds.length
@@ -80,13 +86,26 @@ export const getReportsOverview = createServerFn({ method: "POST" })
 
     const revenueBySession = new Map<string, number>();
     for (const item of items ?? []) {
-      const revenue = Number(item.unit_price) * item.quantity;
+      const revenue = revenueOf(item);
       revenueBySession.set(item.session_id, (revenueBySession.get(item.session_id) ?? 0) + revenue);
     }
 
     const totalRevenue = Array.from(revenueBySession.values()).reduce((sum, v) => sum + v, 0);
     const paidSessionsCount = sessions?.length ?? 0;
     const averageTicket = paidSessionsCount > 0 ? totalRevenue / paidSessionsCount : 0;
+
+    // Linha própria, fora do cálculo de CMV/margem: quanto foi abatido em desconto de boas-vindas
+    // no período, e de quantas comandas. totalRevenue continua no preço de tabela — é o que caiu
+    // de fato no caixa que fica menor, não o que os produtos "valem".
+    let crmDiscountTotal = 0;
+    let crmDiscountSessions = 0;
+    for (const session of sessions ?? []) {
+      const percent = Number(session.discount_percent ?? 0);
+      if (percent <= 0) continue;
+      const sessionRevenue = revenueBySession.get(session.id) ?? 0;
+      crmDiscountTotal += sessionRevenue * (percent / 100);
+      crmDiscountSessions += 1;
+    }
 
     // ---- CMV -------------------------------------------------------------
     // Itens sem custo registrado ficam contados à parte: sem isso o CMV apareceria menor do que é
@@ -96,7 +115,7 @@ export const getReportsOverview = createServerFn({ method: "POST" })
     const missingCostNames = new Set<string>();
     for (const item of items ?? []) {
       const unitCost = unitCostOf(item.product_id);
-      const revenue = Number(item.unit_price) * item.quantity;
+      const revenue = revenueOf(item);
       if (unitCost <= 0 || (item.product_id && recipeHasPricelessComponent.has(item.product_id))) {
         revenueWithoutCost += revenue;
         missingCostNames.add(item.name);
@@ -235,6 +254,8 @@ export const getReportsOverview = createServerFn({ method: "POST" })
       totalRevenue,
       paidSessionsCount,
       averageTicket,
+      crmDiscountTotal,
+      crmDiscountSessions,
       totalCost,
       grossProfit,
       cmvPercent,

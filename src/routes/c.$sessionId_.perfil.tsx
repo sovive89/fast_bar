@@ -106,6 +106,10 @@ function CustomerProfilePage() {
         <p className="mt-1 text-sm text-muted-foreground">
           Tudo aqui é opcional, menos a última pergunta. Ajuda a gente a te conhecer melhor.
         </p>
+        <p className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-primary">
+          🎁 Preencha tudo e aceite receber novidades pra ganhar <strong>10% de desconto</strong> na
+          comanda de hoje.
+        </p>
       </div>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">

@@ -16,7 +16,7 @@ import {
   type PaymentMethod,
 } from "@/lib/register.functions";
 import { fetchProducts } from "@/services/supabase/products";
-import { tabTotal } from "@/services/supabase/tabItems";
+import { tabTotal, tabTotalWithDiscount } from "@/services/supabase/tabItems";
 import type { BarProduct } from "@/types/fastbar";
 
 export const Route = createFileRoute("/caixa/$sessionId")({
@@ -110,7 +110,19 @@ function RegisterTabDetail() {
 
       <div className="mt-5 rounded-2xl border border-border bg-card p-5">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">Total da comanda</p>
-        <p className="mt-1 text-3xl font-bold">{brl(tabTotal(items))}</p>
+        {session.discount_percent ? (
+          <>
+            <p className="mt-1 text-sm text-muted-foreground line-through">{brl(tabTotal(items))}</p>
+            <p className="text-3xl font-bold">
+              {brl(tabTotalWithDiscount(items, session.discount_percent))}
+            </p>
+            <p className="mt-1 text-xs font-medium text-success">
+              {session.discount_percent}% de desconto de boas-vindas (cliente novo, cadastro completo)
+            </p>
+          </>
+        ) : (
+          <p className="mt-1 text-3xl font-bold">{brl(tabTotal(items))}</p>
+        )}
       </div>
 
       {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
