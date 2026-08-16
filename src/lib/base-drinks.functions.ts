@@ -536,11 +536,15 @@ export const createProduct = createServerFn({ method: "POST" })
     // Categoria precisa ser uma das cadastradas (comparação sem diferenciar maiúscula/minúscula,
     // igual ao índice único de fastbar_product_categories) — um valor de cliente adulterado ou
     // desatualizado não pode gravar um nome de categoria que não existe na entidade própria.
-    const { data: matchedCategory } = await admin()
+    // Comparação em JS, não com ilike: `%` e `_` no nome digitado seriam tratados como curinga de
+    // LIKE, casando categoria errada (ou nenhuma) em vez do nome exato.
+    const wantedCategory = data.category.trim().toLowerCase();
+    const { data: allCategories } = await admin()
       .from("fastbar_product_categories")
-      .select("name")
-      .ilike("name", data.category.trim())
-      .maybeSingle();
+      .select("name");
+    const matchedCategory = (allCategories ?? []).find(
+      (item) => item.name.toLowerCase() === wantedCategory,
+    );
     if (!matchedCategory) {
       return { ok: false as const, message: "Escolha uma categoria válida." };
     }

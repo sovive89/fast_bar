@@ -334,12 +334,21 @@ export const deleteProduct = createServerFn({ method: "POST" })
 
     // Best-effort: se a remoção da foto falhar, o produto já foi apagado do cardápio (o que
     // importa pra equipe) — só fica um arquivo órfão no bucket, não um estado inconsistente.
+    // createProduct aceita a image_url que o cliente manda de volta depois do upload, sem travar
+    // qual arquivo é "dono" de qual produto — então antes de apagar, confirma que nenhum OUTRO
+    // produto ainda referencia essa mesma foto (evita apagar um arquivo reaproveitado/reutilizado).
     if (before?.image_url) {
-      const marker = "/fastbar-products/";
-      const index = before.image_url.indexOf(marker);
-      if (index !== -1) {
-        const path = before.image_url.slice(index + marker.length);
-        await admin().storage.from("fastbar-products").remove([path]);
+      const { count } = await admin()
+        .from("fastbar_products")
+        .select("id", { count: "exact", head: true })
+        .eq("image_url", before.image_url);
+      if (!count) {
+        const marker = "/fastbar-products/";
+        const index = before.image_url.indexOf(marker);
+        if (index !== -1) {
+          const path = before.image_url.slice(index + marker.length);
+          await admin().storage.from("fastbar-products").remove([path]);
+        }
       }
     }
 

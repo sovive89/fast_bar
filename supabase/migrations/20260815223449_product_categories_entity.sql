@@ -35,3 +35,12 @@ on conflict (name) do nothing;
 insert into public.fastbar_product_categories (name)
 values ('Bebidas')
 on conflict (name) do nothing;
+
+-- Sem isso, um produto com a grafia "perdedora" (ex.: "doses", quando "Doses" foi a escolhida
+-- acima) continuaria com esse valor cru na coluna, e o cardápio voltaria a mostrar duas seções
+-- para a mesma categoria — exatamente o problema que esta migration existe para resolver.
+update public.fastbar_products p
+set category = c.name
+from public.fastbar_product_categories c
+where lower(p.category) = lower(c.name)
+  and p.category <> c.name;

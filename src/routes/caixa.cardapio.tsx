@@ -125,6 +125,7 @@ function CardapioPage() {
   const [saving, setSaving] = useState(false);
   const [compressing, setCompressing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Insumos do estoque disponíveis para compor o item, e a ficha sendo montada aqui mesmo — sem
   // isso, montar o cardápio exigia digitar o nome do zero e depois ir a outra aba fazer a ligação.
@@ -156,6 +157,7 @@ function CardapioPage() {
       loadStock(),
       loadCategories(),
     ]);
+    setLoadError(null);
     setProducts(result.products as Product[]);
     setRecipeProductIds(new Set(result.recipeProductIds));
     setPendingProductIds(new Set(result.pendingProductIds));
@@ -186,7 +188,13 @@ function CardapioPage() {
       if (!result.ok) return setCategoryError(result.message ?? "Não foi possível criar.");
       setNewCategoryName("");
       setShowCategoryForm(false);
-      await load();
+      // Categoria já foi criada nesse ponto — se o load() que só atualiza a tela falhar, isso não
+      // pode virar "não foi possível criar" no catch de fora, que atribuiria a falha errada.
+      try {
+        await load();
+      } catch {
+        setCategoryError("Categoria criada, mas a lista não atualizou — recarregue a página.");
+      }
     } catch {
       setCategoryError("Não foi possível criar — tente de novo.");
     } finally {
@@ -195,8 +203,14 @@ function CardapioPage() {
   }
 
   useEffect(() => {
-    void load();
-    const poll = setInterval(() => void load(), 15000);
+    // listProductCategories agora lança em vez de virar lista vazia silenciosa quando a leitura
+    // falha — mas isso significa que o carregamento em segundo plano, sem clique de ninguém pra
+    // pegar o erro, precisa de um .catch explícito aqui. Sem isso, a tela não avisa nada e outros
+    // dados carregados (produtos, insumos) também ficam desatualizados sem sinal nenhum.
+    const safeLoad = () =>
+      void load().catch(() => setLoadError("Não foi possível atualizar o cardápio."));
+    safeLoad();
+    const poll = setInterval(safeLoad, 15000);
     return () => clearInterval(poll);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -362,6 +376,8 @@ function CardapioPage() {
           {showPreview ? "Voltar à edição" : "Ver como fica pro cliente"}
         </button>
       </div>
+
+      {loadError && <p className="mt-3 text-sm text-destructive">{loadError}</p>}
 
       {showPreview ? (
         <CustomerMenuPreview grouped={grouped} recipeProductIds={recipeProductIds} />
