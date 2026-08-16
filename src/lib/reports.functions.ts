@@ -242,12 +242,26 @@ export const getReportsOverview = createServerFn({ method: "POST" })
 
     const { data: allCustomers } = await admin()
       .from("fastbar_customers")
-      .select("total_visits, total_spent, last_seen_at");
+      .select("id, total_visits, total_spent, last_seen_at");
     const threshold = vipSpendThreshold(allCustomers ?? []);
     const segmentCounts: Record<string, number> = {};
+    const segmentByCustomerId = new Map<string, string>();
     for (const customer of allCustomers ?? []) {
       const segment = classifyLead(customer, threshold);
       segmentCounts[segment] = (segmentCounts[segment] ?? 0) + 1;
+      segmentByCustomerId.set(customer.id, segment);
+    }
+
+    // Cruza o faturamento do período (já calculado por sessão acima) com o segmento de cada
+    // cliente — responde "quem sustenta o caixa em R$", não só "quantos clientes tem em cada
+    // grupo". Comanda de balcão (sem customer_id) não entra: não tem segmento pra atribuir.
+    const revenueBySegment: Record<string, number> = {};
+    for (const session of sessions ?? []) {
+      if (!session.customer_id) continue;
+      const segment = segmentByCustomerId.get(session.customer_id);
+      if (!segment) continue;
+      const revenue = revenueBySession.get(session.id) ?? 0;
+      revenueBySegment[segment] = (revenueBySegment[segment] ?? 0) + revenue;
     }
 
     return {
@@ -275,5 +289,6 @@ export const getReportsOverview = createServerFn({ method: "POST" })
         returningCount: returningCustomerIds.size,
       },
       segmentCounts,
+      revenueBySegment,
     };
   });
