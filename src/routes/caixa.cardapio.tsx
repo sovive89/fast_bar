@@ -390,12 +390,17 @@ function CardapioPage() {
   }, [name, products, stockOptions, dismissedSuggestionIds]);
 
   function dismissNameSuggestions() {
+    // Ignora TODOS os itens que batem com a busca, não só os 5 exibidos — senão "Ignorar" some
+    // o bloco por um instante e ele reaparece na hora com o próximo lote de itens escondidos.
+    const query = name.trim().toLowerCase();
     setDismissedSuggestionIds(
       (current) =>
         new Set([
           ...current,
-          ...nameMatches.products.map((item) => item.id),
-          ...nameMatches.stock.map((item) => item.id),
+          ...products.filter((item) => item.name.toLowerCase().includes(query)).map((item) => item.id),
+          ...stockOptions
+            .filter((item) => item.name.toLowerCase().includes(query))
+            .map((item) => item.id),
         ]),
     );
   }
