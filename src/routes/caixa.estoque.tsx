@@ -6,7 +6,9 @@ import { PrimaryButton, SectionCard, TextField } from "@/components/stock/Shared
 import { brl, parseAmount } from "@/lib/format";
 import {
   addBaseDrinkEntry,
+  addBaseDrinkLoss,
   addIngredientEntry,
+  addIngredientLoss,
   createBaseDrink,
   createIngredient,
   createSupplier,
@@ -14,6 +16,7 @@ import {
   deleteIngredient,
   getRecipeItems,
   getBaseDrinksOverview,
+  getStockReport,
   listAllProducts,
   listSuppliers,
   setRecipeItems,
@@ -34,13 +37,14 @@ export const Route = createFileRoute("/caixa/estoque")({
   component: StockOverview,
 });
 
-type Tab = "bebidas" | "ingredientes" | "fornecedores" | "fichas";
+type Tab = "bebidas" | "ingredientes" | "fornecedores" | "fichas" | "relatorios";
 
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "bebidas", label: "Bebidas base" },
   { id: "ingredientes", label: "Ingredientes" },
   { id: "fornecedores", label: "Fornecedores" },
   { id: "fichas", label: "Ficha técnica (Receitas)" },
+  { id: "relatorios", label: "Relatórios" },
 ];
 
 function StockOverview() {
@@ -74,6 +78,7 @@ function StockOverview() {
         {tab === "ingredientes" && <IngredientesTab />}
         {tab === "fornecedores" && <FornecedoresTab />}
         {tab === "fichas" && <FichasTecnicasTab />}
+        {tab === "relatorios" && <RelatoriosTab />}
       </div>
     </main>
   );
@@ -132,6 +137,9 @@ function ComponentStockTab(props: {
   deleteFn: (input: {
     data: { id: string; password: string };
   }) => Promise<{ ok: boolean; message?: string }>;
+  lossFn: (input: {
+    data: { id: string; quantity: number; note?: string | undefined };
+  }) => Promise<{ ok: boolean; message?: string }>;
 }) {
   const [items, setItems] = useState<StockComponent[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -158,6 +166,12 @@ function ComponentStockTab(props: {
   const [entrySupplierId, setEntrySupplierId] = useState("");
   const [entryError, setEntryError] = useState<string | null>(null);
   const [entryBusy, setEntryBusy] = useState(false);
+
+  const [openLossId, setOpenLossId] = useState<string | null>(null);
+  const [lossQuantity, setLossQuantity] = useState("");
+  const [lossNote, setLossNote] = useState("");
+  const [lossError, setLossError] = useState<string | null>(null);
+  const [lossBusy, setLossBusy] = useState(false);
 
   const [openPackagingId, setOpenPackagingId] = useState<string | null>(null);
   const [editPurchaseUnit, setEditPurchaseUnit] = useState("");
@@ -310,10 +324,33 @@ function ComponentStockTab(props: {
     await load();
   }
 
+  async function submitLoss(item: StockComponent) {
+    setLossError(null);
+    const quantity = parseAmount(lossQuantity);
+    if (quantity === null || quantity <= 0) {
+      return setLossError(`Informe uma quantidade perdida em ${item.unit}.`);
+    }
+    if (quantity > item.current_stock) {
+      return setLossError(`Maior do que o estoque atual (${item.current_stock} ${item.unit}).`);
+    }
+
+    setLossBusy(true);
+    const result = await props.lossFn({
+      data: { id: item.id, quantity, note: lossNote.trim() || undefined },
+    });
+    setLossBusy(false);
+    if (!result.ok) return setLossError(result.message ?? "Não foi possível registrar a perda.");
+    setOpenLossId(null);
+    setLossQuantity("");
+    setLossNote("");
+    await load();
+  }
+
   function openPackagingEditor(item: StockComponent) {
     setOpenPackagingId(item.id);
     setOpenEntryId(null);
     setDeletingId(null);
+    setOpenLossId(null);
     setPackagingError(null);
     setEditPurchaseUnit(item.purchase_unit ?? "");
     setEditUnitsPerPack(String(item.units_per_pack));
@@ -540,6 +577,7 @@ function ComponentStockTab(props: {
                         setOpenEntryId(isOpen ? null : item.id);
                         setOpenPackagingId(null);
                         setDeletingId(null);
+                        setOpenLossId(null);
                         setEntryPacks("");
                         setEntryPurchaseCost("");
                         setEntrySupplierId("");
@@ -551,9 +589,25 @@ function ComponentStockTab(props: {
                     </button>
                     <button
                       onClick={() => {
+                        const isLossOpen = openLossId === item.id;
+                        setOpenLossId(isLossOpen ? null : item.id);
+                        setOpenEntryId(null);
+                        setOpenPackagingId(null);
+                        setDeletingId(null);
+                        setLossQuantity("");
+                        setLossNote("");
+                        setLossError(null);
+                      }}
+                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-amber-500"
+                    >
+                      {openLossId === item.id ? "Cancelar" : "− Perda"}
+                    </button>
+                    <button
+                      onClick={() => {
                         setDeletingId(isDeleting ? null : item.id);
                         setOpenEntryId(null);
                         setOpenPackagingId(null);
+                        setOpenLossId(null);
                       }}
                       className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
                     >
@@ -680,6 +734,37 @@ function ComponentStockTab(props: {
                     </button>
                   </div>
                 )}
+
+                {openLossId === item.id && (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="any"
+                      min={0}
+                      value={lossQuantity}
+                      onChange={(event) => setLossQuantity(event.target.value)}
+                      placeholder={`Quantidade perdida (${item.unit})`}
+                      autoFocus
+                      className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+                    />
+                    <input
+                      type="text"
+                      value={lossNote}
+                      onChange={(event) => setLossNote(event.target.value)}
+                      placeholder="Motivo (opcional): quebrou, venceu, derramou..."
+                      className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+                    />
+                    {lossError && <p className="text-xs text-destructive">{lossError}</p>}
+                    <button
+                      onClick={() => submitLoss(item)}
+                      disabled={lossBusy || !lossQuantity}
+                      className="h-11 w-full rounded-xl bg-amber-500 text-sm font-semibold text-black disabled:opacity-60"
+                    >
+                      {lossBusy ? "Salvando..." : "Confirmar perda"}
+                    </button>
+                  </div>
+                )}
               </li>
             );
           })}
@@ -694,6 +779,7 @@ function BebidasBaseTab() {
   const entryFn = useServerFn(addBaseDrinkEntry);
   const updatePackagingFn = useServerFn(updateBaseDrinkPackaging);
   const deleteFn = useServerFn(deleteBaseDrink);
+  const lossFn = useServerFn(addBaseDrinkLoss);
   return (
     <ComponentStockTab
       kind="base_drink"
@@ -733,6 +819,9 @@ function BebidasBaseTab() {
         })
       }
       deleteFn={(input) => deleteFn({ data: input.data })}
+      lossFn={(input) =>
+        lossFn({ data: { baseDrinkId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
+      }
     />
   );
 }
@@ -742,6 +831,7 @@ function IngredientesTab() {
   const entryFn = useServerFn(addIngredientEntry);
   const updatePackagingFn = useServerFn(updateIngredientPackaging);
   const deleteFn = useServerFn(deleteIngredient);
+  const lossFn = useServerFn(addIngredientLoss);
   return (
     <ComponentStockTab
       kind="ingredient"
@@ -781,7 +871,152 @@ function IngredientesTab() {
         })
       }
       deleteFn={(input) => deleteFn({ data: input.data })}
+      lossFn={(input) =>
+        lossFn({ data: { ingredientId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
+      }
     />
+  );
+}
+
+// ============================================================
+// Aba: Relatórios
+// ============================================================
+
+type StockReport = {
+  totalValue: number;
+  valueByKind: Record<string, number>;
+  lowStock: Array<{
+    id: string;
+    name: string;
+    unit: string;
+    current: number;
+    min: number;
+    kind: "Bebida base" | "Ingrediente";
+  }>;
+  outOfStockProducts: Array<{ id: string; name: string; category: string }>;
+  waste: {
+    totalValue: number;
+    byItem: Array<{ name: string; quantity: number; value: number }>;
+    byMonth: Array<{ month: string; value: number }>;
+  };
+};
+
+function monthLabel(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  return new Date(year!, month! - 1, 1).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+}
+
+function RelatoriosTab() {
+  const [report, setReport] = useState<StockReport | null>(null);
+  const load = useServerFn(getStockReport);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function run() {
+      const result = await load();
+      if (!cancelled) setReport(result as StockReport);
+    }
+    void run();
+    const poll = setInterval(() => void run(), 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(poll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!report) {
+    return <p className="text-sm text-muted-foreground">Carregando relatório...</p>;
+  }
+
+  return (
+    <div className="space-y-4">
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-xs text-muted-foreground">Valor total parado em estoque</p>
+        <p className="mt-1 text-2xl font-bold">{brl(report.totalValue)}</p>
+        <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm">
+          {Object.entries(report.valueByKind).map(([kind, value]) => (
+            <div key={kind} className="flex items-center justify-between">
+              <span className="text-muted-foreground">{kind}</span>
+              <span className="font-medium">{brl(value)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold">Abaixo do mínimo</p>
+        {report.lowStock.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">Tudo dentro do mínimo cadastrado.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {report.lowStock.map((item) => (
+              <li key={item.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">
+                  {item.name} <span className="text-muted-foreground">· {item.kind}</span>
+                </span>
+                <span className="shrink-0 font-semibold text-amber-500">
+                  {item.current} / {item.min} {item.unit}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold">Produtos zerados</p>
+        {report.outOfStockProducts.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">Nenhum produto de revenda zerado.</p>
+        ) : (
+          <ul className="mt-3 space-y-2">
+            {report.outOfStockProducts.map((product) => (
+              <li key={product.id} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">{product.name}</span>
+                <span className="shrink-0 text-xs text-muted-foreground">{product.category}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {/* Desperdício: existe desde que a ação "− Perda" foi criada nesta versão — meses antes
+          disso aparecem vazios porque não tinha como registrar, não porque não teve perda. */}
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm font-semibold">Desperdício</p>
+        <p className="mt-1 text-2xl font-bold text-amber-500">{brl(report.waste.totalValue)}</p>
+        <p className="text-xs text-muted-foreground">perdido no total, desde que passou a ser registrado</p>
+
+        {report.waste.byMonth.length > 1 && (
+          <div className="mt-3 space-y-1.5 border-t border-border pt-3 text-sm">
+            {report.waste.byMonth.map((row) => (
+              <div key={row.month} className="flex items-center justify-between">
+                <span className="capitalize text-muted-foreground">{monthLabel(row.month)}</span>
+                <span className="font-medium">{brl(row.value)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {report.waste.byItem.length === 0 ? (
+          <p className="mt-3 text-sm text-muted-foreground">
+            Nenhuma perda registrada ainda. Use o botão "− Perda" nas abas de Bebidas base e
+            Ingredientes pra registrar quebra, vencimento ou derrame.
+          </p>
+        ) : (
+          <ul className="mt-3 space-y-2 border-t border-border pt-3">
+            {report.waste.byItem.map((item) => (
+              <li key={item.name} className="flex items-center justify-between gap-3 text-sm">
+                <span className="min-w-0 truncate">
+                  {item.name} <span className="text-muted-foreground">· {item.quantity}</span>
+                </span>
+                <span className="shrink-0 font-semibold text-amber-500">{brl(item.value)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
   );
 }
 

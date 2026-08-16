@@ -265,6 +265,58 @@ export const addBaseDrinkEntry = createServerFn({ method: "POST" })
     return { ok: true as const, newStock };
   });
 
+/**
+ * Registrar perda existe pra desperdício deixar de ser invisível: até essa função, o único jeito
+ * de tirar quantidade do estoque sem venda era editar o número na mão, sem deixar rastro de por
+ * quê. Com reason="perda" e o custo médio já cadastrado no item, dá pra somar o valor perdido ao
+ * longo do tempo sem precisar que ninguém digite preço de novo aqui.
+ */
+export const addBaseDrinkLoss = createServerFn({ method: "POST" })
+  .inputValidator((data: { baseDrinkId: string; quantity: number; note?: string | undefined }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    const quantity = Number(data.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return { ok: false as const, message: "Informe uma quantidade perdida válida." };
+    }
+
+    const { data: material } = await admin()
+      .from("fastbar_base_drinks")
+      .select("id, current_stock, average_cost")
+      .eq("id", data.baseDrinkId)
+      .maybeSingle();
+    if (!material) return { ok: false as const, message: "Bebida base não encontrada." };
+
+    const newStock = Number(material.current_stock) - quantity;
+    if (newStock < 0) {
+      return { ok: false as const, message: "Quantidade maior do que o estoque atual." };
+    }
+
+    const { error: movementError } = await admin().from("fastbar_base_drink_movements").insert({
+      base_drink_id: material.id,
+      type: "saida",
+      quantity,
+      reason: "perda",
+      unit_cost: material.average_cost,
+      note: data.note?.trim() || null,
+    });
+    if (movementError) {
+      return { ok: false as const, message: "Não foi possível registrar a perda." };
+    }
+
+    const { error: updateError } = await admin()
+      .from("fastbar_base_drinks")
+      .update({ current_stock: newStock })
+      .eq("id", material.id);
+    if (updateError) {
+      return { ok: false as const, message: "Não foi possível atualizar o estoque da bebida base." };
+    }
+
+    return { ok: true as const, newStock };
+  });
+
 // ============ INGREDIENTES DE DRINK (xarope, suco, refrigerante etc.) ============
 // Nunca vendidos sozinhos — só existem pra entrar numa mistura.
 
@@ -435,6 +487,53 @@ export const addIngredientEntry = createServerFn({ method: "POST" })
     const { error: updateError } = await admin()
       .from("fastbar_drink_ingredients")
       .update({ current_stock: newStock, average_cost: newAvg })
+      .eq("id", ingredient.id);
+    if (updateError) {
+      return { ok: false as const, message: "Não foi possível atualizar o estoque do ingrediente." };
+    }
+
+    return { ok: true as const, newStock };
+  });
+
+/** Mesma lógica de addBaseDrinkLoss, pro lado dos ingredientes. */
+export const addIngredientLoss = createServerFn({ method: "POST" })
+  .inputValidator((data: { ingredientId: string; quantity: number; note?: string | undefined }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    const quantity = Number(data.quantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return { ok: false as const, message: "Informe uma quantidade perdida válida." };
+    }
+
+    const { data: ingredient } = await admin()
+      .from("fastbar_drink_ingredients")
+      .select("id, current_stock, average_cost")
+      .eq("id", data.ingredientId)
+      .maybeSingle();
+    if (!ingredient) return { ok: false as const, message: "Ingrediente não encontrado." };
+
+    const newStock = Number(ingredient.current_stock) - quantity;
+    if (newStock < 0) {
+      return { ok: false as const, message: "Quantidade maior do que o estoque atual." };
+    }
+
+    const { error: movementError } = await admin().from("fastbar_drink_ingredient_movements").insert({
+      ingredient_id: ingredient.id,
+      type: "saida",
+      quantity,
+      reason: "perda",
+      unit_cost: ingredient.average_cost,
+      note: data.note?.trim() || null,
+    });
+    if (movementError) {
+      return { ok: false as const, message: "Não foi possível registrar a perda." };
+    }
+
+    const { error: updateError } = await admin()
+      .from("fastbar_drink_ingredients")
+      .update({ current_stock: newStock })
       .eq("id", ingredient.id);
     if (updateError) {
       return { ok: false as const, message: "Não foi possível atualizar o estoque do ingrediente." };
@@ -846,5 +945,135 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
       ...item,
       doses: dosesByComponent.get(item.id) ?? [],
     })),
+  };
+});
+
+/**
+ * Relatório do módulo Estoque: valor parado em estoque e o que está abaixo do mínimo. Cruza as
+ * três tabelas de inventário (bebidas base, ingredientes, produtos de revenda) — cada uma com sua
+ * própria noção de custo médio, mas só bebidas base e ingredientes têm min_stock cadastrado;
+ * produto de revenda só entra no alerta de "zerado", não de "abaixo do mínimo".
+ */
+export const getStockReport = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  const { valueOf, monthKey } = await import("./analytics");
+  await assertRegisterAccess();
+
+  const [{ data: baseDrinks }, { data: ingredients }, { data: products }] = await Promise.all([
+    admin()
+      .from("fastbar_base_drinks")
+      .select("id, name, unit, current_stock, min_stock, average_cost")
+      .eq("active", true),
+    admin()
+      .from("fastbar_drink_ingredients")
+      .select("id, name, unit, current_stock, min_stock, average_cost")
+      .eq("active", true),
+    admin()
+      .from("fastbar_products")
+      .select("id, name, category, stock_quantity, average_cost")
+      .eq("is_active", true),
+  ]);
+
+  const baseDrinksValue = (baseDrinks ?? []).reduce(
+    (sum, i) => sum + valueOf(i.current_stock, i.average_cost),
+    0,
+  );
+  const ingredientsValue = (ingredients ?? []).reduce(
+    (sum, i) => sum + valueOf(i.current_stock, i.average_cost),
+    0,
+  );
+  const productsValue = (products ?? []).reduce(
+    (sum, i) => sum + valueOf(i.stock_quantity, i.average_cost),
+    0,
+  );
+
+  const lowStock = [
+    ...(baseDrinks ?? [])
+      .filter((i) => Number(i.current_stock) < Number(i.min_stock))
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        unit: i.unit,
+        current: Number(i.current_stock),
+        min: Number(i.min_stock),
+        kind: "Bebida base" as const,
+      })),
+    ...(ingredients ?? [])
+      .filter((i) => Number(i.current_stock) < Number(i.min_stock))
+      .map((i) => ({
+        id: i.id,
+        name: i.name,
+        unit: i.unit,
+        current: Number(i.current_stock),
+        min: Number(i.min_stock),
+        kind: "Ingrediente" as const,
+      })),
+  ].sort((a, b) => a.current / a.min - b.current / b.min);
+
+  const outOfStockProducts = (products ?? [])
+    .filter((p) => Number(p.stock_quantity) <= 0)
+    .map((p) => ({ id: p.id, name: p.name, category: p.category }));
+
+  // Desperdício: soma reason="perda" dos dois tipos de movimento, com o nome do item que perdeu
+  // e agrupado por mês — "ao longo do tempo" só faz sentido comparando um mês com o anterior, não
+  // um número solto. Não existe histórico antes dessa função porque a ação de registrar perda não
+  // existia até agora: os meses vão aparecer vazios até a equipe começar a usar.
+  const nameByBaseDrinkId = new Map((baseDrinks ?? []).map((i) => [i.id, i.name]));
+  const nameByIngredientId = new Map((ingredients ?? []).map((i) => [i.id, i.name]));
+
+  const [{ data: baseDrinkLosses }, { data: ingredientLosses }] = await Promise.all([
+    admin()
+      .from("fastbar_base_drink_movements")
+      .select("base_drink_id, quantity, unit_cost, created_at")
+      .eq("reason", "perda"),
+    admin()
+      .from("fastbar_drink_ingredient_movements")
+      .select("ingredient_id, quantity, unit_cost, created_at")
+      .eq("reason", "perda"),
+  ]);
+
+  const wasteByItem = new Map<string, { name: string; quantity: number; value: number }>();
+  const wasteByMonth = new Map<string, number>();
+  let wasteValueTotal = 0;
+
+  for (const loss of baseDrinkLosses ?? []) {
+    const name = nameByBaseDrinkId.get(loss.base_drink_id) ?? "—";
+    const value = valueOf(loss.quantity, loss.unit_cost);
+    const current = wasteByItem.get(loss.base_drink_id) ?? { name, quantity: 0, value: 0 };
+    current.quantity += Number(loss.quantity);
+    current.value += value;
+    wasteByItem.set(loss.base_drink_id, current);
+    const month = monthKey(loss.created_at);
+    wasteByMonth.set(month, (wasteByMonth.get(month) ?? 0) + value);
+    wasteValueTotal += value;
+  }
+  for (const loss of ingredientLosses ?? []) {
+    const name = nameByIngredientId.get(loss.ingredient_id) ?? "—";
+    const value = valueOf(loss.quantity, loss.unit_cost);
+    const current = wasteByItem.get(loss.ingredient_id) ?? { name, quantity: 0, value: 0 };
+    current.quantity += Number(loss.quantity);
+    current.value += value;
+    wasteByItem.set(loss.ingredient_id, current);
+    const month = monthKey(loss.created_at);
+    wasteByMonth.set(month, (wasteByMonth.get(month) ?? 0) + value);
+    wasteValueTotal += value;
+  }
+
+  return {
+    totalValue: baseDrinksValue + ingredientsValue + productsValue,
+    valueByKind: {
+      "Bebidas base": baseDrinksValue,
+      Ingredientes: ingredientsValue,
+      "Produtos de revenda": productsValue,
+    },
+    lowStock,
+    outOfStockProducts,
+    waste: {
+      totalValue: wasteValueTotal,
+      byItem: Array.from(wasteByItem.values()).sort((a, b) => b.value - a.value),
+      byMonth: Array.from(wasteByMonth.entries())
+        .map(([month, value]) => ({ month, value }))
+        .sort((a, b) => a.month.localeCompare(b.month)),
+    },
   };
 });

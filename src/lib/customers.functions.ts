@@ -33,6 +33,7 @@ export const getCustomersOverview = createServerFn({ method: "POST" }).handler(a
 export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async () => {
   const { admin, assertRegisterAccess } = await import("./fastbar.server");
   const { classifyLead, vipSpendThreshold } = await import("./crm");
+  const { todayDayMonth } = await import("./analytics");
   await assertRegisterAccess();
 
   const { data: customers } = await admin()
@@ -55,11 +56,7 @@ export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async 
 
   // Aniversariantes do mês corrente, no fuso do bar — pra campanha de aniversário ou só ligar
   // desejando feliz aniversário no dia.
-  const currentMonth = Number(
-    new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", month: "numeric" }).format(
-      new Date(),
-    ),
-  );
+  const { month: currentMonth } = todayDayMonth();
   const birthdaysThisMonth = rows
     .filter((c) => c.birthday_month === currentMonth)
     .map((c) => ({ id: c.id, name: c.name, day: c.birthday_day! }))
@@ -81,6 +78,106 @@ export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async 
     marketingOptInCount,
     totalCustomers: rows.length,
   };
+});
+
+/**
+ * Sinal do CRM pro módulo Alertas: quem precisa de ação hoje, não um dashboard completo. Em risco
+ * e perdido já são os segmentos que pedem ação por definição (ver crm.ts); aniversariante é "hoje",
+ * não "esse mês" como no dashboard — ligar no dia certo é o que importa aqui.
+ */
+export const getCrmAlerts = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  const { classifyLead, vipSpendThreshold } = await import("./crm");
+  const { todayDayMonth } = await import("./analytics");
+  await assertRegisterAccess();
+
+  const { data: customers } = await admin()
+    .from("fastbar_customers")
+    .select("id, name, phone, total_visits, total_spent, last_seen_at, birthday_day, birthday_month");
+  const rows = customers ?? [];
+  const threshold = vipSpendThreshold(rows);
+  const now = Date.now();
+
+  const atRisk = rows
+    .map((c) => ({ ...c, segment: classifyLead(c, threshold, now) }))
+    .filter((c) => c.segment === "risco" || c.segment === "perdido")
+    .map((c) => ({ id: c.id, name: c.name, phone: c.phone, segment: c.segment }));
+
+  const { day: todayDay, month: todayMonth } = todayDayMonth();
+
+  const birthdaysToday = rows
+    .filter((c) => c.birthday_day === todayDay && c.birthday_month === todayMonth)
+    .map((c) => ({ id: c.id, name: c.name, phone: c.phone }));
+
+  return { atRisk, birthdaysToday };
+});
+
+/**
+ * Retenção por coorte: agrupa clientes pelo mês da primeira visita e mede quantos % de cada
+ * coorte voltou a comprar em cada mês seguinte. Diferente de "taxa de recompra" (um número só
+ * pra base inteira), isso mostra SE a retenção está melhorando ou piorando coorte a coorte —
+ * dois bares com a mesma taxa de recompra podem ter trajetórias opostas.
+ *
+ * Limita a 6 coortes (últimos 6 meses com cliente novo) e 6 meses de profundidade: mais que isso
+ * vira uma matriz grande demais pra ler numa tela de celular, e coortes muito antigas têm cada vez
+ * menos meses seguintes pra mostrar (a diagonal da matriz).
+ */
+export const getRetentionCohorts = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  const { monthKey, monthsBetween } = await import("./analytics");
+  await assertRegisterAccess();
+
+  const { data: customers } = await admin()
+    .from("fastbar_customers")
+    .select("id, first_seen_at");
+  const { data: sessions } = await admin()
+    .from("fastbar_sessions")
+    .select("customer_id, paid_at")
+    .eq("status", "paid")
+    .not("customer_id", "is", null);
+
+  const cohortByCustomer = new Map<string, string>();
+  for (const c of customers ?? []) cohortByCustomer.set(c.id, monthKey(c.first_seen_at));
+
+  // Meses de visita distintos por cliente — um cliente que voltou 3x no mesmo mês conta uma vez
+  // naquele mês, senão o gráfico infla retenção com gente que só ficou mais tempo na mesma visita.
+  const visitMonthsByCustomer = new Map<string, Set<string>>();
+  for (const s of sessions ?? []) {
+    if (!s.customer_id || !s.paid_at) continue;
+    const set = visitMonthsByCustomer.get(s.customer_id) ?? new Set<string>();
+    set.add(monthKey(s.paid_at));
+    visitMonthsByCustomer.set(s.customer_id, set);
+  }
+
+  const cohortSizes = new Map<string, number>();
+  for (const cohort of cohortByCustomer.values()) {
+    cohortSizes.set(cohort, (cohortSizes.get(cohort) ?? 0) + 1);
+  }
+
+  const cohortMonths = Array.from(cohortSizes.keys()).sort().slice(-6);
+  const depth = 6;
+
+  const matrix = cohortMonths.map((cohort) => {
+    const size = cohortSizes.get(cohort) ?? 0;
+    const retained = Array.from({ length: depth }, (_, offset) => {
+      let count = 0;
+      for (const [customerId, customerCohort] of cohortByCustomer) {
+        if (customerCohort !== cohort) continue;
+        const visits = visitMonthsByCustomer.get(customerId);
+        if (!visits) continue;
+        for (const visitMonth of visits) {
+          if (monthsBetween(cohort, visitMonth) === offset) {
+            count += 1;
+            break;
+          }
+        }
+      }
+      return { offset, percent: size > 0 ? (count / size) * 100 : 0, count };
+    });
+    return { cohort, size, retained };
+  });
+
+  return { cohorts: matrix, depth };
 });
 
 export const getCustomerDetail = createServerFn({ method: "POST" })

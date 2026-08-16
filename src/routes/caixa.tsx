@@ -29,7 +29,9 @@ function RegisterLayout() {
         ? "crm"
         : pathname.startsWith("/caixa/relatorios")
           ? "relatorios"
-          : "comandas";
+          : pathname.startsWith("/caixa/alertas")
+            ? "alertas"
+            : "comandas";
 
   const tabClass = (tab: string) =>
     `rounded-full px-4 py-1.5 text-sm font-medium ${active === tab ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`;
@@ -52,6 +54,9 @@ function RegisterLayout() {
           </Link>
           <Link to="/caixa/relatorios" className={tabClass("relatorios")}>
             Relatórios Vendas
+          </Link>
+          <Link to="/caixa/alertas" className={tabClass("alertas")}>
+            Alertas
           </Link>
         </div>
         <button
