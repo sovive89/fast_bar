@@ -10,7 +10,7 @@ import {
   submitCustomerProfile,
 } from "@/lib/client-session.functions";
 
-export const Route = createFileRoute("/c/$sessionId/perfil")({
+export const Route = createFileRoute("/c/$sessionId_/perfil")({
   head: () => ({
     meta: [
       { title: "Só mais um pouquinho | FastBar" },
