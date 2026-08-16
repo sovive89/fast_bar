@@ -33,6 +33,7 @@ export const getCustomersOverview = createServerFn({ method: "POST" }).handler(a
 export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async () => {
   const { admin, assertRegisterAccess } = await import("./fastbar.server");
   const { classifyLead, vipSpendThreshold } = await import("./crm");
+  const { todayDayMonth } = await import("./analytics");
   await assertRegisterAccess();
 
   const { data: customers } = await admin()
@@ -55,11 +56,7 @@ export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async 
 
   // Aniversariantes do mês corrente, no fuso do bar — pra campanha de aniversário ou só ligar
   // desejando feliz aniversário no dia.
-  const currentMonth = Number(
-    new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo", month: "numeric" }).format(
-      new Date(),
-    ),
-  );
+  const { month: currentMonth } = todayDayMonth();
   const birthdaysThisMonth = rows
     .filter((c) => c.birthday_month === currentMonth)
     .map((c) => ({ id: c.id, name: c.name, day: c.birthday_day! }))
@@ -91,6 +88,7 @@ export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async 
 export const getCrmAlerts = createServerFn({ method: "POST" }).handler(async () => {
   const { admin, assertRegisterAccess } = await import("./fastbar.server");
   const { classifyLead, vipSpendThreshold } = await import("./crm");
+  const { todayDayMonth } = await import("./analytics");
   await assertRegisterAccess();
 
   const { data: customers } = await admin()
@@ -105,11 +103,7 @@ export const getCrmAlerts = createServerFn({ method: "POST" }).handler(async () 
     .filter((c) => c.segment === "risco" || c.segment === "perdido")
     .map((c) => ({ id: c.id, name: c.name, phone: c.phone, segment: c.segment }));
 
-  const today = new Intl.DateTimeFormat("en-GB", { timeZone: "America/Sao_Paulo" })
-    .formatToParts(new Date())
-    .reduce<Record<string, string>>((acc, part) => ({ ...acc, [part.type]: part.value }), {});
-  const todayDay = Number(today["day"]);
-  const todayMonth = Number(today["month"]);
+  const { day: todayDay, month: todayMonth } = todayDayMonth();
 
   const birthdaysToday = rows
     .filter((c) => c.birthday_day === todayDay && c.birthday_month === todayMonth)
@@ -130,6 +124,7 @@ export const getCrmAlerts = createServerFn({ method: "POST" }).handler(async () 
  */
 export const getRetentionCohorts = createServerFn({ method: "POST" }).handler(async () => {
   const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  const { monthKey, monthsBetween } = await import("./analytics");
   await assertRegisterAccess();
 
   const { data: customers } = await admin()
@@ -140,20 +135,6 @@ export const getRetentionCohorts = createServerFn({ method: "POST" }).handler(as
     .select("customer_id, paid_at")
     .eq("status", "paid")
     .not("customer_id", "is", null);
-
-  const monthKey = (iso: string) => {
-    const d = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Sao_Paulo",
-      year: "numeric",
-      month: "2-digit",
-    }).format(new Date(iso));
-    return d; // "YYYY-MM"
-  };
-  const monthsBetween = (a: string, b: string) => {
-    const [ay = 0, am = 0] = a.split("-").map(Number);
-    const [by = 0, bm = 0] = b.split("-").map(Number);
-    return (by - ay) * 12 + (bm - am);
-  };
 
   const cohortByCustomer = new Map<string, string>();
   for (const c of customers ?? []) cohortByCustomer.set(c.id, monthKey(c.first_seen_at));

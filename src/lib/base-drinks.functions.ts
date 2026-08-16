@@ -956,6 +956,7 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
  */
 export const getStockReport = createServerFn({ method: "POST" }).handler(async () => {
   const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  const { valueOf, monthKey } = await import("./analytics");
   await assertRegisterAccess();
 
   const [{ data: baseDrinks }, { data: ingredients }, { data: products }] = await Promise.all([
@@ -972,8 +973,6 @@ export const getStockReport = createServerFn({ method: "POST" }).handler(async (
       .select("id, name, category, stock_quantity, average_cost")
       .eq("is_active", true),
   ]);
-
-  const valueOf = (qty: number, cost: number | null) => Number(qty) * (Number(cost) || 0);
 
   const baseDrinksValue = (baseDrinks ?? []).reduce(
     (sum, i) => sum + valueOf(i.current_stock, i.average_cost),
@@ -1032,13 +1031,6 @@ export const getStockReport = createServerFn({ method: "POST" }).handler(async (
       .select("ingredient_id, quantity, unit_cost, created_at")
       .eq("reason", "perda"),
   ]);
-
-  const monthKey = (iso: string) =>
-    new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Sao_Paulo",
-      year: "numeric",
-      month: "2-digit",
-    }).format(new Date(iso));
 
   const wasteByItem = new Map<string, { name: string; quantity: number; value: number }>();
   const wasteByMonth = new Map<string, number>();

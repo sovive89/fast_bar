@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getRetentionCohorts } from "@/lib/customers.functions";
+import { currentMonthKey, monthsBetween } from "@/lib/analytics";
 
 export const Route = createFileRoute("/caixa/crm/analises")({
   head: () => ({
@@ -24,16 +25,8 @@ function monthLabel(key: string) {
   });
 }
 
-const currentMonthKey = new Intl.DateTimeFormat("en-CA", {
-  timeZone: "America/Sao_Paulo",
-  year: "numeric",
-  month: "2-digit",
-}).format(new Date());
-
 function monthsSince(cohort: string) {
-  const [cy, cm] = cohort.split("-").map(Number);
-  const [ny, nm] = currentMonthKey.split("-").map(Number);
-  return (ny! - cy!) * 12 + (nm! - cm!);
+  return monthsBetween(cohort, currentMonthKey());
 }
 
 /** Verde mais forte quanto maior a retenção — heatmap simples, sem depender de recharts. */
