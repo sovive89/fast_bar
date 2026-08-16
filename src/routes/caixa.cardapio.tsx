@@ -128,8 +128,10 @@ function CardapioPage() {
   const [error, setError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   // Sugestão de item já existente enquanto digita o nome — evita cadastrar de novo algo que já
-  // está no estoque ou no cardápio. "Ignorar" fecha o aviso pra quem realmente quer um item novo.
-  const [nameSuggestionsDismissed, setNameSuggestionsDismissed] = useState(false);
+  // está no estoque ou no cardápio. "Ignorar"/"+ Puxar como insumo" guardam os ids que já
+  // apareceram, não um booleano: assim, digitar mais letras do mesmo nome (que continua batendo
+  // com os mesmos itens) não faz o aviso reaparecer a cada tecla — só quando surge um item novo.
+  const [dismissedSuggestionIds, setDismissedSuggestionIds] = useState<Set<string>>(new Set());
 
   // Insumos do estoque disponíveis para compor o item, e a ficha sendo montada aqui mesmo — sem
   // isso, montar o cardápio exigia digitar o nome do zero e depois ir a outra aba fazer a ligação.
@@ -368,7 +370,7 @@ function CardapioPage() {
     setStockQuantity("");
     setPhotoFile(null);
     setShowForm(false);
-    setNameSuggestionsDismissed(false);
+    setDismissedSuggestionIds(new Set());
     await load();
   }
 
@@ -376,17 +378,34 @@ function CardapioPage() {
     const query = name.trim().toLowerCase();
     if (query.length < 2) return { products: [], stock: [] };
     return {
-      products: products.filter((item) => item.name.toLowerCase().includes(query)).slice(0, 5),
-      stock: stockOptions.filter((item) => item.name.toLowerCase().includes(query)).slice(0, 5),
+      products: products
+        .filter((item) => item.name.toLowerCase().includes(query))
+        .filter((item) => !dismissedSuggestionIds.has(item.id))
+        .slice(0, 5),
+      stock: stockOptions
+        .filter((item) => item.name.toLowerCase().includes(query))
+        .filter((item) => !dismissedSuggestionIds.has(item.id))
+        .slice(0, 5),
     };
-  }, [name, products, stockOptions]);
+  }, [name, products, stockOptions, dismissedSuggestionIds]);
+
+  function dismissNameSuggestions() {
+    setDismissedSuggestionIds(
+      (current) =>
+        new Set([
+          ...current,
+          ...nameMatches.products.map((item) => item.id),
+          ...nameMatches.stock.map((item) => item.id),
+        ]),
+    );
+  }
 
   function addComponentFromStock(stockId: string) {
     setComponents((current) => [
       ...current,
       { key: `c-${Date.now()}-${current.length}`, stockId, quantity: "" },
     ]);
-    setNameSuggestionsDismissed(true);
+    setDismissedSuggestionIds((current) => new Set([...current, stockId]));
   }
 
   const grouped = useMemo(() => {
@@ -496,7 +515,7 @@ function CardapioPage() {
           <button
             onClick={() => {
               setShowForm((value) => !value);
-              setNameSuggestionsDismissed(false);
+              setDismissedSuggestionIds(new Set());
             }}
             className="w-full rounded-xl border border-dashed border-border py-3 text-sm font-medium text-muted-foreground hover:text-foreground"
           >
@@ -506,24 +525,13 @@ function CardapioPage() {
           {showForm && (
             <SectionCard title="Novo produto do cardápio">
               <div className="space-y-3">
-                <TextField
-                  label="Nome"
-                  value={name}
-                  onChange={(value) => {
-                    setName(value);
-                    // "Ignorar" só vale pro nome que estava na tela quando foi clicado — trocar o
-                    // nome depois tem que voltar a checar duplicidade contra o novo texto.
-                    setNameSuggestionsDismissed(false);
-                  }}
-                  placeholder="Caipirinha"
-                />
-                {!nameSuggestionsDismissed &&
-                  (nameMatches.products.length > 0 || nameMatches.stock.length > 0) && (
+                <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
+                {(nameMatches.products.length > 0 || nameMatches.stock.length > 0) && (
                     <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
                       <div className="flex items-start justify-between gap-2">
                         <p className="text-xs font-semibold">Já existe algo parecido</p>
                         <button
-                          onClick={() => setNameSuggestionsDismissed(true)}
+                          onClick={dismissNameSuggestions}
                           className="shrink-0 text-xs text-muted-foreground hover:text-foreground"
                         >
                           Ignorar
