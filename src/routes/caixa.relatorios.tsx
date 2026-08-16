@@ -1,5 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import {
   Bar,
@@ -12,7 +12,14 @@ import {
 } from "recharts";
 import { brl } from "@/lib/format";
 import { getReportsOverview } from "@/lib/reports.functions";
-import { SegmentDistributionChart } from "@/components/shared/SegmentDistributionChart";
+
+// Ver o comentário em caixa.crm.clientes.tsx: import estático desse componente nas duas rotas
+// gerava chunks circulares no servidor e derrubava a produção inteira.
+const SegmentDistributionChart = lazy(() =>
+  import("@/components/shared/SegmentDistributionChart").then((m) => ({
+    default: m.SegmentDistributionChart,
+  })),
+);
 
 export const Route = createFileRoute("/caixa/relatorios")({
   head: () => ({
@@ -253,7 +260,9 @@ function Reports() {
               lugares reconhecer o padrão sem reler a legenda. */}
           <div className="rounded-2xl border border-border bg-card p-4">
             <p className="text-sm font-semibold">Base de clientes por segmento</p>
-            <SegmentDistributionChart counts={overview.segmentCounts} />
+            <Suspense fallback={<div className="mt-3 h-24" />}>
+              <SegmentDistributionChart counts={overview.segmentCounts} />
+            </Suspense>
           </div>
 
           <div className="rounded-2xl border border-border bg-card p-4">

@@ -1,10 +1,19 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { brl, digits, formatPhone } from "@/lib/format";
 import { getCustomersOverview } from "@/lib/customers.functions";
 import { SEGMENT_HINT, SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
-import { SegmentDistributionChart } from "@/components/shared/SegmentDistributionChart";
+
+// Carregado sob demanda de propósito: o gráfico puxa recharts, e importá-lo estaticamente num
+// módulo compartilhado por duas rotas fazia o bundler gerar dois chunks de servidor em dependência
+// circular — o build passava, mas a produção respondia 500 em toda página com
+// "__exportAll is not a function". Reproduzido e confirmado rodando o bundle do .output direto.
+const SegmentDistributionChart = lazy(() =>
+  import("@/components/shared/SegmentDistributionChart").then((m) => ({
+    default: m.SegmentDistributionChart,
+  })),
+);
 
 type Customer = {
   id: string;
@@ -158,7 +167,9 @@ function CustomersOverview() {
       {customers.length > 0 && (
         <div className="mt-4 rounded-2xl border border-border bg-card p-4">
           <p className="text-sm font-semibold">Distribuição por segmento</p>
-          <SegmentDistributionChart counts={Object.fromEntries(counts)} />
+          <Suspense fallback={<div className="mt-3 h-24" />}>
+            <SegmentDistributionChart counts={Object.fromEntries(counts)} />
+          </Suspense>
         </div>
       )}
 
