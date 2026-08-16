@@ -7,7 +7,7 @@ import { getCustomerDetail, updateCustomerNotes } from "@/lib/customers.function
 import { SEGMENT_HINT, SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
 import type { SessionStatus } from "@/types/fastbar";
 
-export const Route = createFileRoute("/caixa/clientes_/$customerId")({
+export const Route = createFileRoute("/caixa/crm/clientes_/$customerId")({
   head: () => ({
     meta: [{ title: "Cliente | FastBar" }],
   }),
@@ -114,7 +114,7 @@ function CustomerDetail() {
     return (
       <main className="mx-auto max-w-2xl p-6">
         <h1 className="text-2xl font-bold">Cliente não encontrado</h1>
-        <Link to="/caixa/clientes" className="mt-4 inline-block text-sm text-primary underline">
+        <Link to="/caixa/crm/clientes" className="mt-4 inline-block text-sm text-primary underline">
           Voltar aos clientes
         </Link>
       </main>
@@ -124,7 +124,7 @@ function CustomerDetail() {
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
       <Link
-        to="/caixa/clientes"
+        to="/caixa/crm/clientes"
         className="text-sm text-muted-foreground underline underline-offset-4"
       >
         ← Voltar aos clientes
