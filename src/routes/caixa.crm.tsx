@@ -13,7 +13,7 @@ export const Route = createFileRoute("/caixa/crm")({
  */
 function CrmLayout() {
   const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const active = pathname.startsWith("/caixa/crm/clientes") ? "clientes" : "clientes";
+  const active = pathname.startsWith("/caixa/crm/clientes") ? "clientes" : "visao-geral";
 
   const tabClass = (tab: string) =>
     `rounded-full px-3.5 py-1.5 text-xs font-medium ${
@@ -27,6 +27,9 @@ function CrmLayout() {
       <div className="mx-auto w-full max-w-2xl px-5 pt-5">
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">CRM</p>
         <div className="mt-2 flex gap-2 overflow-x-auto">
+          <Link to="/caixa/crm" className={tabClass("visao-geral")}>
+            Visão geral
+          </Link>
           <Link to="/caixa/crm/clientes" className={tabClass("clientes")}>
             Clientes
           </Link>

@@ -47,7 +47,7 @@ function RegisterLayout() {
           <Link to="/caixa/estoque" className={tabClass("estoque")}>
             Estoque
           </Link>
-          <Link to="/caixa/crm/clientes" className={tabClass("crm")}>
+          <Link to="/caixa/crm" className={tabClass("crm")}>
             CRM
           </Link>
           <Link to="/caixa/relatorios" className={tabClass("relatorios")}>
