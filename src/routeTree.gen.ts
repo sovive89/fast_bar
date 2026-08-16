@@ -24,6 +24,7 @@ import { Route as CaixaRelatoriosRouteImport } from './routes/caixa.relatorios'
 import { Route as ComandaSessionIdRouteImport } from './routes/comanda.$sessionId'
 import { Route as CSessionIdPerfilRouteImport } from './routes/c.$sessionId_.perfil'
 import { Route as CaixaCrmIndexRouteImport } from './routes/caixa.crm.index'
+import { Route as CaixaCrmAnalisesRouteImport } from './routes/caixa.crm.analises'
 import { Route as CaixaCrmClientesRouteImport } from './routes/caixa.crm.clientes'
 import { Route as CaixaCrmClientesCustomerIdRouteImport } from './routes/caixa.crm.clientes_.$customerId'
 
@@ -102,6 +103,11 @@ const CaixaCrmIndexRoute = CaixaCrmIndexRouteImport.update({
   path: '/',
   getParentRoute: () => CaixaCrmRoute,
 } as any)
+const CaixaCrmAnalisesRoute = CaixaCrmAnalisesRouteImport.update({
+  id: '/analises',
+  path: '/analises',
+  getParentRoute: () => CaixaCrmRoute,
+} as any)
 const CaixaCrmClientesRoute = CaixaCrmClientesRouteImport.update({
   id: '/clientes',
   path: '/clientes',
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa/': typeof CaixaIndexRoute
   '/c/$sessionId/perfil': typeof CSessionIdPerfilRoute
+  '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
   '/caixa/crm/': typeof CaixaCrmIndexRoute
   '/caixa/crm/clientes/$customerId': typeof CaixaCrmClientesCustomerIdRoute
@@ -146,6 +153,7 @@ export interface FileRoutesByTo {
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa': typeof CaixaIndexRoute
   '/c/$sessionId/perfil': typeof CSessionIdPerfilRoute
+  '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
   '/caixa/crm': typeof CaixaCrmIndexRoute
   '/caixa/crm/clientes/$customerId': typeof CaixaCrmClientesCustomerIdRoute
@@ -166,6 +174,7 @@ export interface FileRoutesById {
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa/': typeof CaixaIndexRoute
   '/c/$sessionId_/perfil': typeof CSessionIdPerfilRoute
+  '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
   '/caixa/crm/': typeof CaixaCrmIndexRoute
   '/caixa/crm/clientes_/$customerId': typeof CaixaCrmClientesCustomerIdRoute
@@ -187,6 +196,7 @@ export interface FileRouteTypes {
     | '/comanda/$sessionId'
     | '/caixa/'
     | '/c/$sessionId/perfil'
+    | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
     | '/caixa/crm/'
     | '/caixa/crm/clientes/$customerId'
@@ -204,6 +214,7 @@ export interface FileRouteTypes {
     | '/comanda/$sessionId'
     | '/caixa'
     | '/c/$sessionId/perfil'
+    | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
     | '/caixa/crm'
     | '/caixa/crm/clientes/$customerId'
@@ -223,6 +234,7 @@ export interface FileRouteTypes {
     | '/comanda/$sessionId'
     | '/caixa/'
     | '/c/$sessionId_/perfil'
+    | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
     | '/caixa/crm/'
     | '/caixa/crm/clientes_/$customerId'
@@ -345,6 +357,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CaixaCrmIndexRouteImport
       parentRoute: typeof CaixaCrmRoute
     }
+    '/caixa/crm/analises': {
+      id: '/caixa/crm/analises'
+      path: '/analises'
+      fullPath: '/caixa/crm/analises'
+      preLoaderRoute: typeof CaixaCrmAnalisesRouteImport
+      parentRoute: typeof CaixaCrmRoute
+    }
     '/caixa/crm/clientes': {
       id: '/caixa/crm/clientes'
       path: '/clientes'
@@ -363,12 +382,14 @@ declare module '@tanstack/react-router' {
 }
 
 interface CaixaCrmRouteChildren {
+  CaixaCrmAnalisesRoute: typeof CaixaCrmAnalisesRoute
   CaixaCrmClientesRoute: typeof CaixaCrmClientesRoute
   CaixaCrmIndexRoute: typeof CaixaCrmIndexRoute
   CaixaCrmClientesCustomerIdRoute: typeof CaixaCrmClientesCustomerIdRoute
 }
 
 const CaixaCrmRouteChildren: CaixaCrmRouteChildren = {
+  CaixaCrmAnalisesRoute: CaixaCrmAnalisesRoute,
   CaixaCrmClientesRoute: CaixaCrmClientesRoute,
   CaixaCrmIndexRoute: CaixaCrmIndexRoute,
   CaixaCrmClientesCustomerIdRoute: CaixaCrmClientesCustomerIdRoute,

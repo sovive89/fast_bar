@@ -118,6 +118,87 @@ export const getCrmAlerts = createServerFn({ method: "POST" }).handler(async () 
   return { atRisk, birthdaysToday };
 });
 
+/**
+ * Retenção por coorte: agrupa clientes pelo mês da primeira visita e mede quantos % de cada
+ * coorte voltou a comprar em cada mês seguinte. Diferente de "taxa de recompra" (um número só
+ * pra base inteira), isso mostra SE a retenção está melhorando ou piorando coorte a coorte —
+ * dois bares com a mesma taxa de recompra podem ter trajetórias opostas.
+ *
+ * Limita a 6 coortes (últimos 6 meses com cliente novo) e 6 meses de profundidade: mais que isso
+ * vira uma matriz grande demais pra ler numa tela de celular, e coortes muito antigas têm cada vez
+ * menos meses seguintes pra mostrar (a diagonal da matriz).
+ */
+export const getRetentionCohorts = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  await assertRegisterAccess();
+
+  const { data: customers } = await admin()
+    .from("fastbar_customers")
+    .select("id, first_seen_at");
+  const { data: sessions } = await admin()
+    .from("fastbar_sessions")
+    .select("customer_id, paid_at")
+    .eq("status", "paid")
+    .not("customer_id", "is", null);
+
+  const monthKey = (iso: string) => {
+    const d = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+    }).format(new Date(iso));
+    return d; // "YYYY-MM"
+  };
+  const monthsBetween = (a: string, b: string) => {
+    const [ay = 0, am = 0] = a.split("-").map(Number);
+    const [by = 0, bm = 0] = b.split("-").map(Number);
+    return (by - ay) * 12 + (bm - am);
+  };
+
+  const cohortByCustomer = new Map<string, string>();
+  for (const c of customers ?? []) cohortByCustomer.set(c.id, monthKey(c.first_seen_at));
+
+  // Meses de visita distintos por cliente — um cliente que voltou 3x no mesmo mês conta uma vez
+  // naquele mês, senão o gráfico infla retenção com gente que só ficou mais tempo na mesma visita.
+  const visitMonthsByCustomer = new Map<string, Set<string>>();
+  for (const s of sessions ?? []) {
+    if (!s.customer_id || !s.paid_at) continue;
+    const set = visitMonthsByCustomer.get(s.customer_id) ?? new Set<string>();
+    set.add(monthKey(s.paid_at));
+    visitMonthsByCustomer.set(s.customer_id, set);
+  }
+
+  const cohortSizes = new Map<string, number>();
+  for (const cohort of cohortByCustomer.values()) {
+    cohortSizes.set(cohort, (cohortSizes.get(cohort) ?? 0) + 1);
+  }
+
+  const cohortMonths = Array.from(cohortSizes.keys()).sort().slice(-6);
+  const depth = 6;
+
+  const matrix = cohortMonths.map((cohort) => {
+    const size = cohortSizes.get(cohort) ?? 0;
+    const retained = Array.from({ length: depth }, (_, offset) => {
+      let count = 0;
+      for (const [customerId, customerCohort] of cohortByCustomer) {
+        if (customerCohort !== cohort) continue;
+        const visits = visitMonthsByCustomer.get(customerId);
+        if (!visits) continue;
+        for (const visitMonth of visits) {
+          if (monthsBetween(cohort, visitMonth) === offset) {
+            count += 1;
+            break;
+          }
+        }
+      }
+      return { offset, percent: size > 0 ? (count / size) * 100 : 0, count };
+    });
+    return { cohort, size, retained };
+  });
+
+  return { cohorts: matrix, depth };
+});
+
 export const getCustomerDetail = createServerFn({ method: "POST" })
   .inputValidator((data: { customerId: string }) => data)
   .handler(async ({ data }) => {
