@@ -506,7 +506,17 @@ function CardapioPage() {
           {showForm && (
             <SectionCard title="Novo produto do cardápio">
               <div className="space-y-3">
-                <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
+                <TextField
+                  label="Nome"
+                  value={name}
+                  onChange={(value) => {
+                    setName(value);
+                    // "Ignorar" só vale pro nome que estava na tela quando foi clicado — trocar o
+                    // nome depois tem que voltar a checar duplicidade contra o novo texto.
+                    setNameSuggestionsDismissed(false);
+                  }}
+                  placeholder="Caipirinha"
+                />
                 {!nameSuggestionsDismissed &&
                   (nameMatches.products.length > 0 || nameMatches.stock.length > 0) && (
                     <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-3">
