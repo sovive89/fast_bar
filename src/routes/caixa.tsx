@@ -7,6 +7,18 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { useState } from "react";
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  LineChart,
+  LogOut,
+  Package,
+  UtensilsCrossed,
+  Users,
+} from "lucide-react";
 import { checkBarAccess, lockBarPanel } from "@/lib/bar-gate.functions";
 
 export const Route = createFileRoute("/caixa")({
@@ -17,9 +29,19 @@ export const Route = createFileRoute("/caixa")({
   component: RegisterLayout,
 });
 
+const NAV_ITEMS = [
+  { to: "/caixa", tab: "comandas", label: "Comandas", icon: ClipboardList },
+  { to: "/caixa/cardapio", tab: "cardapio", label: "Cardápio", icon: UtensilsCrossed },
+  { to: "/caixa/estoque", tab: "estoque", label: "Estoque", icon: Package },
+  { to: "/caixa/crm", tab: "crm", label: "CRM", icon: Users },
+  { to: "/caixa/relatorios", tab: "relatorios", label: "Relatórios Vendas", icon: LineChart },
+  { to: "/caixa/alertas", tab: "alertas", label: "Alertas", icon: AlertTriangle },
+] as const;
+
 function RegisterLayout() {
   const navigate = useNavigate();
   const lock = useServerFn(lockBarPanel);
+  const [collapsed, setCollapsed] = useState(false);
   const pathname = useRouterState({ select: (state) => state.location.pathname });
   const active = pathname.startsWith("/caixa/cardapio")
     ? "cardapio"
@@ -33,43 +55,57 @@ function RegisterLayout() {
             ? "alertas"
             : "comandas";
 
-  const tabClass = (tab: string) =>
-    `rounded-full px-4 py-1.5 text-sm font-medium ${active === tab ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`;
+  const navClass = (tab: string) =>
+    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+      active === tab
+        ? "bg-primary text-primary-foreground"
+        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+    }`;
 
   return (
-    <div>
-      <div className="mx-auto flex w-full max-w-2xl items-center justify-between gap-4 px-5 pt-5">
-        <div className="flex gap-2 overflow-x-auto">
-          <Link to="/caixa" className={tabClass("comandas")}>
-            Comandas
-          </Link>
-          <Link to="/caixa/cardapio" className={tabClass("cardapio")}>
-            Cardápio
-          </Link>
-          <Link to="/caixa/estoque" className={tabClass("estoque")}>
-            Estoque
-          </Link>
-          <Link to="/caixa/crm" className={tabClass("crm")}>
-            CRM
-          </Link>
-          <Link to="/caixa/relatorios" className={tabClass("relatorios")}>
-            Relatórios Vendas
-          </Link>
-          <Link to="/caixa/alertas" className={tabClass("alertas")}>
-            Alertas
-          </Link>
+    <div className="flex min-h-screen">
+      <aside
+        className={`flex shrink-0 flex-col justify-between border-r border-border p-4 transition-[width] duration-200 ${
+          collapsed ? "w-16" : "w-56"
+        }`}
+      >
+        <div>
+          <div className="flex items-center justify-between px-1">
+            {!collapsed && (
+              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">FastBar</p>
+            )}
+            <button
+              onClick={() => setCollapsed((v) => !v)}
+              aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
+            </button>
+          </div>
+          <nav className="mt-4 flex flex-col gap-1">
+            {NAV_ITEMS.map(({ to, tab, label, icon: Icon }) => (
+              <Link key={tab} to={to} className={navClass(tab)} title={collapsed ? label : undefined}>
+                <Icon size={18} className="shrink-0" />
+                {!collapsed && <span className="truncate">{label}</span>}
+              </Link>
+            ))}
+          </nav>
         </div>
         <button
           onClick={async () => {
             await lock();
             await navigate({ to: "/equipe", replace: true });
           }}
-          className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+          title={collapsed ? "Sair do caixa" : undefined}
+          className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
         >
-          Sair do caixa
+          <LogOut size={16} className="shrink-0" />
+          {!collapsed && <span>Sair do caixa</span>}
         </button>
+      </aside>
+      <div className="min-w-0 flex-1">
+        <Outlet />
       </div>
-      <Outlet />
     </div>
   );
 }
