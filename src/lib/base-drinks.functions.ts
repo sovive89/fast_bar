@@ -664,9 +664,9 @@ export const createProduct = createServerFn({ method: "POST" })
       price: number;
       category: string;
       unit: string;
-      packageType?: string;
-      imageUrl?: string;
-      stockQuantity?: number;
+      packageType?: string | undefined;
+      imageUrl?: string | undefined;
+      stockQuantity?: number | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {

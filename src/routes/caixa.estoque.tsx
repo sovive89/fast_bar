@@ -145,7 +145,7 @@ function ComponentStockTab(props: {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
-  const [unit, setUnit] = useState(props.units[0]);
+  const [unit, setUnit] = useState(props.units[0] ?? "");
   const [minStock, setMinStock] = useState("");
   const [purchaseUnit, setPurchaseUnit] = useState("");
   const [unitsPerPack, setUnitsPerPack] = useState("1");

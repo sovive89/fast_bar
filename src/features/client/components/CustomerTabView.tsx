@@ -80,7 +80,7 @@ export function CustomerTabView({ loading, session, items, now }: CustomerTabVie
           <div>
             <p className="text-muted-foreground">Tempo no bar</p>
             <p className="font-medium">
-              {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
+              {elapsed(session.started_at, session.closed_at ?? session.paid_at, new Date(now).getTime())}
             </p>
           </div>
         </div>
