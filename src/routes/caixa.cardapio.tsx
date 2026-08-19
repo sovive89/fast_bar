@@ -102,6 +102,7 @@ async function compressImageForUpload(
     reader.readAsDataURL(blob);
   });
   const [, base64] = dataUrl.split(",");
+  if (!base64) throw new Error("Falha ao codificar a imagem.");
   return { base64, contentType: "image/jpeg" };
 }
 

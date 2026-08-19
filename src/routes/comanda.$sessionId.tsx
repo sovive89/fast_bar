@@ -13,7 +13,7 @@ export const Route = createFileRoute("/comanda/$sessionId")({
   beforeLoad: ({ params }) => {
     const { sessionId } = params;
     // Redirect to the new client route preserving sessionId
-    return redirect({ to: `/c/${sessionId}` });
+    throw redirect({ to: "/c/$sessionId", params: { sessionId } });
   },
   component: function ComandaRedirect() {
     return null;
