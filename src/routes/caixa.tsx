@@ -7,19 +7,30 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
-import { useState } from "react";
 import {
   AlertTriangle,
-  ChevronLeft,
-  ChevronRight,
+  BarChart3,
   ClipboardList,
-  LineChart,
   LogOut,
   Package,
   UtensilsCrossed,
   Users,
 } from "lucide-react";
 import { checkBarAccess, lockBarPanel } from "@/lib/bar-gate.functions";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 
 export const Route = createFileRoute("/caixa")({
   beforeLoad: async () => {
@@ -29,83 +40,89 @@ export const Route = createFileRoute("/caixa")({
   component: RegisterLayout,
 });
 
-const NAV_ITEMS = [
-  { to: "/caixa", tab: "comandas", label: "Comandas", icon: ClipboardList },
-  { to: "/caixa/cardapio", tab: "cardapio", label: "Cardápio", icon: UtensilsCrossed },
-  { to: "/caixa/estoque", tab: "estoque", label: "Estoque", icon: Package },
-  { to: "/caixa/crm", tab: "crm", label: "CRM", icon: Users },
-  { to: "/caixa/relatorios", tab: "relatorios", label: "Relatórios Vendas", icon: LineChart },
-  { to: "/caixa/alertas", tab: "alertas", label: "Alertas", icon: AlertTriangle },
+// Um módulo por item de menu. Adicionar um módulo novo ao caixa é só adicionar uma linha aqui —
+// a sidebar, o estado ativo e o modo colapsado (ícone) seguem tudo daqui.
+const MODULES = [
+  { key: "comandas", label: "Comandas", to: "/caixa", icon: ClipboardList },
+  { key: "cardapio", label: "Cardápio", to: "/caixa/cardapio", icon: UtensilsCrossed },
+  { key: "estoque", label: "Estoque", to: "/caixa/estoque", icon: Package },
+  { key: "crm", label: "CRM", to: "/caixa/crm", icon: Users },
+  { key: "relatorios", label: "Relatórios Vendas", to: "/caixa/relatorios", icon: BarChart3 },
+  { key: "alertas", label: "Alertas", to: "/caixa/alertas", icon: AlertTriangle },
 ] as const;
+
+function useActiveModuleKey() {
+  const pathname = useRouterState({ select: (state) => state.location.pathname });
+  // Ordena do path mais específico pro mais curto: "/caixa" não pode "vencer" "/caixa/estoque".
+  const match = [...MODULES]
+    .sort((a, b) => b.to.length - a.to.length)
+    .find((module) => pathname === module.to || pathname.startsWith(`${module.to}/`));
+  return match?.key ?? "comandas";
+}
 
 function RegisterLayout() {
   const navigate = useNavigate();
   const lock = useServerFn(lockBarPanel);
-  const [collapsed, setCollapsed] = useState(false);
-  const pathname = useRouterState({ select: (state) => state.location.pathname });
-  const active = pathname.startsWith("/caixa/cardapio")
-    ? "cardapio"
-    : pathname.startsWith("/caixa/estoque")
-      ? "estoque"
-      : pathname.startsWith("/caixa/crm")
-        ? "crm"
-        : pathname.startsWith("/caixa/relatorios")
-          ? "relatorios"
-          : pathname.startsWith("/caixa/alertas")
-            ? "alertas"
-            : "comandas";
-
-  const navClass = (tab: string) =>
-    `flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
-      active === tab
-        ? "bg-primary text-primary-foreground"
-        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
-    }`;
+  const active = useActiveModuleKey();
 
   return (
-    <div className="flex min-h-screen">
-      <aside
-        className={`flex shrink-0 flex-col justify-between border-r border-border p-4 transition-[width] duration-200 ${
-          collapsed ? "w-16" : "w-56"
-        }`}
-      >
-        <div>
-          <div className="flex items-center justify-between px-1">
-            {!collapsed && (
-              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">FastBar</p>
-            )}
-            <button
-              onClick={() => setCollapsed((v) => !v)}
-              aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
-              className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
-            >
-              {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
-            </button>
+    <SidebarProvider>
+      <Sidebar collapsible="icon">
+        <SidebarHeader>
+          <div className="flex items-center gap-2 px-2 py-1.5 group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0">
+            <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+              FB
+            </span>
+            <span className="text-sm font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
+              FastBar
+            </span>
           </div>
-          <nav className="mt-4 flex flex-col gap-1">
-            {NAV_ITEMS.map(({ to, tab, label, icon: Icon }) => (
-              <Link key={tab} to={to} className={navClass(tab)} title={collapsed ? label : undefined}>
-                <Icon size={18} className="shrink-0" />
-                {!collapsed && <span className="truncate">{label}</span>}
-              </Link>
-            ))}
-          </nav>
+        </SidebarHeader>
+        <SidebarContent>
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {MODULES.map((module) => (
+                  <SidebarMenuItem key={module.key}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={active === module.key}
+                      tooltip={module.label}
+                    >
+                      <Link to={module.to}>
+                        <module.icon />
+                        <span>{module.label}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        </SidebarContent>
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton
+                tooltip="Sair do caixa"
+                onClick={async () => {
+                  await lock();
+                  await navigate({ to: "/equipe", replace: true });
+                }}
+              >
+                <LogOut />
+                <span>Sair do caixa</span>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+      </Sidebar>
+      <SidebarInset>
+        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background/95 px-3 py-2 backdrop-blur">
+          <SidebarTrigger />
         </div>
-        <button
-          onClick={async () => {
-            await lock();
-            await navigate({ to: "/equipe", replace: true });
-          }}
-          title={collapsed ? "Sair do caixa" : undefined}
-          className="flex items-center gap-3 rounded-lg border border-border px-3 py-2 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-        >
-          <LogOut size={16} className="shrink-0" />
-          {!collapsed && <span>Sair do caixa</span>}
-        </button>
-      </aside>
-      <div className="min-w-0 flex-1">
         <Outlet />
-      </div>
-    </div>
+      </SidebarInset>
+    </SidebarProvider>
   );
 }
