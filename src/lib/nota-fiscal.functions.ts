@@ -281,7 +281,7 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
     });
     if (insertError) {
       if (insertError.code === "23505") {
-        return { ok: false as const, message: "Essa nota já foi importada." };
+        return { ok: false as const, code: "ja_importada" as const, message: "Essa nota já foi importada." };
       }
       return { ok: false as const, message: "Não foi possível registrar a nota." };
     }

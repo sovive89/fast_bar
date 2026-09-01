@@ -250,19 +250,25 @@ export function NotaFiscalImport(props: {
       return;
     }
 
+    const payload = {
+      chave,
+      uf: uf ?? undefined,
+      emitenteNome: emitenteNome ?? undefined,
+      emitenteDocumento: emitenteDocumento ?? undefined,
+      valorTotal: valorTotal ?? undefined,
+      itens: itensValidos,
+    };
+
     setConfirming(true);
     try {
-      const result = await confirmar({
-        data: {
-          chave,
-          uf: uf ?? undefined,
-          emitenteNome: emitenteNome ?? undefined,
-          emitenteDocumento: emitenteDocumento ?? undefined,
-          valorTotal: valorTotal ?? undefined,
-          itens: itensValidos,
-        },
-      });
+      const result = await confirmar({ data: payload });
       if (!result.ok) {
+        // A trava (chave_acesso única) já rejeitou -- a nota tinha sido lançada antes (nessa
+        // tentativa ou numa anterior cuja resposta se perdeu). Atualiza o estoque na tela, porque
+        // os itens já estão lá mesmo sem essa chamada ter "tido sucesso" agora.
+        if (result.code === "ja_importada") {
+          props.onImported();
+        }
         setConfirmError(result.message ?? "Não foi possível confirmar a entrada.");
         return;
       }
@@ -270,7 +276,28 @@ export function NotaFiscalImport(props: {
       setMode("done");
       props.onImported();
     } catch {
-      setConfirmError("Não foi possível confirmar agora -- tente de novo.");
+      // A chamada pode ter comitado no servidor e a resposta se perdido na rede -- reenviar o
+      // mesmo payload é seguro graças à trava de chave_acesso única: se a nota já tiver sido
+      // importada, o retry só confirma isso (sem duplicar) em vez de deixar o operador achando
+      // que nada aconteceu e o estoque desatualizado na tela.
+      try {
+        const recheck = await confirmar({ data: payload });
+        if (!recheck.ok && recheck.code === "ja_importada") {
+          setResultado("A nota foi importada -- a confirmação da tela só não chegou a tempo. Estoque atualizado.");
+          setMode("done");
+          props.onImported();
+          return;
+        }
+        if (recheck.ok) {
+          setResultado(`${itensValidos.length} item(ns) lançados no estoque.`);
+          setMode("done");
+          props.onImported();
+          return;
+        }
+        setConfirmError(recheck.message ?? "Não foi possível confirmar a entrada.");
+      } catch {
+        setConfirmError("Não foi possível confirmar agora -- confira o estoque antes de tentar de novo.");
+      }
     } finally {
       setConfirming(false);
     }
