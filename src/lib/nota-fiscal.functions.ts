@@ -41,51 +41,62 @@ function isTrustedSefazHost(hostname: string): boolean {
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
 
-/** Busca a página do portal da SEFAZ seguindo redirecionamentos manualmente (pra revalidar o
- * domínio a cada salto) e mantém o timeout de 15s cobrindo a leitura do corpo da resposta, não só
- * os headers -- um `clearTimeout` logo após o fetch resolver deixaria a leitura do corpo sem
- * limite de tempo se o portal travar depois de responder os headers. */
-async function fetchNotaFiscalHtml(
-  startUrl: string,
-): Promise<{ ok: true; html: string } | { ok: false; message: string }> {
-  let currentUrl = startUrl;
-  for (let hop = 0; hop < 5; hop++) {
-    let url: URL;
-    try {
-      url = new URL(currentUrl);
-    } catch {
-      return { ok: false, message: "URL do QR code inválida." };
-    }
-    if (!/^https?:$/.test(url.protocol) || !isTrustedSefazHost(url.hostname)) {
-      return { ok: false, message: "URL fora do domínio oficial da SEFAZ (.gov.br) -- recusada por segurança." };
-    }
+type FetchNotaFiscalResult =
+  | { ok: true; html: string }
+  | { ok: false; code: "untrusted_host" | "network"; message: string };
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-    try {
-      const response = await fetch(currentUrl, {
-        signal: controller.signal,
-        redirect: "manual",
-        headers: { "User-Agent": USER_AGENT },
-      });
-      if (response.status >= 300 && response.status < 400) {
-        const location = response.headers.get("location");
-        if (!location) return { ok: false, message: "Redirecionamento inválido do portal da SEFAZ." };
-        currentUrl = new URL(location, currentUrl).toString();
-        continue;
+/** Busca a página do portal da SEFAZ seguindo redirecionamentos manualmente (pra revalidar o
+ * domínio a cada salto) sob um único prazo de 15s pra chamada inteira -- um `AbortController` novo
+ * por redirecionamento deixaria 5 saltos lentos somarem até 75s, e mantém esse prazo cobrindo a
+ * leitura do corpo da resposta, não só os headers, pro portal não poder travar a leitura depois de
+ * responder. */
+async function fetchNotaFiscalHtml(startUrl: string): Promise<FetchNotaFiscalResult> {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    let currentUrl = startUrl;
+    for (let hop = 0; hop < 5; hop++) {
+      let url: URL;
+      try {
+        url = new URL(currentUrl);
+      } catch {
+        return { ok: false, code: "untrusted_host", message: "URL do QR code inválida." };
       }
-      if (!response.ok) {
-        return { ok: false, message: `status_${response.status}` };
+      if (!/^https?:$/.test(url.protocol) || !isTrustedSefazHost(url.hostname)) {
+        return {
+          ok: false,
+          code: "untrusted_host",
+          message: "URL fora do domínio oficial da SEFAZ (.gov.br) -- recusada por segurança.",
+        };
       }
-      const html = await response.text();
-      return { ok: true, html };
-    } catch {
-      return { ok: false, message: "network_error" };
-    } finally {
-      clearTimeout(timeout);
+
+      try {
+        const response = await fetch(currentUrl, {
+          signal: controller.signal,
+          redirect: "manual",
+          headers: { "User-Agent": USER_AGENT },
+        });
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get("location");
+          if (!location) {
+            return { ok: false, code: "network", message: "Redirecionamento inválido do portal da SEFAZ." };
+          }
+          currentUrl = new URL(location, currentUrl).toString();
+          continue;
+        }
+        if (!response.ok) {
+          return { ok: false, code: "network", message: `status_${response.status}` };
+        }
+        const html = await response.text();
+        return { ok: true, html };
+      } catch {
+        return { ok: false, code: "network", message: "network_error" };
+      }
     }
+    return { ok: false, code: "network", message: "Muitos redirecionamentos no portal da SEFAZ." };
+  } finally {
+    clearTimeout(timeout);
   }
-  return { ok: false, message: "Muitos redirecionamentos no portal da SEFAZ." };
 }
 
 function extrairChave(qrUrl: string): string | null {
@@ -197,6 +208,11 @@ export const lookupNotaFiscal = createServerFn({ method: "POST" })
 
     const fetched = await fetchNotaFiscalHtml(qrUrl);
     if (!fetched.ok) {
+      // URL fora do domínio oficial não é "portal indisponível" -- não habilita o fallback manual
+      // com essa chave, porque a chave nem veio de uma fonte confiável pra começo de conversa.
+      if (fetched.code === "untrusted_host") {
+        return { ok: false, code: "url_nao_confiavel", message: fetched.message };
+      }
       return {
         ok: false,
         code: "portal_indisponivel",
@@ -270,12 +286,21 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Não foi possível registrar a nota." };
     }
 
+    // addBaseDrinkEntry/addIngredientEntry gravam o movimento e só depois atualizam o estoque em
+    // updates separados (não é uma transação só) -- se o movimento gravar e a atualização do
+    // estoque falhar depois, a função retorna ok:false mas já deixou rastro. Por isso a trava só
+    // pode ser removida se NENHUM item chegou a de fato chamar essas funções (só reprovou na
+    // validação daqui, sem nenhum efeito colateral possível); se alguma chamada foi tentada e
+    // falhou, mantemos a trava mesmo com zero sucesso, porque não dá pra garantir que não sobrou
+    // um movimento órfão.
+    let algumaTentativaFeita = false;
     const resultados: Array<{ componentId: string; ok: boolean; message?: string }> = [];
     for (const item of data.itens) {
       if (!Number.isInteger(item.packs) || item.packs <= 0) {
         resultados.push({ componentId: item.componentId, ok: false, message: "Quantidade inválida." });
         continue;
       }
+      algumaTentativaFeita = true;
       const result =
         item.kind === "base_drink"
           ? await addBaseDrinkEntry({
@@ -306,11 +331,9 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
     const falhas = resultados.filter((r) => !r.ok);
     const sucessos = resultados.length - falhas.length;
 
-    // Se nada foi lançado, a trava não pode sobreviver -- senão a nota fica marcada como
-    // importada pra sempre e a equipe nunca consegue corrigir e tentar de novo (ex.: item
-    // apagado, embalagem mal configurada). Só mantemos a trava quando pelo menos um item já
-    // debitou estoque de verdade, porque reimportar do zero nesse caso duplicaria essas entradas.
-    if (sucessos === 0) {
+    // Só libera retry se nenhuma chamada de entrada chegou a ser tentada -- aí sim é seguro
+    // garantir que não sobrou efeito colateral nenhum (ver comentário acima).
+    if (sucessos === 0 && !algumaTentativaFeita) {
       await admin().from("fastbar_notas_importadas").delete().eq("chave_acesso", data.chave);
     }
 
@@ -319,9 +342,9 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
       resultados,
       message:
         falhas.length > 0
-          ? sucessos === 0
+          ? sucessos === 0 && !algumaTentativaFeita
             ? `Nenhum item foi lançado. Corrija e tente de novo.`
-            : `${sucessos} de ${resultados.length} itens lançados. Os demais falharam -- lance-os manualmente pela tela de estoque.`
+            : `${sucessos} de ${resultados.length} itens lançados. Os demais falharam -- confira o estoque e lance manualmente pela tela de estoque o que faltar.`
           : undefined,
     };
   });

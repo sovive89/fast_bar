@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { PrimaryButton, TextField } from "@/components/stock/SharedFormFields";
+import { parseAmount } from "@/lib/format";
 import { confirmarNotaFiscal, lookupNotaFiscal } from "@/lib/nota-fiscal.functions";
 
 type ComponentOption = { id: string; name: string; kind: "base_drink" | "ingredient" };
@@ -228,7 +229,15 @@ export function NotaFiscalImport(props: {
         setConfirmError(`Quantidade de embalagens inválida em "${linha.descricaoOriginal || "item manual"}".`);
         return;
       }
-      const purchaseCost = linha.purchaseCost.trim() ? Number(linha.purchaseCost.replace(",", ".")) : undefined;
+      let purchaseCost: number | undefined;
+      if (linha.purchaseCost.trim()) {
+        const parsed = parseAmount(linha.purchaseCost);
+        if (parsed === null) {
+          setConfirmError(`Valor pago inválido em "${linha.descricaoOriginal || "item manual"}".`);
+          return;
+        }
+        purchaseCost = parsed;
+      }
       itensValidos.push({
         kind: linha.kind,
         componentId: linha.componentId,
