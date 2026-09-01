@@ -250,19 +250,46 @@ export function NotaFiscalImport(props: {
       return;
     }
 
+    const payload = {
+      chave,
+      uf: uf ?? undefined,
+      emitenteNome: emitenteNome ?? undefined,
+      emitenteDocumento: emitenteDocumento ?? undefined,
+      valorTotal: valorTotal ?? undefined,
+      itens: itensValidos,
+    };
+
+    // "ja_importada" só prova que a trava existe -- não que todos os itens foram lançados. Uma
+    // tentativa anterior (ou a que colidiu agora) pode ter tido sucesso parcial ou ainda estar
+    // no meio do loop de itens no servidor (todosItensOk null). Tratar isso sempre como "sucesso
+    // total" mascararia itens que precisam de lançamento manual.
+    function tratarJaImportada(res: { todosItensOk?: boolean | null; message?: string }) {
+      if (res.todosItensOk === false) {
+        props.onImported();
+        setConfirmError(
+          res.message ?? "Essa nota foi lançada parcialmente -- confira o estoque e lance o restante manualmente.",
+        );
+        return;
+      }
+      if (res.todosItensOk === null || res.todosItensOk === undefined) {
+        setConfirmError(
+          res.message ?? "Essa nota já está sendo processada em outra tentativa -- confira o estoque em instantes.",
+        );
+        return;
+      }
+      setResultado("A nota já tinha sido importada -- estoque atualizado.");
+      setMode("done");
+      props.onImported();
+    }
+
     setConfirming(true);
     try {
-      const result = await confirmar({
-        data: {
-          chave,
-          uf: uf ?? undefined,
-          emitenteNome: emitenteNome ?? undefined,
-          emitenteDocumento: emitenteDocumento ?? undefined,
-          valorTotal: valorTotal ?? undefined,
-          itens: itensValidos,
-        },
-      });
+      const result = await confirmar({ data: payload });
       if (!result.ok) {
+        if (result.code === "ja_importada") {
+          tratarJaImportada(result);
+          return;
+        }
         setConfirmError(result.message ?? "Não foi possível confirmar a entrada.");
         return;
       }
@@ -270,7 +297,26 @@ export function NotaFiscalImport(props: {
       setMode("done");
       props.onImported();
     } catch {
-      setConfirmError("Não foi possível confirmar agora -- tente de novo.");
+      // A chamada pode ter comitado no servidor e a resposta se perdido na rede -- reenviar o
+      // mesmo payload é seguro graças à trava de chave_acesso única: se a nota já tiver sido
+      // importada (ou estiver em andamento), o retry só confirma isso (sem duplicar) em vez de
+      // deixar o operador achando que nada aconteceu.
+      try {
+        const recheck = await confirmar({ data: payload });
+        if (!recheck.ok && recheck.code === "ja_importada") {
+          tratarJaImportada(recheck);
+          return;
+        }
+        if (recheck.ok) {
+          setResultado(`${itensValidos.length} item(ns) lançados no estoque.`);
+          setMode("done");
+          props.onImported();
+          return;
+        }
+        setConfirmError(recheck.message ?? "Não foi possível confirmar a entrada.");
+      } catch {
+        setConfirmError("Não foi possível confirmar agora -- confira o estoque antes de tentar de novo.");
+      }
     } finally {
       setConfirming(false);
     }
