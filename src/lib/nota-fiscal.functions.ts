@@ -281,7 +281,29 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
     });
     if (insertError) {
       if (insertError.code === "23505") {
-        return { ok: false as const, code: "ja_importada" as const, message: "Essa nota já foi importada." };
+        // A trava já existe -- pode ser de uma tentativa concluída (com sucesso total ou
+        // parcial) ou de uma que ainda está no meio do loop de itens logo abaixo. Sem checar
+        // todos_itens_ok aqui, um cliente reconciliando uma resposta perdida de rede assumiria
+        // sucesso total só pela linha existir, mascarando lançamentos parciais ou incompletos.
+        const { data: existente } = await admin()
+          .from("fastbar_notas_importadas")
+          .select("itens_importados, todos_itens_ok")
+          .eq("chave_acesso", data.chave)
+          .maybeSingle();
+        const todosItensOk = existente?.todos_itens_ok ?? null;
+        return {
+          ok: false as const,
+          code: "ja_importada" as const,
+          todosItensOk,
+          itensImportados: existente?.itens_importados ?? null,
+          itensTotal: data.itens.length,
+          message:
+            todosItensOk === false
+              ? `Essa nota já tinha sido processada, mas só ${existente?.itens_importados ?? 0} de ${data.itens.length} itens foram lançados. Confira o estoque e lance o restante manualmente.`
+              : todosItensOk === null
+                ? "Essa nota já está sendo processada em outra tentativa -- aguarde alguns segundos e confira o estoque antes de tentar de novo."
+                : "Essa nota já foi importada.",
+        };
       }
       return { ok: false as const, message: "Não foi possível registrar a nota." };
     }
@@ -335,6 +357,15 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
     // garantir que não sobrou efeito colateral nenhum (ver comentário acima).
     if (sucessos === 0 && !algumaTentativaFeita) {
       await admin().from("fastbar_notas_importadas").delete().eq("chave_acesso", data.chave);
+    } else if (algumaTentativaFeita) {
+      // Grava o resultado real do loop -- até aqui a linha só provava "uma tentativa começou"
+      // (todos_itens_ok ainda null); sem essa atualização, uma tentativa concorrente que colida
+      // com a trava (ver ramo do 23505 acima) nunca saberia se foi sucesso total, parcial, ou se
+      // ainda está em andamento.
+      await admin()
+        .from("fastbar_notas_importadas")
+        .update({ itens_importados: sucessos, todos_itens_ok: falhas.length === 0 })
+        .eq("chave_acesso", data.chave);
     }
 
     return {

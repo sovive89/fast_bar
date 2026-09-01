@@ -259,15 +259,36 @@ export function NotaFiscalImport(props: {
       itens: itensValidos,
     };
 
+    // "ja_importada" só prova que a trava existe -- não que todos os itens foram lançados. Uma
+    // tentativa anterior (ou a que colidiu agora) pode ter tido sucesso parcial ou ainda estar
+    // no meio do loop de itens no servidor (todosItensOk null). Tratar isso sempre como "sucesso
+    // total" mascararia itens que precisam de lançamento manual.
+    function tratarJaImportada(res: { todosItensOk?: boolean | null; message?: string }) {
+      if (res.todosItensOk === false) {
+        props.onImported();
+        setConfirmError(
+          res.message ?? "Essa nota foi lançada parcialmente -- confira o estoque e lance o restante manualmente.",
+        );
+        return;
+      }
+      if (res.todosItensOk === null || res.todosItensOk === undefined) {
+        setConfirmError(
+          res.message ?? "Essa nota já está sendo processada em outra tentativa -- confira o estoque em instantes.",
+        );
+        return;
+      }
+      setResultado("A nota já tinha sido importada -- estoque atualizado.");
+      setMode("done");
+      props.onImported();
+    }
+
     setConfirming(true);
     try {
       const result = await confirmar({ data: payload });
       if (!result.ok) {
-        // A trava (chave_acesso única) já rejeitou -- a nota tinha sido lançada antes (nessa
-        // tentativa ou numa anterior cuja resposta se perdeu). Atualiza o estoque na tela, porque
-        // os itens já estão lá mesmo sem essa chamada ter "tido sucesso" agora.
         if (result.code === "ja_importada") {
-          props.onImported();
+          tratarJaImportada(result);
+          return;
         }
         setConfirmError(result.message ?? "Não foi possível confirmar a entrada.");
         return;
@@ -278,14 +299,12 @@ export function NotaFiscalImport(props: {
     } catch {
       // A chamada pode ter comitado no servidor e a resposta se perdido na rede -- reenviar o
       // mesmo payload é seguro graças à trava de chave_acesso única: se a nota já tiver sido
-      // importada, o retry só confirma isso (sem duplicar) em vez de deixar o operador achando
-      // que nada aconteceu e o estoque desatualizado na tela.
+      // importada (ou estiver em andamento), o retry só confirma isso (sem duplicar) em vez de
+      // deixar o operador achando que nada aconteceu.
       try {
         const recheck = await confirmar({ data: payload });
         if (!recheck.ok && recheck.code === "ja_importada") {
-          setResultado("A nota foi importada -- a confirmação da tela só não chegou a tempo. Estoque atualizado.");
-          setMode("done");
-          props.onImported();
+          tratarJaImportada(recheck);
           return;
         }
         if (recheck.ok) {

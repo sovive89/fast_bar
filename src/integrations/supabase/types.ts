@@ -415,6 +415,7 @@ export type Database = {
           emitente_nome: string | null
           id: string
           itens_importados: number
+          todos_itens_ok: boolean | null
           uf: string | null
           valor_total: number | null
         }
@@ -425,6 +426,7 @@ export type Database = {
           emitente_nome?: string | null
           id?: string
           itens_importados?: number
+          todos_itens_ok?: boolean | null
           uf?: string | null
           valor_total?: number | null
         }
@@ -435,6 +437,7 @@ export type Database = {
           emitente_nome?: string | null
           id?: string
           itens_importados?: number
+          todos_itens_ok?: boolean | null
           uf?: string | null
           valor_total?: number | null
         }
