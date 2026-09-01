@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
+import { NotaFiscalImport } from "@/components/stock/NotaFiscalImport";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl, parseAmount } from "@/lib/format";
 import {
@@ -49,6 +50,25 @@ const TABS: Array<{ id: Tab; label: string }> = [
 
 function StockOverview() {
   const [tab, setTab] = useState<Tab>("bebidas");
+  const [scanningNota, setScanningNota] = useState(false);
+  const [notaBaseDrinks, setNotaBaseDrinks] = useState<Array<{ id: string; name: string }>>([]);
+  const [notaIngredients, setNotaIngredients] = useState<Array<{ id: string; name: string }>>([]);
+  const [notaError, setNotaError] = useState<string | null>(null);
+
+  const overview = useServerFn(getBaseDrinksOverview);
+
+  async function loadComponentesParaNota() {
+    try {
+      const result = await overview();
+      setNotaBaseDrinks((result.baseDrinks ?? []).map((b) => ({ id: b.id, name: b.name })));
+      setNotaIngredients((result.ingredients ?? []).map((i) => ({ id: i.id, name: i.name })));
+      setNotaError(null);
+      return true;
+    } catch {
+      setNotaError("Não foi possível carregar bebidas e ingredientes -- tente de novo.");
+      return false;
+    }
+  }
 
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
@@ -71,7 +91,24 @@ function StockOverview() {
             {item.label}
           </button>
         ))}
+        <button
+          onClick={() => void loadComponentesParaNota().then((ok) => ok && setScanningNota(true))}
+          className="rounded-full border border-primary/50 px-3.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/5"
+        >
+          Ler nota fiscal (QR code)
+        </button>
       </div>
+
+      {notaError && <p className="mt-2 text-xs text-destructive">{notaError}</p>}
+
+      {scanningNota && (
+        <NotaFiscalImport
+          baseDrinks={notaBaseDrinks}
+          ingredients={notaIngredients}
+          onClose={() => setScanningNota(false)}
+          onImported={() => void loadComponentesParaNota()}
+        />
+      )}
 
       <div className="mt-6">
         {tab === "bebidas" && <BebidasBaseTab />}
