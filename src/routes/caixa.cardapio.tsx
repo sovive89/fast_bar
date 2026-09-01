@@ -11,6 +11,7 @@ import {
   createProductCategory,
   deleteProductCategory,
   getBaseDrinksOverview,
+  getRecipeItems,
   listProductCategories,
   setRecipeItems,
   updateProduct as updateProductFn,
@@ -167,6 +168,10 @@ function CardapioPage() {
   const [editProductSaving, setEditProductSaving] = useState(false);
   const [editProductCompressing, setEditProductCompressing] = useState(false);
   const [editProductError, setEditProductError] = useState<string | null>(null);
+  const [recipeEditingId, setRecipeEditingId] = useState<string | null>(null);
+  const [recipeComponents, setRecipeComponents] = useState<ComponentRow[]>([]);
+  const [recipeSaving, setRecipeSaving] = useState(false);
+  const [recipeError, setRecipeError] = useState<string | null>(null);
 
   const loadOverview = useServerFn(getStockOverview);
   const loadStock = useServerFn(getBaseDrinksOverview);
@@ -181,6 +186,7 @@ function CardapioPage() {
   const create = useServerFn(createProduct);
   const update = useServerFn(updateProductFn);
   const saveRecipe = useServerFn(setRecipeItems);
+  const loadRecipe = useServerFn(getRecipeItems);
 
   async function load() {
     const [result, stock, categoriesResult] = await Promise.all([
@@ -331,6 +337,58 @@ function CardapioPage() {
       await load();
     }
     return result;
+  }
+
+  async function openRecipe(productId: string) {
+    setRecipeEditingId(productId);
+    setRecipeError(null);
+    setDeletingId(null);
+    setOpenRestockId(null);
+    setEditingProductId(null);
+    try {
+      const result = await loadRecipe({ data: { productId } });
+      setRecipeComponents(
+        result.items.map((item) => ({
+          key: item.id,
+          stockId: item.base_drink_id ?? item.ingredient_id ?? "",
+          quantity: String(item.quantity).replace(".", ","),
+        })),
+      );
+    } catch {
+      setRecipeError("Não foi possível carregar a ficha técnica.");
+    }
+  }
+
+  async function submitRecipe(productId: string) {
+    setRecipeError(null);
+    const items: Array<
+      | { type: "base_drink"; baseDrinkId: string; quantity: number }
+      | { type: "ingredient"; ingredientId: string; quantity: number }
+    > = [];
+    for (const row of recipeComponents) {
+      if (!row.stockId) return setRecipeError("Escolha o insumo em todas as linhas, ou remova a linha.");
+      const quantity = Number(row.quantity.replace(",", "."));
+      const option = stockOptions.find((item) => item.id === row.stockId);
+      if (!option || !Number.isFinite(quantity) || quantity <= 0) {
+        return setRecipeError("Informe um insumo e uma quantidade maior que zero em cada linha.");
+      }
+      items.push(
+        option.kind === "base_drink"
+          ? { type: "base_drink", baseDrinkId: option.id, quantity }
+          : { type: "ingredient", ingredientId: option.id, quantity },
+      );
+    }
+    setRecipeSaving(true);
+    try {
+      const result = await saveRecipe({ data: { productId, items } });
+      if (!result.ok) return setRecipeError(result.message ?? "Não foi possível salvar a ficha técnica.");
+      setRecipeEditingId(null);
+      await load();
+    } catch {
+      setRecipeError("Não foi possível salvar a ficha técnica.");
+    } finally {
+      setRecipeSaving(false);
+    }
   }
 
   function openEditProduct(product: Product) {
@@ -980,6 +1038,14 @@ function CardapioPage() {
                                 </button>
                               )}
                               <button
+                                onClick={() =>
+                                  recipeEditingId === product.id ? setRecipeEditingId(null) : void openRecipe(product.id)
+                                }
+                                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                              >
+                                {recipeEditingId === product.id ? "Fechar ficha" : "Ficha técnica"}
+                              </button>
+                              <button
                                 onClick={() => (isEditing ? setEditingProductId(null) : openEditProduct(product))}
                                 className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                               >
@@ -998,6 +1064,38 @@ function CardapioPage() {
                               </button>
                             </div>
                           </div>
+
+                          {recipeEditingId === product.id && (
+                            <div className="mt-3 space-y-3 rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
+                              <div>
+                                <p className="text-sm font-semibold">Ficha técnica</p>
+                                <p className="mt-0.5 text-xs text-muted-foreground">
+                                  Defina os insumos consumidos em cada venda de {product.name}.
+                                </p>
+                              </div>
+                              {recipeComponents.map((row) => {
+                                const option = stockOptions.find((item) => item.id === row.stockId);
+                                return (
+                                  <div key={row.key} className="flex items-center gap-2">
+                                    <select value={row.stockId} onChange={(event) => setRecipeComponents((current) => current.map((item) => item.key === row.key ? { ...item, stockId: event.target.value } : item))} className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring">
+                                      <option value="">Escolha o insumo</option>
+                                      {stockOptions.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.unit})</option>)}
+                                    </select>
+                                    <input value={row.quantity} onChange={(event) => setRecipeComponents((current) => current.map((item) => item.key === row.key ? { ...item, quantity: event.target.value } : item))} placeholder={option?.unit ?? "qtd"} inputMode="decimal" className="h-11 w-24 shrink-0 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring" />
+                                    <button onClick={() => setRecipeComponents((current) => current.filter((item) => item.key !== row.key))} aria-label="Remover insumo" className="shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground hover:text-destructive">×</button>
+                                  </div>
+                                );
+                              })}
+                              <button onClick={() => setRecipeComponents((current) => [...current, { key: `recipe-${Date.now()}-${current.length}`, stockId: "", quantity: "" }])} className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground">
+                                + Adicionar insumo
+                              </button>
+                              {recipeComponents.length === 0 && <p className="text-xs text-muted-foreground">Sem insumos: salvar assim remove a ficha técnica e mantém o produto com estoque próprio.</p>}
+                              {recipeError && <p className="text-xs text-destructive">{recipeError}</p>}
+                              <PrimaryButton onClick={() => void submitRecipe(product.id)} disabled={recipeSaving}>
+                                {recipeSaving ? "Salvando..." : "Salvar ficha técnica"}
+                              </PrimaryButton>
+                            </div>
+                          )}
 
                           {isEditing && (
                             <div className="mt-3 space-y-3 rounded-xl border border-dashed border-border p-3">
