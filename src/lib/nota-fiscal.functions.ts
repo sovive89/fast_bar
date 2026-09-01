@@ -31,6 +31,63 @@ const UF_POR_CODIGO: Record<string, string> = {
   "53": "DF",
 };
 
+/** Todo portal de consulta de NFC-e roda sob um domínio .gov.br -- sem essa checagem, um QR code
+ * malicioso poderia apontar o fetch do servidor pra qualquer URL arbitrária (SSRF), inclusive
+ * endereços internos. Revalidada a cada redirecionamento, não só na URL original. */
+function isTrustedSefazHost(hostname: string): boolean {
+  return /(^|\.)gov\.br$/i.test(hostname);
+}
+
+const USER_AGENT =
+  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36";
+
+/** Busca a página do portal da SEFAZ seguindo redirecionamentos manualmente (pra revalidar o
+ * domínio a cada salto) e mantém o timeout de 15s cobrindo a leitura do corpo da resposta, não só
+ * os headers -- um `clearTimeout` logo após o fetch resolver deixaria a leitura do corpo sem
+ * limite de tempo se o portal travar depois de responder os headers. */
+async function fetchNotaFiscalHtml(
+  startUrl: string,
+): Promise<{ ok: true; html: string } | { ok: false; message: string }> {
+  let currentUrl = startUrl;
+  for (let hop = 0; hop < 5; hop++) {
+    let url: URL;
+    try {
+      url = new URL(currentUrl);
+    } catch {
+      return { ok: false, message: "URL do QR code inválida." };
+    }
+    if (!/^https?:$/.test(url.protocol) || !isTrustedSefazHost(url.hostname)) {
+      return { ok: false, message: "URL fora do domínio oficial da SEFAZ (.gov.br) -- recusada por segurança." };
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const response = await fetch(currentUrl, {
+        signal: controller.signal,
+        redirect: "manual",
+        headers: { "User-Agent": USER_AGENT },
+      });
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get("location");
+        if (!location) return { ok: false, message: "Redirecionamento inválido do portal da SEFAZ." };
+        currentUrl = new URL(location, currentUrl).toString();
+        continue;
+      }
+      if (!response.ok) {
+        return { ok: false, message: `status_${response.status}` };
+      }
+      const html = await response.text();
+      return { ok: true, html };
+    } catch {
+      return { ok: false, message: "network_error" };
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return { ok: false, message: "Muitos redirecionamentos no portal da SEFAZ." };
+}
+
 function extrairChave(qrUrl: string): string | null {
   const match = qrUrl.match(/\d{44}/);
   return match ? match[0] : null;
@@ -105,7 +162,7 @@ type LookupResult =
       itens: ItemLido[];
       avisoItensVazios: boolean;
     }
-  | { ok: false; message: string; code?: string };
+  | { ok: false; message: string; code?: string; chave?: string; uf?: string | null };
 
 export const lookupNotaFiscal = createServerFn({ method: "POST" })
   .inputValidator((data: { qrUrl: string }) => data)
@@ -138,31 +195,17 @@ export const lookupNotaFiscal = createServerFn({ method: "POST" })
 
     const uf = UF_POR_CODIGO[chave.slice(0, 2)] ?? null;
 
-    let html: string;
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-      const response = await fetch(qrUrl, {
-        signal: controller.signal,
-        headers: {
-          "User-Agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36",
-        },
-      });
-      clearTimeout(timeout);
-      if (!response.ok) {
-        return {
-          ok: false,
-          message: `O portal da SEFAZ (${uf ?? "?"}) respondeu com erro (${response.status}). A chave é ${chave}; adicione os itens manualmente.`,
-        };
-      }
-      html = await response.text();
-    } catch {
+    const fetched = await fetchNotaFiscalHtml(qrUrl);
+    if (!fetched.ok) {
       return {
         ok: false,
+        code: "portal_indisponivel",
+        chave,
+        uf,
         message: `Não consegui acessar o portal da SEFAZ agora. A chave é ${chave}; adicione os itens manualmente.`,
       };
     }
+    const html = fetched.html;
 
     const itens = await parseItens(html);
     const emitente = await parseEmitente(html);
@@ -261,12 +304,24 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
     }
 
     const falhas = resultados.filter((r) => !r.ok);
+    const sucessos = resultados.length - falhas.length;
+
+    // Se nada foi lançado, a trava não pode sobreviver -- senão a nota fica marcada como
+    // importada pra sempre e a equipe nunca consegue corrigir e tentar de novo (ex.: item
+    // apagado, embalagem mal configurada). Só mantemos a trava quando pelo menos um item já
+    // debitou estoque de verdade, porque reimportar do zero nesse caso duplicaria essas entradas.
+    if (sucessos === 0) {
+      await admin().from("fastbar_notas_importadas").delete().eq("chave_acesso", data.chave);
+    }
+
     return {
       ok: falhas.length === 0,
       resultados,
       message:
         falhas.length > 0
-          ? `${resultados.length - falhas.length} de ${resultados.length} itens lançados. Alguns falharam.`
+          ? sucessos === 0
+            ? `Nenhum item foi lançado. Corrija e tente de novo.`
+            : `${sucessos} de ${resultados.length} itens lançados. Os demais falharam -- lance-os manualmente pela tela de estoque.`
           : undefined,
     };
   });

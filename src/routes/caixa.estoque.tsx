@@ -53,13 +53,21 @@ function StockOverview() {
   const [scanningNota, setScanningNota] = useState(false);
   const [notaBaseDrinks, setNotaBaseDrinks] = useState<Array<{ id: string; name: string }>>([]);
   const [notaIngredients, setNotaIngredients] = useState<Array<{ id: string; name: string }>>([]);
+  const [notaError, setNotaError] = useState<string | null>(null);
 
   const overview = useServerFn(getBaseDrinksOverview);
 
   async function loadComponentesParaNota() {
-    const result = await overview();
-    setNotaBaseDrinks((result.baseDrinks ?? []).map((b) => ({ id: b.id, name: b.name })));
-    setNotaIngredients((result.ingredients ?? []).map((i) => ({ id: i.id, name: i.name })));
+    try {
+      const result = await overview();
+      setNotaBaseDrinks((result.baseDrinks ?? []).map((b) => ({ id: b.id, name: b.name })));
+      setNotaIngredients((result.ingredients ?? []).map((i) => ({ id: i.id, name: i.name })));
+      setNotaError(null);
+      return true;
+    } catch {
+      setNotaError("Não foi possível carregar bebidas e ingredientes -- tente de novo.");
+      return false;
+    }
   }
 
   return (
@@ -84,12 +92,14 @@ function StockOverview() {
           </button>
         ))}
         <button
-          onClick={() => void loadComponentesParaNota().then(() => setScanningNota(true))}
+          onClick={() => void loadComponentesParaNota().then((ok) => ok && setScanningNota(true))}
           className="rounded-full border border-primary/50 px-3.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/5"
         >
           Ler nota fiscal (QR code)
         </button>
       </div>
+
+      {notaError && <p className="mt-2 text-xs text-destructive">{notaError}</p>}
 
       {scanningNota && (
         <NotaFiscalImport

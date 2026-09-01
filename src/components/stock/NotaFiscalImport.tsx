@@ -15,6 +15,7 @@ type ItemLido = {
 type LinhaConfirmacao = {
   key: string;
   descricaoOriginal: string;
+  quantidadeNota: string;
   kind: "base_drink" | "ingredient";
   componentId: string;
   packs: string;
@@ -78,6 +79,13 @@ export function NotaFiscalImport(props: {
         const stream = await navigator.mediaDevices.getUserMedia({
           video: { facingMode: "environment" },
         });
+        // A permissão pode levar segundos, e o modal pode ter sido fechado (ou o modo mudado)
+        // enquanto o navegador ainda perguntava -- sem essa checagem, a câmera fica ligada em
+        // segundo plano pra sempre, porque o cleanup já rodou antes de existir stream pra parar.
+        if (stoppedRef.current) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
@@ -130,8 +138,29 @@ export function NotaFiscalImport(props: {
   async function onDecoded(qrUrl: string) {
     setMode("looking_up");
     setLookupError(null);
-    const result = await lookup({ data: { qrUrl } });
+    let result: Awaited<ReturnType<typeof lookup>>;
+    try {
+      result = await lookup({ data: { qrUrl } });
+    } catch {
+      setLookupError("Não foi possível consultar a nota agora -- tente escanear de novo.");
+      setMode("scanning");
+      return;
+    }
     if (!result.ok) {
+      // Chave de acesso lida com sucesso mas o portal da SEFAZ não respondeu -- ainda dá pra
+      // aproveitar a chave e completar os itens à mão, em vez de forçar escanear tudo de novo.
+      if (result.code === "portal_indisponivel" && result.chave) {
+        setChave(result.chave);
+        setUf(result.uf ?? null);
+        setEmitenteNome(null);
+        setEmitenteDocumento(null);
+        setValorTotal(null);
+        setAvisoItensVazios(true);
+        setLinhas([]);
+        setLookupError(result.message);
+        setMode("confirming");
+        return;
+      }
       setLookupError(result.message);
       setMode("scanning");
       return;
@@ -148,9 +177,15 @@ export function NotaFiscalImport(props: {
         return {
           key: `nf-${index}`,
           descricaoOriginal: item.descricao,
+          quantidadeNota: `${item.quantidade} ${item.unidade}`,
           kind: sugestao?.kind ?? "base_drink",
           componentId: sugestao?.id ?? "",
-          packs: String(Math.round(item.quantidade)),
+          // "packs" no sistema é embalagem de compra (caixa, garrafa), multiplicada por
+          // units_per_pack -- não é a mesma coisa que a quantidade de unidades da nota (ex.: nota
+          // com "24 UN" não vira 24 embalagens). Deixa em branco de propósito: a equipe informa
+          // quantas embalagens comprou de fato, só usando a quantidade da nota (mostrada acima do
+          // campo) como referência visual, nunca preenchendo esse número sozinho.
+          packs: "",
           purchaseCost:
             item.valorUnitario > 0 ? String(item.valorUnitario * item.quantidade).replace(".", ",") : "",
         };
@@ -169,6 +204,7 @@ export function NotaFiscalImport(props: {
       {
         key: `manual-${Date.now()}-${current.length}`,
         descricaoOriginal: "",
+        quantidadeNota: "",
         kind: "base_drink",
         componentId: "",
         packs: "",
@@ -206,24 +242,29 @@ export function NotaFiscalImport(props: {
     }
 
     setConfirming(true);
-    const result = await confirmar({
-      data: {
-        chave,
-        uf: uf ?? undefined,
-        emitenteNome: emitenteNome ?? undefined,
-        emitenteDocumento: emitenteDocumento ?? undefined,
-        valorTotal: valorTotal ?? undefined,
-        itens: itensValidos,
-      },
-    });
-    setConfirming(false);
-    if (!result.ok) {
-      setConfirmError(result.message ?? "Não foi possível confirmar a entrada.");
-      return;
+    try {
+      const result = await confirmar({
+        data: {
+          chave,
+          uf: uf ?? undefined,
+          emitenteNome: emitenteNome ?? undefined,
+          emitenteDocumento: emitenteDocumento ?? undefined,
+          valorTotal: valorTotal ?? undefined,
+          itens: itensValidos,
+        },
+      });
+      if (!result.ok) {
+        setConfirmError(result.message ?? "Não foi possível confirmar a entrada.");
+        return;
+      }
+      setResultado(`${itensValidos.length} item(ns) lançados no estoque.`);
+      setMode("done");
+      props.onImported();
+    } catch {
+      setConfirmError("Não foi possível confirmar agora -- tente de novo.");
+    } finally {
+      setConfirming(false);
     }
-    setResultado(`${itensValidos.length} item(ns) lançados no estoque.`);
-    setMode("done");
-    props.onImported();
   }
 
   return (
@@ -270,7 +311,7 @@ export function NotaFiscalImport(props: {
 
             {avisoItensVazios && (
               <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-                Não consegui ler os itens automaticamente desse portal. Adicione manualmente abaixo.
+                {lookupError ?? "Não consegui ler os itens automaticamente desse portal. Adicione manualmente abaixo."}
               </p>
             )}
 
@@ -321,12 +362,13 @@ export function NotaFiscalImport(props: {
                         value={linha.packs}
                         onChange={(value) => updateLinha(linha.key, { packs: value })}
                         type="number"
+                        placeholder={linha.quantidadeNota ? `Nota: ${linha.quantidadeNota}` : ""}
                       />
                       <TextField
                         label="Valor pago (opcional)"
                         value={linha.purchaseCost}
                         onChange={(value) => updateLinha(linha.key, { purchaseCost: value })}
-                        type="number"
+                        type="text"
                       />
                     </div>
                   </div>
