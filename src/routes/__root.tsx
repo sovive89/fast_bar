@@ -138,14 +138,6 @@ function RootShell({ children }: { children: ReactNode }) {
 function RootComponent() {
   const { queryClient } = Route.useRouteContext();
 
-  useEffect(() => {
-    // Register the service worker only in the browser. Use dynamic import so this
-    // module is not required on the server bundle.
-    if (typeof window !== "undefined" && "serviceWorker" in navigator) {
-      import("../registerServiceWorker").then((m) => m.registerServiceWorker()).catch(() => {});
-    }
-  }, []);
-
   return (
     <QueryClientProvider client={queryClient}>
       {/* Required: nested routes render here. Removing <Outlet /> breaks all child routes. */}
