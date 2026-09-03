@@ -157,6 +157,25 @@ export const updateBaseDrinkPackaging = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/** Atualiza os dados administrativos de uma bebida base sem alterar o saldo em estoque. */
+export const updateBaseDrink = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; name: string; minStock: number }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const name = data.name.trim();
+    if (name.length < 2) return { ok: false as const, message: "Nome da bebida base inválido." };
+    if (!Number.isFinite(data.minStock) || data.minStock < 0) {
+      return { ok: false as const, message: "Estoque mínimo inválido." };
+    }
+    const { error } = await admin()
+      .from("fastbar_base_drinks")
+      .update({ name, min_stock: data.minStock })
+      .eq("id", data.id);
+    if (error) return { ok: false as const, message: "Não foi possível salvar a bebida base." };
+    return { ok: true as const };
+  });
+
 const DELETE_MESSAGES: Record<string, string> = {
   in_use_by_recipe: "Esse insumo está numa ficha técnica — remova a ligação antes de apagar.",
   has_sales_history: "Esse insumo já saiu em vendas de verdade — apagar perderia o rastro.",
@@ -397,6 +416,25 @@ export const updateIngredientPackaging = createServerFn({ method: "POST" })
       })
       .eq("id", data.ingredientId);
     if (error) return { ok: false as const, message: "Não foi possível salvar a embalagem." };
+    return { ok: true as const };
+  });
+
+/** Atualiza os dados administrativos de um ingrediente sem alterar o saldo em estoque. */
+export const updateIngredient = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; name: string; minStock: number }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const name = data.name.trim();
+    if (name.length < 2) return { ok: false as const, message: "Nome do ingrediente inválido." };
+    if (!Number.isFinite(data.minStock) || data.minStock < 0) {
+      return { ok: false as const, message: "Estoque mínimo inválido." };
+    }
+    const { error } = await admin()
+      .from("fastbar_drink_ingredients")
+      .update({ name, min_stock: data.minStock })
+      .eq("id", data.id);
+    if (error) return { ok: false as const, message: "Não foi possível salvar o ingrediente." };
     return { ok: true as const };
   });
 
