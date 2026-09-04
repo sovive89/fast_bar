@@ -30,6 +30,82 @@ function readPackaging(data: PackagingInput) {
   return { ok: true as const, unitsPerPack, contentAmount };
 }
 
+type ComponentUpdateInput = PackagingInput & {
+  id: string;
+  name: string;
+  unit: string;
+  minStock: number;
+};
+
+/**
+ * Edição de cadastro de bebida base / ingrediente (nome, unidade, mínimo, embalagem) — a mesma
+ * regra pras duas tabelas. O saldo em estoque e o custo médio ficam de fora de propósito: eles só
+ * mudam por entrada, perda ou venda, senão o histórico de movimentos deixa de bater com o saldo.
+ *
+ * A unidade só pode mudar com saldo zerado e sem ficha técnica apontando pro item: saldo e
+ * quantidades de receita são números na unidade antiga (50 ml), e trocar o rótulo pra "un" faria
+ * esses números virarem outra coisa em silêncio.
+ */
+async function applyComponentUpdate(
+  table: "fastbar_base_drinks" | "fastbar_drink_ingredients",
+  recipeColumn: "base_drink_id" | "ingredient_id",
+  allowedUnits: readonly string[],
+  data: ComponentUpdateInput,
+  labels: { invalidName: string; notFound: string; saveFailed: string },
+) {
+  const { admin } = await import("./fastbar.server");
+  const name = data.name.trim();
+  if (name.length < 2) return { ok: false as const, message: labels.invalidName };
+  if (!allowedUnits.includes(data.unit)) {
+    return { ok: false as const, message: "Unidade inválida." };
+  }
+  if (!Number.isFinite(data.minStock) || data.minStock < 0) {
+    return { ok: false as const, message: "Estoque mínimo inválido." };
+  }
+  const packaging = readPackaging(data);
+  if (!packaging.ok) return packaging;
+
+  const { data: current } = await admin()
+    .from(table)
+    .select("id, unit, current_stock")
+    .eq("id", data.id)
+    .maybeSingle();
+  if (!current) return { ok: false as const, message: labels.notFound };
+
+  if (current.unit !== data.unit) {
+    if (Number(current.current_stock) !== 0) {
+      return {
+        ok: false as const,
+        message: `Para trocar a unidade o estoque precisa estar zerado (hoje: ${current.current_stock} ${current.unit}). Registre uma perda ou apague e cadastre de novo.`,
+      };
+    }
+    const { count } = await admin()
+      .from("fastbar_recipe_items")
+      .select("id", { count: "exact", head: true })
+      .eq(recipeColumn, data.id);
+    if (count) {
+      return {
+        ok: false as const,
+        message: "Esse item está numa ficha técnica — a receita usa a unidade atual. Remova a ligação antes de trocar.",
+      };
+    }
+  }
+
+  const { error } = await admin()
+    .from(table)
+    .update({
+      name,
+      unit: data.unit,
+      min_stock: data.minStock,
+      purchase_unit: data.purchaseUnit?.trim() || null,
+      units_per_pack: packaging.unitsPerPack,
+      content_amount: packaging.contentAmount,
+    })
+    .eq("id", data.id);
+  if (error) return { ok: false as const, message: labels.saveFailed };
+  return { ok: true as const };
+}
+
 /** Lê o total pago de uma entrada. `undefined` = entrada sem custo informado (permitido). */
 function readPurchaseCost(value: number | undefined) {
   if (value === undefined) return { ok: true as const, purchaseCost: null };
@@ -127,53 +203,30 @@ export const createBaseDrink = createServerFn({ method: "POST" })
   });
 
 /**
- * Ajusta a embalagem de compra de uma bebida base já cadastrada. Necessário porque insumos criados
- * antes desse campo existir ficam em 1×1, o que faria a entrada de estoque pedir "embalagens" e
- * somar a quantidade errada.
+ * Edita o cadastro de uma bebida base (nome, unidade, estoque mínimo e embalagem de compra) sem
+ * mexer no saldo nem no custo médio. Embalagem entra aqui porque insumos criados antes desse campo
+ * existir ficam em 1×1, o que faria a entrada de estoque pedir "embalagens" e somar errado.
  */
-export const updateBaseDrinkPackaging = createServerFn({ method: "POST" })
+export const updateBaseDrink = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
-      baseDrinkId: string;
+      id: string;
+      name: string;
+      unit: "ml" | "un";
+      minStock: number;
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
-    const packaging = readPackaging(data);
-    if (!packaging.ok) return packaging;
-    const { error } = await admin()
-      .from("fastbar_base_drinks")
-      .update({
-        purchase_unit: data.purchaseUnit?.trim() || null,
-        units_per_pack: packaging.unitsPerPack,
-        content_amount: packaging.contentAmount,
-      })
-      .eq("id", data.baseDrinkId);
-    if (error) return { ok: false as const, message: "Não foi possível salvar a embalagem." };
-    return { ok: true as const };
-  });
-
-/** Atualiza os dados administrativos de uma bebida base sem alterar o saldo em estoque. */
-export const updateBaseDrink = createServerFn({ method: "POST" })
-  .inputValidator((data: { id: string; name: string; minStock: number }) => data)
-  .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
-    await assertRegisterAccess();
-    const name = data.name.trim();
-    if (name.length < 2) return { ok: false as const, message: "Nome da bebida base inválido." };
-    if (!Number.isFinite(data.minStock) || data.minStock < 0) {
-      return { ok: false as const, message: "Estoque mínimo inválido." };
-    }
-    const { error } = await admin()
-      .from("fastbar_base_drinks")
-      .update({ name, min_stock: data.minStock })
-      .eq("id", data.id);
-    if (error) return { ok: false as const, message: "Não foi possível salvar a bebida base." };
-    return { ok: true as const };
+    return applyComponentUpdate("fastbar_base_drinks", "base_drink_id", ["ml", "un"], data, {
+      invalidName: "Nome da bebida base inválido.",
+      notFound: "Bebida base não encontrada.",
+      saveFailed: "Não foi possível salvar a bebida base.",
+    });
   });
 
 const DELETE_MESSAGES: Record<string, string> = {
@@ -392,50 +445,33 @@ export const createIngredient = createServerFn({ method: "POST" })
     return { ok: true as const, id: created.id };
   });
 
-/** Ajusta a embalagem de compra de um ingrediente já cadastrado — mesmo motivo da bebida base. */
-export const updateIngredientPackaging = createServerFn({ method: "POST" })
+/** Edita o cadastro de um ingrediente — mesma regra de updateBaseDrink. */
+export const updateIngredient = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
-      ingredientId: string;
+      id: string;
+      name: string;
+      unit: "ml" | "un" | "g";
+      minStock: number;
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
-    const packaging = readPackaging(data);
-    if (!packaging.ok) return packaging;
-    const { error } = await admin()
-      .from("fastbar_drink_ingredients")
-      .update({
-        purchase_unit: data.purchaseUnit?.trim() || null,
-        units_per_pack: packaging.unitsPerPack,
-        content_amount: packaging.contentAmount,
-      })
-      .eq("id", data.ingredientId);
-    if (error) return { ok: false as const, message: "Não foi possível salvar a embalagem." };
-    return { ok: true as const };
-  });
-
-/** Atualiza os dados administrativos de um ingrediente sem alterar o saldo em estoque. */
-export const updateIngredient = createServerFn({ method: "POST" })
-  .inputValidator((data: { id: string; name: string; minStock: number }) => data)
-  .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
-    await assertRegisterAccess();
-    const name = data.name.trim();
-    if (name.length < 2) return { ok: false as const, message: "Nome do ingrediente inválido." };
-    if (!Number.isFinite(data.minStock) || data.minStock < 0) {
-      return { ok: false as const, message: "Estoque mínimo inválido." };
-    }
-    const { error } = await admin()
-      .from("fastbar_drink_ingredients")
-      .update({ name, min_stock: data.minStock })
-      .eq("id", data.id);
-    if (error) return { ok: false as const, message: "Não foi possível salvar o ingrediente." };
-    return { ok: true as const };
+    return applyComponentUpdate(
+      "fastbar_drink_ingredients",
+      "ingredient_id",
+      ["ml", "un", "g"],
+      data,
+      {
+        invalidName: "Nome do ingrediente inválido.",
+        notFound: "Ingrediente não encontrado.",
+        saveFailed: "Não foi possível salvar o ingrediente.",
+      },
+    );
   });
 
 /** Apaga o ingrediente de vez. Mesmo critério da bebida base: histórico real bloqueia, número de estoque não. */

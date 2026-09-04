@@ -21,8 +21,6 @@ import {
   listAllProducts,
   listSuppliers,
   setRecipeItems,
-  updateBaseDrinkPackaging,
-  updateIngredientPackaging,
   updateBaseDrink,
   updateIngredient,
 } from "@/lib/base-drinks.functions";
@@ -165,16 +163,16 @@ function ComponentStockTab(props: {
       note?: string | undefined;
     };
   }) => Promise<{ ok: boolean; message?: string }>;
-  updatePackagingFn: (input: {
+  updateFn: (input: {
     data: {
       id: string;
+      name: string;
+      unit: string;
+      minStock: number;
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
     };
-  }) => Promise<{ ok: boolean; message?: string }>;
-  updateFn: (input: {
-    data: { id: string; name: string; minStock: number };
   }) => Promise<{ ok: boolean; message?: string }>;
   deleteFn: (input: {
     data: { id: string; password: string };
@@ -215,16 +213,15 @@ function ComponentStockTab(props: {
   const [lossError, setLossError] = useState<string | null>(null);
   const [lossBusy, setLossBusy] = useState(false);
 
-  const [openPackagingId, setOpenPackagingId] = useState<string | null>(null);
+  // Editor único do cadastro (nome, unidade, mínimo e embalagem). Saldo e custo médio ficam de
+  // fora: só mudam por entrada, perda ou venda — editar na mão quebraria o histórico.
+  const [openEditId, setOpenEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editUnit, setEditUnit] = useState("");
+  const [editMinStock, setEditMinStock] = useState("");
   const [editPurchaseUnit, setEditPurchaseUnit] = useState("");
   const [editUnitsPerPack, setEditUnitsPerPack] = useState("1");
   const [editContentAmount, setEditContentAmount] = useState("1");
-  const [packagingError, setPackagingError] = useState<string | null>(null);
-  const [packagingBusy, setPackagingBusy] = useState(false);
-
-  const [openEditId, setOpenEditId] = useState<string | null>(null);
-  const [editName, setEditName] = useState("");
-  const [editMinStock, setEditMinStock] = useState("");
   const [editError, setEditError] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState(false);
 
@@ -397,63 +394,46 @@ function ComponentStockTab(props: {
   function openEditor(item: StockComponent) {
     setOpenEditId(item.id);
     setOpenEntryId(null);
-    setOpenPackagingId(null);
     setDeletingId(null);
     setOpenLossId(null);
     setEditName(item.name);
+    setEditUnit(item.unit);
     setEditMinStock(String(item.min_stock));
+    setEditPurchaseUnit(item.purchase_unit ?? "");
+    setEditUnitsPerPack(String(item.units_per_pack));
+    setEditContentAmount(String(item.content_amount));
     setEditError(null);
   }
 
   async function submitEdit(item: StockComponent) {
     setEditError(null);
-    const minStock = parseAmount(editMinStock);
     if (editName.trim().length < 2) return setEditError("Digite o nome.");
+    const minStock = parseAmount(editMinStock);
     if (minStock === null || minStock < 0) return setEditError("Estoque mínimo inválido.");
-
-    setEditBusy(true);
-    const result = await props.updateFn({ data: { id: item.id, name: editName, minStock } });
-    setEditBusy(false);
-    if (!result.ok) return setEditError(result.message ?? "Não foi possível salvar.");
-    setOpenEditId(null);
-    await load();
-  }
-
-  function openPackagingEditor(item: StockComponent) {
-    setOpenPackagingId(item.id);
-    setOpenEditId(null);
-    setOpenEntryId(null);
-    setDeletingId(null);
-    setOpenLossId(null);
-    setPackagingError(null);
-    setEditPurchaseUnit(item.purchase_unit ?? "");
-    setEditUnitsPerPack(String(item.units_per_pack));
-    setEditContentAmount(String(item.content_amount));
-  }
-
-  async function submitPackaging(item: StockComponent) {
-    setPackagingError(null);
     const perPack = parseAmount(editUnitsPerPack);
     if (perPack === null || !Number.isInteger(perPack) || perPack <= 0) {
-      return setPackagingError("Itens por embalagem deve ser um número inteiro maior que zero.");
+      return setEditError("Itens por embalagem deve ser um número inteiro maior que zero.");
     }
     const content = parseAmount(editContentAmount);
     if (content === null || content <= 0) {
-      return setPackagingError("Conteúdo por item deve ser maior que zero.");
+      return setEditError("Conteúdo por item deve ser maior que zero.");
     }
 
-    setPackagingBusy(true);
-    const result = await props.updatePackagingFn({
+    setEditBusy(true);
+    const result = await props.updateFn({
       data: {
         id: item.id,
+        name: editName,
+        unit: editUnit,
+        minStock,
         purchaseUnit: editPurchaseUnit || undefined,
         unitsPerPack: perPack,
         contentAmount: content,
       },
     });
-    setPackagingBusy(false);
-    if (!result.ok) return setPackagingError(result.message ?? "Não foi possível salvar.");
-    setOpenPackagingId(null);
+    setEditBusy(false);
+    if (!result.ok) return setEditError(result.message ?? "Não foi possível salvar.");
+    setOpenEditId(null);
     await load();
   }
 
@@ -615,8 +595,10 @@ function ComponentStockTab(props: {
           {items.map((item) => {
             const low = item.current_stock < item.min_stock;
             const isOpen = openEntryId === item.id;
-            const isPackagingOpen = openPackagingId === item.id;
             const isEditing = openEditId === item.id;
+            // Unidade só troca com saldo zero e fora de ficha técnica — o servidor recusa de
+            // qualquer jeito, mas a tela já explica em vez de deixar tentar.
+            const unitLocked = Number(item.current_stock) !== 0 || item.doses.length > 0;
             const isDeleting = deletingId === item.id;
             return (
               <li key={item.id} className="rounded-2xl border border-border bg-card p-4">
@@ -646,18 +628,9 @@ function ComponentStockTab(props: {
                       {isEditing ? "Cancelar" : "Editar"}
                     </button>
                     <button
-                      onClick={() =>
-                        isPackagingOpen ? setOpenPackagingId(null) : openPackagingEditor(item)
-                      }
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-                    >
-                      {isPackagingOpen ? "Cancelar" : "Embalagem"}
-                    </button>
-                    <button
                       onClick={() => {
                         setOpenEntryId(isOpen ? null : item.id);
                         setOpenEditId(null);
-                        setOpenPackagingId(null);
                         setDeletingId(null);
                         setOpenLossId(null);
                         setEntryPacks("");
@@ -675,7 +648,6 @@ function ComponentStockTab(props: {
                         setOpenLossId(isLossOpen ? null : item.id);
                         setOpenEditId(null);
                         setOpenEntryId(null);
-                        setOpenPackagingId(null);
                         setDeletingId(null);
                         setLossQuantity("");
                         setLossNote("");
@@ -690,7 +662,6 @@ function ComponentStockTab(props: {
                         setDeletingId(isDeleting ? null : item.id);
                         setOpenEditId(null);
                         setOpenEntryId(null);
-                        setOpenPackagingId(null);
                         setOpenLossId(null);
                       }}
                       className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
@@ -703,15 +674,65 @@ function ComponentStockTab(props: {
                 {isEditing && (
                   <div className="mt-3 space-y-3 rounded-xl border border-border p-3">
                     <TextField label="Nome" value={editName} onChange={setEditName} />
-                    <TextField
-                      label={`Estoque mínimo (${item.unit})`}
-                      value={editMinStock}
-                      onChange={setEditMinStock}
-                      type="number"
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Para alterar a forma de compra, use o botão Embalagem.
-                    </p>
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="block">
+                        <span className="text-xs font-medium text-muted-foreground">Unidade</span>
+                        <select
+                          value={editUnit}
+                          onChange={(event) => setEditUnit(event.target.value)}
+                          disabled={unitLocked}
+                          className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring disabled:opacity-60"
+                        >
+                          {props.units.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <TextField
+                        label={`Estoque mínimo (${editUnit})`}
+                        value={editMinStock}
+                        onChange={setEditMinStock}
+                        type="number"
+                      />
+                    </div>
+                    {unitLocked && (
+                      <p className="text-xs text-muted-foreground">
+                        A unidade só pode ser trocada com o estoque zerado e sem ficha técnica usando
+                        este item.
+                      </p>
+                    )}
+                    <div className="rounded-xl border border-border p-3">
+                      <p className="text-xs font-semibold">Como você compra</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Vale para as próximas entradas. O estoque e o custo médio atuais não mudam.
+                      </p>
+                      <div className="mt-3 space-y-3">
+                        <TextField
+                          label="Unidade de compra"
+                          value={editPurchaseUnit}
+                          onChange={setEditPurchaseUnit}
+                          placeholder="garrafa, caixa, fardo..."
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <TextField
+                            label="Itens por embalagem"
+                            value={editUnitsPerPack}
+                            onChange={setEditUnitsPerPack}
+                            placeholder="1"
+                            type="number"
+                          />
+                          <TextField
+                            label={`Conteúdo por item (${editUnit})`}
+                            value={editContentAmount}
+                            onChange={setEditContentAmount}
+                            placeholder={editUnit === "ml" || editUnit === "g" ? "ex.: 1000" : "ex.: 1"}
+                            type="number"
+                          />
+                        </div>
+                      </div>
+                    </div>
                     {editError && <p className="text-xs text-destructive">{editError}</p>}
                     <button
                       onClick={() => submitEdit(item)}
@@ -737,45 +758,8 @@ function ComponentStockTab(props: {
                 {!item.purchase_unit && (
                   <p className="mt-2 text-xs text-muted-foreground">
                     Embalagem de compra não configurada — a entrada é feita direto em {item.unit}.
+                    Configure em Editar.
                   </p>
-                )}
-
-                {isPackagingOpen && (
-                  <div className="mt-3 space-y-3 rounded-xl border border-border p-3">
-                    <TextField
-                      label="Unidade de compra"
-                      value={editPurchaseUnit}
-                      onChange={setEditPurchaseUnit}
-                      placeholder="garrafa, caixa, fardo..."
-                    />
-                    <div className="grid grid-cols-2 gap-3">
-                      <TextField
-                        label="Itens por embalagem"
-                        value={editUnitsPerPack}
-                        onChange={setEditUnitsPerPack}
-                        placeholder="1"
-                        type="number"
-                      />
-                      <TextField
-                        label={`Conteúdo por item (${item.unit})`}
-                        value={editContentAmount}
-                        onChange={setEditContentAmount}
-                        placeholder="1"
-                        type="number"
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground">
-                      Vale para as próximas entradas. O estoque e o custo médio atuais não mudam.
-                    </p>
-                    {packagingError && <p className="text-xs text-destructive">{packagingError}</p>}
-                    <button
-                      onClick={() => submitPackaging(item)}
-                      disabled={packagingBusy}
-                      className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
-                    >
-                      {packagingBusy ? "Salvando..." : "Salvar embalagem"}
-                    </button>
-                  </div>
                 )}
 
                 {isOpen && (
@@ -884,7 +868,6 @@ function ComponentStockTab(props: {
 function BebidasBaseTab() {
   const createFn = useServerFn(createBaseDrink);
   const entryFn = useServerFn(addBaseDrinkEntry);
-  const updatePackagingFn = useServerFn(updateBaseDrinkPackaging);
   const updateFn = useServerFn(updateBaseDrink);
   const deleteFn = useServerFn(deleteBaseDrink);
   const lossFn = useServerFn(addBaseDrinkLoss);
@@ -916,17 +899,9 @@ function BebidasBaseTab() {
           },
         })
       }
-      updatePackagingFn={(input) =>
-        updatePackagingFn({
-          data: {
-            baseDrinkId: input.data.id,
-            purchaseUnit: input.data.purchaseUnit,
-            unitsPerPack: input.data.unitsPerPack,
-            contentAmount: input.data.contentAmount,
-          },
-        })
+      updateFn={(input) =>
+        updateFn({ data: { ...input.data, unit: input.data.unit as "ml" | "un" } })
       }
-      updateFn={(input) => updateFn({ data: input.data })}
       deleteFn={(input) => deleteFn({ data: input.data })}
       lossFn={(input) =>
         lossFn({ data: { baseDrinkId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
@@ -938,7 +913,6 @@ function BebidasBaseTab() {
 function IngredientesTab() {
   const createFn = useServerFn(createIngredient);
   const entryFn = useServerFn(addIngredientEntry);
-  const updatePackagingFn = useServerFn(updateIngredientPackaging);
   const updateFn = useServerFn(updateIngredient);
   const deleteFn = useServerFn(deleteIngredient);
   const lossFn = useServerFn(addIngredientLoss);
@@ -970,17 +944,9 @@ function IngredientesTab() {
           },
         })
       }
-      updatePackagingFn={(input) =>
-        updatePackagingFn({
-          data: {
-            ingredientId: input.data.id,
-            purchaseUnit: input.data.purchaseUnit,
-            unitsPerPack: input.data.unitsPerPack,
-            contentAmount: input.data.contentAmount,
-          },
-        })
+      updateFn={(input) =>
+        updateFn({ data: { ...input.data, unit: input.data.unit as "ml" | "un" | "g" } })
       }
-      updateFn={(input) => updateFn({ data: input.data })}
       deleteFn={(input) => deleteFn({ data: input.data })}
       lossFn={(input) =>
         lossFn({ data: { ingredientId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
