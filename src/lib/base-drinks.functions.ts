@@ -35,6 +35,7 @@ type ComponentUpdateInput = PackagingInput & {
   name: string;
   unit: string;
   minStock: number;
+  depletionRule?: "fefo" | "lowest_cost" | undefined;
 };
 
 /**
@@ -100,10 +101,41 @@ async function applyComponentUpdate(
       purchase_unit: data.purchaseUnit?.trim() || null,
       units_per_pack: packaging.unitsPerPack,
       content_amount: packaging.contentAmount,
+      ...(data.depletionRule ? { depletion_rule: data.depletionRule } : {}),
     })
     .eq("id", data.id);
   if (error) return { ok: false as const, message: labels.saveFailed };
   return { ok: true as const };
+}
+
+/**
+ * Todo lote nasce com o saldo cheio (quantity_remaining = quantity_received) — venda/estorno é que
+ * vai esvaziando/enchendo depois, via fastbar_deplete_lots/fastbar_replenish_lots no banco.
+ * Best-effort: se a gravação do lote falhar, a entrada em si (que já rodou antes) não é desfeita —
+ * o saldo e o custo médio já estão certos, só a rastreabilidade por lote é que fica incompleta.
+ */
+async function insertStockLot(params: {
+  kind: "base_drink" | "ingredient";
+  componentId: string;
+  quantity: number;
+  unitCost: number | null;
+  supplierId?: string | undefined;
+  expiresOn?: string | undefined;
+  note?: string | undefined;
+}) {
+  const { admin } = await import("./fastbar.server");
+  await admin()
+    .from("fastbar_stock_lots")
+    .insert({
+      component_kind: params.kind,
+      component_id: params.componentId,
+      supplier_id: params.supplierId || null,
+      unit_cost: params.unitCost,
+      quantity_received: params.quantity,
+      quantity_remaining: params.quantity,
+      expires_on: params.expiresOn?.trim() || null,
+      note: params.note?.trim() || null,
+    });
 }
 
 /** Lê o total pago de uma entrada. `undefined` = entrada sem custo informado (permitido). */
@@ -217,6 +249,7 @@ export const updateBaseDrink = createServerFn({ method: "POST" })
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
+      depletionRule?: "fefo" | "lowest_cost" | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -277,6 +310,7 @@ export const addBaseDrinkEntry = createServerFn({ method: "POST" })
       purchaseCost?: number | undefined;
       supplierId?: string | undefined;
       note?: string | undefined;
+      expiresOn?: string | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -333,6 +367,15 @@ export const addBaseDrinkEntry = createServerFn({ method: "POST" })
     if (updateError) {
       return { ok: false as const, message: "Não foi possível atualizar o estoque da bebida base." };
     }
+
+    await insertStockLot({
+      kind: "base_drink",
+      componentId: material.id,
+      quantity,
+      unitCost: unitCost,
+      supplierId: data.supplierId,
+      expiresOn: data.expiresOn,
+    });
 
     return { ok: true as const, newStock };
   });
@@ -459,6 +502,7 @@ export const updateIngredient = createServerFn({ method: "POST" })
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
+      depletionRule?: "fefo" | "lowest_cost" | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -513,6 +557,7 @@ export const addIngredientEntry = createServerFn({ method: "POST" })
       purchaseCost?: number | undefined;
       supplierId?: string | undefined;
       note?: string | undefined;
+      expiresOn?: string | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -568,6 +613,15 @@ export const addIngredientEntry = createServerFn({ method: "POST" })
     if (updateError) {
       return { ok: false as const, message: "Não foi possível atualizar o estoque do ingrediente." };
     }
+
+    await insertStockLot({
+      kind: "ingredient",
+      componentId: ingredient.id,
+      quantity,
+      unitCost: unitCost,
+      supplierId: data.supplierId,
+      expiresOn: data.expiresOn,
+    });
 
     return { ok: true as const, newStock };
   });
@@ -1001,14 +1055,14 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
     admin()
       .from("fastbar_base_drinks")
       .select(
-        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount",
+        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount, depletion_rule",
       )
       .eq("active", true)
       .order("name"),
     admin()
       .from("fastbar_drink_ingredients")
       .select(
-        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount, kind",
+        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount, kind, depletion_rule",
       )
       .eq("active", true)
       .order("name"),
@@ -1044,6 +1098,45 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
     })),
   };
 });
+
+/**
+ * Lotes de um insumo (bebida base ou ingrediente), do mais recente pro mais antigo — cada um com a
+ * data, o preço e o fornecedor daquela entrada específica, e quanto ainda resta dele. É o que
+ * mostra pra equipe, ao expandir o card, de onde o saldo atual veio.
+ */
+export const getStockLots = createServerFn({ method: "POST" })
+  .inputValidator((data: { kind: "base_drink" | "ingredient"; componentId: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { data: lots } = await admin()
+      .from("fastbar_stock_lots")
+      .select(
+        "id, unit_cost, quantity_received, quantity_remaining, expires_on, received_at, note, fastbar_suppliers(name)",
+      )
+      .eq("component_kind", data.kind)
+      .eq("component_id", data.componentId)
+      .order("received_at", { ascending: false });
+
+    return {
+      lots: (lots ?? []).map((lot) => {
+        const supplierJoin = (
+          lot as { fastbar_suppliers?: { name: string } | { name: string }[] | null }
+        ).fastbar_suppliers;
+        const supplierName = Array.isArray(supplierJoin) ? supplierJoin[0]?.name : supplierJoin?.name;
+        return {
+          id: lot.id,
+          unitCost: lot.unit_cost,
+          quantityReceived: lot.quantity_received,
+          quantityRemaining: lot.quantity_remaining,
+          expiresOn: lot.expires_on,
+          receivedAt: lot.received_at,
+          note: lot.note,
+          supplierName: supplierName ?? null,
+        };
+      }),
+    };
+  });
 
 /**
  * Relatório do módulo Estoque: valor parado em estoque e o que está abaixo do mínimo. Cruza as

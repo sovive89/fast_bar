@@ -17,6 +17,7 @@ import {
   deleteIngredient,
   getRecipeItems,
   getBaseDrinksOverview,
+  getStockLots,
   getStockReport,
   listAllProducts,
   listSuppliers,
@@ -139,6 +140,18 @@ type StockComponent = {
   // Só existe pra ingredientes — bebida base não tem esse campo (vem undefined, e o card não
   // mostra nada, o que é o comportamento certo pra ela).
   kind?: "drink" | "cozinha";
+  depletion_rule: "fefo" | "lowest_cost";
+};
+
+type StockLot = {
+  id: string;
+  unitCost: number | null;
+  quantityReceived: number;
+  quantityRemaining: number;
+  expiresOn: string | null;
+  receivedAt: string;
+  note: string | null;
+  supplierName: string | null;
 };
 
 type Supplier = { id: string; name: string; document: string | null; phone: string | null; active: boolean };
@@ -164,6 +177,7 @@ function ComponentStockTab(props: {
       purchaseCost?: number | undefined;
       supplierId?: string | undefined;
       note?: string | undefined;
+      expiresOn?: string | undefined;
     };
   }) => Promise<{ ok: boolean; message?: string }>;
   updateFn: (input: {
@@ -175,8 +189,12 @@ function ComponentStockTab(props: {
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
+      depletionRule?: "fefo" | "lowest_cost" | undefined;
     };
   }) => Promise<{ ok: boolean; message?: string }>;
+  lotsFn: (input: {
+    data: { componentId: string };
+  }) => Promise<{ lots: StockLot[] }>;
   deleteFn: (input: {
     data: { id: string; password: string };
   }) => Promise<{ ok: boolean; message?: string }>;
@@ -207,8 +225,15 @@ function ComponentStockTab(props: {
   const [entryPacks, setEntryPacks] = useState("");
   const [entryPurchaseCost, setEntryPurchaseCost] = useState("");
   const [entrySupplierId, setEntrySupplierId] = useState("");
+  const [entryExpiresOn, setEntryExpiresOn] = useState("");
   const [entryError, setEntryError] = useState<string | null>(null);
   const [entryBusy, setEntryBusy] = useState(false);
+
+  // Card expandido mostrando os lotes (data/preço/fornecedor de cada entrada) de um item — busca
+  // sob demanda, só quando a equipe abre, pra não puxar tudo isso na listagem toda hora.
+  const [openLotsId, setOpenLotsId] = useState<string | null>(null);
+  const [lots, setLots] = useState<StockLot[]>([]);
+  const [lotsLoading, setLotsLoading] = useState(false);
 
   const [openLossId, setOpenLossId] = useState<string | null>(null);
   const [lossQuantity, setLossQuantity] = useState("");
@@ -225,6 +250,7 @@ function ComponentStockTab(props: {
   const [editPurchaseUnit, setEditPurchaseUnit] = useState("");
   const [editUnitsPerPack, setEditUnitsPerPack] = useState("1");
   const [editContentAmount, setEditContentAmount] = useState("1");
+  const [editDepletionRule, setEditDepletionRule] = useState<"fefo" | "lowest_cost">("fefo");
   const [editError, setEditError] = useState<string | null>(null);
   const [editBusy, setEditBusy] = useState(false);
 
@@ -361,6 +387,7 @@ function ComponentStockTab(props: {
         packs,
         purchaseCost,
         supplierId: entrySupplierId || undefined,
+        expiresOn: entryExpiresOn || undefined,
       },
     });
     setEntryBusy(false);
@@ -369,7 +396,26 @@ function ComponentStockTab(props: {
     setEntryPacks("");
     setEntryPurchaseCost("");
     setEntrySupplierId("");
+    setEntryExpiresOn("");
+    if (openLotsId === item.id) await loadLots(item);
     await load();
+  }
+
+  async function loadLots(item: StockComponent) {
+    setLotsLoading(true);
+    const result = await props.lotsFn({ data: { componentId: item.id } });
+    setLots(result.lots);
+    setLotsLoading(false);
+  }
+
+  async function toggleLots(item: StockComponent) {
+    if (openLotsId === item.id) {
+      setOpenLotsId(null);
+      return;
+    }
+    setOpenLotsId(item.id);
+    setLots([]);
+    await loadLots(item);
   }
 
   async function submitLoss(item: StockComponent) {
@@ -405,6 +451,7 @@ function ComponentStockTab(props: {
     setEditPurchaseUnit(item.purchase_unit ?? "");
     setEditUnitsPerPack(String(item.units_per_pack));
     setEditContentAmount(String(item.content_amount));
+    setEditDepletionRule(item.depletion_rule ?? "fefo");
     setEditError(null);
   }
 
@@ -432,6 +479,7 @@ function ComponentStockTab(props: {
         purchaseUnit: editPurchaseUnit || undefined,
         unitsPerPack: perPack,
         contentAmount: content,
+        depletionRule: editDepletionRule,
       },
     });
     setEditBusy(false);
@@ -652,6 +700,7 @@ function ComponentStockTab(props: {
                         setEntryPacks("");
                         setEntryPurchaseCost("");
                         setEntrySupplierId("");
+                        setEntryExpiresOn("");
                         setEntryError(null);
                       }}
                       className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -684,8 +733,47 @@ function ComponentStockTab(props: {
                     >
                       {isDeleting ? "Cancelar" : "Apagar"}
                     </button>
+                    <button
+                      onClick={() => void toggleLots(item)}
+                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {openLotsId === item.id ? "Ocultar lotes" : "Lotes"}
+                    </button>
                   </div>
                 </div>
+
+                {openLotsId === item.id && (
+                  <div className="mt-3 rounded-xl border border-border p-3">
+                    <p className="text-xs font-semibold">Lotes recebidos</p>
+                    {lotsLoading ? (
+                      <p className="mt-1 text-xs text-muted-foreground">Carregando...</p>
+                    ) : lots.length === 0 ? (
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        Nenhum lote registrado ainda — entradas feitas antes desse recurso não têm
+                        lote, só saldo.
+                      </p>
+                    ) : (
+                      <ul className="mt-2 space-y-2">
+                        {lots.map((lot) => (
+                          <li
+                            key={lot.id}
+                            className="rounded-lg bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground"
+                          >
+                            <span className="font-medium text-foreground">
+                              {lot.quantityRemaining} / {lot.quantityReceived} {item.unit}
+                            </span>{" "}
+                            restante · recebido {new Date(lot.receivedAt).toLocaleDateString("pt-BR")}
+                            {lot.expiresOn
+                              ? ` · vence ${new Date(`${lot.expiresOn}T00:00:00`).toLocaleDateString("pt-BR")}`
+                              : ""}
+                            {lot.unitCost !== null ? ` · ${brl(lot.unitCost)}/${item.unit}` : ""}
+                            {lot.supplierName ? ` · ${lot.supplierName}` : ""}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                )}
 
                 {isEditing && (
                   <div className="mt-3 space-y-3 rounded-xl border border-border p-3">
@@ -747,6 +835,30 @@ function ComponentStockTab(props: {
                             type="number"
                           />
                         </div>
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-border p-3">
+                      <p className="text-xs font-semibold">Qual lote sai primeiro na venda</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground">
+                        Vale quando há mais de um lote em estoque ao mesmo tempo (preços/datas
+                        diferentes). Não muda o saldo nem o custo médio de agora.
+                      </p>
+                      <div className="mt-2 flex gap-2">
+                        {(
+                          [
+                            { id: "fefo" as const, label: "Vencimento (FEFO)" },
+                            { id: "lowest_cost" as const, label: "Menor custo" },
+                          ]
+                        ).map((option) => (
+                          <button
+                            key={option.id}
+                            type="button"
+                            onClick={() => setEditDepletionRule(option.id)}
+                            className={`h-9 flex-1 rounded-lg text-xs font-medium ${editDepletionRule === option.id ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
+                          >
+                            {option.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
                     {editError && <p className="text-xs text-destructive">{editError}</p>}
@@ -832,6 +944,17 @@ function ComponentStockTab(props: {
                         </option>
                       ))}
                     </select>
+                    <label className="block">
+                      <span className="text-xs font-medium text-muted-foreground">
+                        Validade deste lote (opcional)
+                      </span>
+                      <input
+                        type="date"
+                        value={entryExpiresOn}
+                        onChange={(event) => setEntryExpiresOn(event.target.value)}
+                        className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
+                      />
+                    </label>
                     <button
                       onClick={() => submitEntry(item)}
                       disabled={entryBusy || !entryPacks}
@@ -887,6 +1010,7 @@ function BebidasBaseTab() {
   const updateFn = useServerFn(updateBaseDrink);
   const deleteFn = useServerFn(deleteBaseDrink);
   const lossFn = useServerFn(addBaseDrinkLoss);
+  const lotsFn = useServerFn(getStockLots);
   return (
     <ComponentStockTab
       kind="base_drink"
@@ -912,6 +1036,7 @@ function BebidasBaseTab() {
             purchaseCost: input.data.purchaseCost,
             supplierId: input.data.supplierId,
             note: input.data.note,
+            expiresOn: input.data.expiresOn,
           },
         })
       }
@@ -922,6 +1047,7 @@ function BebidasBaseTab() {
       lossFn={(input) =>
         lossFn({ data: { baseDrinkId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
       }
+      lotsFn={(input) => lotsFn({ data: { kind: "base_drink", componentId: input.data.componentId } })}
     />
   );
 }
@@ -932,6 +1058,7 @@ function IngredientesTab() {
   const updateFn = useServerFn(updateIngredient);
   const deleteFn = useServerFn(deleteIngredient);
   const lossFn = useServerFn(addIngredientLoss);
+  const lotsFn = useServerFn(getStockLots);
   return (
     <ComponentStockTab
       kind="ingredient"
@@ -957,6 +1084,7 @@ function IngredientesTab() {
             purchaseCost: input.data.purchaseCost,
             supplierId: input.data.supplierId,
             note: input.data.note,
+            expiresOn: input.data.expiresOn,
           },
         })
       }
@@ -964,6 +1092,7 @@ function IngredientesTab() {
         updateFn({ data: { ...input.data, unit: input.data.unit as "ml" | "un" | "g" } })
       }
       deleteFn={(input) => deleteFn({ data: input.data })}
+      lotsFn={(input) => lotsFn({ data: { kind: "ingredient", componentId: input.data.componentId } })}
       lossFn={(input) =>
         lossFn({ data: { ingredientId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
       }

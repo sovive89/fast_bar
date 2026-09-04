@@ -204,6 +204,7 @@ export type Database = {
           content_amount: number
           created_at: string
           current_stock: number
+          depletion_rule: string
           id: string
           min_stock: number
           name: string
@@ -218,6 +219,7 @@ export type Database = {
           content_amount?: number
           created_at?: string
           current_stock?: number
+          depletion_rule?: string
           id?: string
           min_stock?: number
           name: string
@@ -232,6 +234,7 @@ export type Database = {
           content_amount?: number
           created_at?: string
           current_stock?: number
+          depletion_rule?: string
           id?: string
           min_stock?: number
           name?: string
@@ -375,6 +378,7 @@ export type Database = {
           content_amount: number
           created_at: string
           current_stock: number
+          depletion_rule: string
           id: string
           kind: string
           min_stock: number
@@ -390,6 +394,7 @@ export type Database = {
           content_amount?: number
           created_at?: string
           current_stock?: number
+          depletion_rule?: string
           id?: string
           kind?: string
           min_stock?: number
@@ -405,6 +410,7 @@ export type Database = {
           content_amount?: number
           created_at?: string
           current_stock?: number
+          depletion_rule?: string
           id?: string
           kind?: string
           min_stock?: number
@@ -631,6 +637,56 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "fastbar_customers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fastbar_stock_lots: {
+        Row: {
+          component_id: string
+          component_kind: string
+          created_at: string
+          expires_on: string | null
+          id: string
+          note: string | null
+          quantity_received: number
+          quantity_remaining: number
+          received_at: string
+          supplier_id: string | null
+          unit_cost: number | null
+        }
+        Insert: {
+          component_id: string
+          component_kind: string
+          created_at?: string
+          expires_on?: string | null
+          id?: string
+          note?: string | null
+          quantity_received: number
+          quantity_remaining?: number
+          received_at?: string
+          supplier_id?: string | null
+          unit_cost?: number | null
+        }
+        Update: {
+          component_id?: string
+          component_kind?: string
+          created_at?: string
+          expires_on?: string | null
+          id?: string
+          note?: string | null
+          quantity_received?: number
+          quantity_remaining?: number
+          received_at?: string
+          supplier_id?: string | null
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_stock_lots_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_suppliers"
             referencedColumns: ["id"]
           },
         ]
