@@ -23,6 +23,8 @@ import {
   setRecipeItems,
   updateBaseDrinkPackaging,
   updateIngredientPackaging,
+  updateBaseDrink,
+  updateIngredient,
 } from "@/lib/base-drinks.functions";
 
 export const Route = createFileRoute("/caixa/estoque")({
@@ -171,6 +173,9 @@ function ComponentStockTab(props: {
       contentAmount?: number | undefined;
     };
   }) => Promise<{ ok: boolean; message?: string }>;
+  updateFn: (input: {
+    data: { id: string; name: string; minStock: number };
+  }) => Promise<{ ok: boolean; message?: string }>;
   deleteFn: (input: {
     data: { id: string; password: string };
   }) => Promise<{ ok: boolean; message?: string }>;
@@ -216,6 +221,12 @@ function ComponentStockTab(props: {
   const [editContentAmount, setEditContentAmount] = useState("1");
   const [packagingError, setPackagingError] = useState<string | null>(null);
   const [packagingBusy, setPackagingBusy] = useState(false);
+
+  const [openEditId, setOpenEditId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editMinStock, setEditMinStock] = useState("");
+  const [editError, setEditError] = useState<string | null>(null);
+  const [editBusy, setEditBusy] = useState(false);
 
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
@@ -383,8 +394,34 @@ function ComponentStockTab(props: {
     await load();
   }
 
+  function openEditor(item: StockComponent) {
+    setOpenEditId(item.id);
+    setOpenEntryId(null);
+    setOpenPackagingId(null);
+    setDeletingId(null);
+    setOpenLossId(null);
+    setEditName(item.name);
+    setEditMinStock(String(item.min_stock));
+    setEditError(null);
+  }
+
+  async function submitEdit(item: StockComponent) {
+    setEditError(null);
+    const minStock = parseAmount(editMinStock);
+    if (editName.trim().length < 2) return setEditError("Digite o nome.");
+    if (minStock === null || minStock < 0) return setEditError("Estoque mínimo inválido.");
+
+    setEditBusy(true);
+    const result = await props.updateFn({ data: { id: item.id, name: editName, minStock } });
+    setEditBusy(false);
+    if (!result.ok) return setEditError(result.message ?? "Não foi possível salvar.");
+    setOpenEditId(null);
+    await load();
+  }
+
   function openPackagingEditor(item: StockComponent) {
     setOpenPackagingId(item.id);
+    setOpenEditId(null);
     setOpenEntryId(null);
     setDeletingId(null);
     setOpenLossId(null);
@@ -579,6 +616,7 @@ function ComponentStockTab(props: {
             const low = item.current_stock < item.min_stock;
             const isOpen = openEntryId === item.id;
             const isPackagingOpen = openPackagingId === item.id;
+            const isEditing = openEditId === item.id;
             const isDeleting = deletingId === item.id;
             return (
               <li key={item.id} className="rounded-2xl border border-border bg-card p-4">
@@ -602,6 +640,12 @@ function ComponentStockTab(props: {
                       {item.current_stock} {item.unit}
                     </span>
                     <button
+                      onClick={() => (isEditing ? setOpenEditId(null) : openEditor(item))}
+                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      {isEditing ? "Cancelar" : "Editar"}
+                    </button>
+                    <button
                       onClick={() =>
                         isPackagingOpen ? setOpenPackagingId(null) : openPackagingEditor(item)
                       }
@@ -612,6 +656,7 @@ function ComponentStockTab(props: {
                     <button
                       onClick={() => {
                         setOpenEntryId(isOpen ? null : item.id);
+                        setOpenEditId(null);
                         setOpenPackagingId(null);
                         setDeletingId(null);
                         setOpenLossId(null);
@@ -628,6 +673,7 @@ function ComponentStockTab(props: {
                       onClick={() => {
                         const isLossOpen = openLossId === item.id;
                         setOpenLossId(isLossOpen ? null : item.id);
+                        setOpenEditId(null);
                         setOpenEntryId(null);
                         setOpenPackagingId(null);
                         setDeletingId(null);
@@ -642,6 +688,7 @@ function ComponentStockTab(props: {
                     <button
                       onClick={() => {
                         setDeletingId(isDeleting ? null : item.id);
+                        setOpenEditId(null);
                         setOpenEntryId(null);
                         setOpenPackagingId(null);
                         setOpenLossId(null);
@@ -652,6 +699,29 @@ function ComponentStockTab(props: {
                     </button>
                   </div>
                 </div>
+
+                {isEditing && (
+                  <div className="mt-3 space-y-3 rounded-xl border border-border p-3">
+                    <TextField label="Nome" value={editName} onChange={setEditName} />
+                    <TextField
+                      label={`Estoque mínimo (${item.unit})`}
+                      value={editMinStock}
+                      onChange={setEditMinStock}
+                      type="number"
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Para alterar a forma de compra, use o botão Embalagem.
+                    </p>
+                    {editError && <p className="text-xs text-destructive">{editError}</p>}
+                    <button
+                      onClick={() => submitEdit(item)}
+                      disabled={editBusy}
+                      className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                    >
+                      {editBusy ? "Salvando..." : "Salvar alterações"}
+                    </button>
+                  </div>
+                )}
 
                 {isDeleting && (
                   <div className="mt-3">
@@ -815,6 +885,7 @@ function BebidasBaseTab() {
   const createFn = useServerFn(createBaseDrink);
   const entryFn = useServerFn(addBaseDrinkEntry);
   const updatePackagingFn = useServerFn(updateBaseDrinkPackaging);
+  const updateFn = useServerFn(updateBaseDrink);
   const deleteFn = useServerFn(deleteBaseDrink);
   const lossFn = useServerFn(addBaseDrinkLoss);
   return (
@@ -855,6 +926,7 @@ function BebidasBaseTab() {
           },
         })
       }
+      updateFn={(input) => updateFn({ data: input.data })}
       deleteFn={(input) => deleteFn({ data: input.data })}
       lossFn={(input) =>
         lossFn({ data: { baseDrinkId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
@@ -867,6 +939,7 @@ function IngredientesTab() {
   const createFn = useServerFn(createIngredient);
   const entryFn = useServerFn(addIngredientEntry);
   const updatePackagingFn = useServerFn(updateIngredientPackaging);
+  const updateFn = useServerFn(updateIngredient);
   const deleteFn = useServerFn(deleteIngredient);
   const lossFn = useServerFn(addIngredientLoss);
   return (
@@ -907,6 +980,7 @@ function IngredientesTab() {
           },
         })
       }
+      updateFn={(input) => updateFn({ data: input.data })}
       deleteFn={(input) => deleteFn({ data: input.data })}
       lossFn={(input) =>
         lossFn({ data: { ingredientId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
