@@ -14,6 +14,7 @@ import {
   setCategoryNeedsRecipe,
   deleteProductCategory,
   getBaseDrinksOverview,
+  getRecipeItems,
   listProductCategories,
   setRecipeItems,
   updateProduct as updateProductFn,
@@ -121,6 +122,174 @@ async function compressImageForUpload(
   return { base64, contentType: "image/jpeg" };
 }
 
+/**
+ * Ficha técnica ("Do que é feito") — usado tanto no cadastro de produto novo quanto na edição de
+ * um já existente, pra não duplicar a lista de linhas + criação inline de insumo em dois lugares.
+ */
+function RecipeBuilder(props: {
+  components: ComponentRow[];
+  onChange: (updater: (current: ComponentRow[]) => ComponentRow[]) => void;
+  stockOptions: StockOption[];
+  warning: string | undefined;
+}) {
+  const { components, onChange, stockOptions, warning } = props;
+  return (
+    <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
+      <p className="text-xs font-semibold">Do que é feito</p>
+      <p className="mt-0.5 text-xs text-muted-foreground">
+        Puxe do estoque o que este item consome. A cada venda a baixa acontece sozinha nos
+        insumos. Deixe vazio só se for algo sem controle de estoque nenhum.
+      </p>
+      {components.length === 0 && warning && (
+        <p className="mt-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-600">
+          {warning}
+        </p>
+      )}
+      <p className="mt-1.5 text-xs font-medium text-primary">
+        É uma dose? Clique em "+ Puxar insumo do estoque" abaixo, escolha a garrafa de origem e
+        digite o tamanho da dose em ml no campo ao lado — ex.: Tequila + 50. Não use "Estoque
+        inicial" mais abaixo pra isso.
+      </p>
+
+      {stockOptions.length === 0 ? (
+        <p className="mt-3 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
+          Nada no estoque ainda. Cadastre em Estoque → Bebidas base ou Ingredientes.
+        </p>
+      ) : (
+        <div className="mt-3 space-y-2">
+          {components.map((row) => {
+            const option = stockOptions.find((item) => item.id === row.stockId);
+            const isNew = row.stockId === NEW_STOCK_ID;
+            return (
+              <div key={row.key} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <select
+                    value={row.stockId}
+                    onChange={(event) =>
+                      onChange((current) =>
+                        current.map((c) =>
+                          c.key === row.key ? { ...c, stockId: event.target.value } : c,
+                        ),
+                      )
+                    }
+                    className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                  >
+                    <option value="">Escolha o insumo</option>
+                    <option value={NEW_STOCK_ID}>+ Criar novo insumo</option>
+                    {stockOptions.map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.name} ({item.unit})
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={row.quantity}
+                    onChange={(event) =>
+                      onChange((current) =>
+                        current.map((c) =>
+                          c.key === row.key ? { ...c, quantity: event.target.value } : c,
+                        ),
+                      )
+                    }
+                    placeholder={isNew ? row.newUnit || "qtd" : option ? option.unit : "qtd"}
+                    inputMode="decimal"
+                    className="h-11 w-24 shrink-0 rounded-xl border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
+                  />
+                  <button
+                    onClick={() => onChange((current) => current.filter((c) => c.key !== row.key))}
+                    aria-label="Remover insumo"
+                    className="shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-destructive"
+                  >
+                    ×
+                  </button>
+                </div>
+                {isNew && (
+                  <div className="rounded-lg border border-dashed border-primary/40 bg-background p-2.5">
+                    <p className="text-[11px] text-muted-foreground">
+                      Ainda não existe no estoque — nasce com saldo zero. Configure a embalagem e
+                      dê a primeira entrada em Estoque quando a mercadoria chegar.
+                    </p>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        value={row.newName}
+                        onChange={(event) =>
+                          onChange((current) =>
+                            current.map((c) =>
+                              c.key === row.key ? { ...c, newName: event.target.value } : c,
+                            ),
+                          )
+                        }
+                        placeholder="Nome do insumo (ex.: Tequila)"
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                      />
+                      <select
+                        value={row.newKind}
+                        onChange={(event) =>
+                          onChange((current) =>
+                            current.map((c) =>
+                              c.key === row.key
+                                ? {
+                                    ...c,
+                                    newKind: event.target.value as ComponentRow["newKind"],
+                                    newUnit: event.target.value === "base_drink" ? "ml" : c.newUnit,
+                                  }
+                                : c,
+                            ),
+                          )
+                        }
+                        className="h-10 shrink-0 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-ring"
+                      >
+                        <option value="base_drink">Bebida base</option>
+                        <option value="ingredient">Ingrediente (drink)</option>
+                        <option value="cozinha">Insumo de cozinha</option>
+                      </select>
+                      <select
+                        value={row.newUnit}
+                        onChange={(event) =>
+                          onChange((current) =>
+                            current.map((c) =>
+                              c.key === row.key ? { ...c, newUnit: event.target.value } : c,
+                            ),
+                          )
+                        }
+                        className="h-10 w-20 shrink-0 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-ring"
+                      >
+                        {(row.newKind === "base_drink" ? ["ml", "un"] : ["ml", "un", "g"]).map((u) => (
+                          <option key={u} value={u}>
+                            {u}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          <button
+            onClick={() =>
+              onChange((current) => [
+                ...current,
+                {
+                  key: `c-${Date.now()}-${current.length}`,
+                  stockId: "",
+                  quantity: "",
+                  newName: "",
+                  newKind: "base_drink",
+                  newUnit: "ml",
+                },
+              ])
+            }
+            className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+          >
+            + Puxar insumo do estoque
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CardapioPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [recipeProductIds, setRecipeProductIds] = useState<Set<string>>(new Set());
@@ -185,6 +354,11 @@ function CardapioPage() {
   const [editProductSaving, setEditProductSaving] = useState(false);
   const [editProductCompressing, setEditProductCompressing] = useState(false);
   const [editProductError, setEditProductError] = useState<string | null>(null);
+  // Ficha técnica do produto sendo editado — carregada do banco ao abrir o painel, separada de
+  // `components` (que é só do formulário de "Novo produto") pra abrir um editor não pisar no outro.
+  const [editComponents, setEditComponents] = useState<ComponentRow[]>([]);
+  const [editRecipeLoading, setEditRecipeLoading] = useState(false);
+  const [editRecipeLoadFailed, setEditRecipeLoadFailed] = useState(false);
 
   const loadOverview = useServerFn(getStockOverview);
   const loadStock = useServerFn(getBaseDrinksOverview);
@@ -202,6 +376,7 @@ function CardapioPage() {
   const createIngredientFn = useServerFn(createIngredient);
   const update = useServerFn(updateProductFn);
   const saveRecipe = useServerFn(setRecipeItems);
+  const loadRecipeItems = useServerFn(getRecipeItems);
 
   async function load() {
     const [result, stock, categoriesResult] = await Promise.all([
@@ -373,7 +548,7 @@ function CardapioPage() {
     return result;
   }
 
-  function openEditProduct(product: Product) {
+  async function openEditProduct(product: Product) {
     setEditingProductId(product.id);
     setEditProductName(product.name);
     setEditProductCategory(product.category);
@@ -394,6 +569,35 @@ function CardapioPage() {
     // deles), senão os formulários se misturam na mesma linha.
     setDeletingId(null);
     setOpenRestockId(null);
+
+    // Ficha técnica não vem junto no overview de produtos — busca à parte ao abrir o painel, pra
+    // editar aqui mesmo em vez de mandar pra Estoque → Fichas técnicas.
+    setEditComponents([]);
+    setEditRecipeLoadFailed(false);
+    setEditRecipeLoading(true);
+    try {
+      const result = await loadRecipeItems({ data: { productId: product.id } });
+      setEditComponents(
+        result.items.map((item, index) => ({
+          key: `e-${product.id}-${item.id ?? index}`,
+          stockId: item.base_drink_id ?? item.ingredient_id ?? "",
+          quantity: String(item.quantity).replace(".", ","),
+          newName: "",
+          newKind: "base_drink" as const,
+          newUnit: item.base_drink?.unit ?? item.ingredient?.unit ?? "ml",
+        })),
+      );
+    } catch {
+      // Se falhar, marca a ficha como não carregada — salvar não mexe na receita existente até
+      // o usuário reabrir e tentar de novo (senão salvaria uma "ficha vazia" por cima da de
+      // verdade e apagaria os insumos do produto sem querer).
+      setEditRecipeLoadFailed(true);
+      setEditProductError(
+        "Não foi possível carregar a ficha técnica atual. As outras alterações podem ser salvas normalmente, mas reabra o editor pra mexer em \"Do que é feito\".",
+      );
+    } finally {
+      setEditRecipeLoading(false);
+    }
   }
 
   async function submitEditProduct() {
@@ -406,8 +610,68 @@ function CardapioPage() {
     }
     if (!editProductCategory) return setEditProductError("Escolha uma categoria.");
 
+    // Mesma validação da ficha técnica do cadastro novo — uma linha malformada não pode virar
+    // ficha salva pela metade.
+    if (!editRecipeLoadFailed) {
+      for (const row of editComponents) {
+        if (!row.stockId) return setEditProductError("Escolha o insumo em todas as linhas, ou remova a linha.");
+        if (row.stockId === NEW_STOCK_ID && row.newName.trim().length < 2) {
+          return setEditProductError("Digite o nome do novo insumo em todas as linhas marcadas como novo.");
+        }
+        const quantity = Number(row.quantity.replace(",", "."));
+        if (!Number.isFinite(quantity) || quantity <= 0) {
+          return setEditProductError("Informe uma quantidade maior que zero para cada insumo.");
+        }
+        if (row.stockId !== NEW_STOCK_ID && !stockOptions.find((item) => item.id === row.stockId)) {
+          return setEditProductError("Insumo não encontrado — recarregue a página.");
+        }
+      }
+    }
+
     setEditProductSaving(true);
     try {
+      // Linhas "+ Criar novo insumo" nascem agora, com saldo zero, igual no cadastro novo.
+      const resolvedComponents: Array<{
+        kind: "base_drink" | "ingredient";
+        id: string;
+        quantity: number;
+      }> = [];
+      if (!editRecipeLoadFailed) {
+        for (const row of editComponents) {
+          const quantity = Number(row.quantity.replace(",", "."));
+          if (row.stockId !== NEW_STOCK_ID) {
+            const option = stockOptions.find((item) => item.id === row.stockId)!;
+            resolvedComponents.push({ kind: option.kind, id: option.id, quantity });
+            continue;
+          }
+          if (row.newKind === "base_drink") {
+            const created = await createBaseDrinkFn({
+              data: { name: row.newName, unit: row.newUnit as "ml" | "un" },
+            });
+            if (!created.ok) {
+              return setEditProductError(
+                `Não foi possível criar o insumo "${row.newName}": ${created.message ?? ""}`,
+              );
+            }
+            resolvedComponents.push({ kind: "base_drink", id: created.id, quantity });
+          } else {
+            const created = await createIngredientFn({
+              data: {
+                name: row.newName,
+                unit: row.newUnit as "ml" | "un" | "g",
+                kind: row.newKind === "cozinha" ? "cozinha" : "drink",
+              },
+            });
+            if (!created.ok) {
+              return setEditProductError(
+                `Não foi possível criar o insumo "${row.newName}": ${created.message ?? ""}`,
+              );
+            }
+            resolvedComponents.push({ kind: "ingredient", id: created.id, quantity });
+          }
+        }
+      }
+
       let imageUrl: string | undefined;
       if (editProductPhotoFile) {
         setEditProductCompressing(true);
@@ -440,6 +704,28 @@ function CardapioPage() {
         },
       });
       if (!result.ok) return setEditProductError(result.message);
+
+      // A ficha só é regravada quando ela carregou certinho ao abrir o painel — é o que permite
+      // remover todos os insumos (ficha some) sem correr o risco de apagar por engano uma ficha
+      // que nem chegou a carregar.
+      if (!editRecipeLoadFailed) {
+        const recipe: Array<
+          | { type: "base_drink"; baseDrinkId: string; quantity: number }
+          | { type: "ingredient"; ingredientId: string; quantity: number }
+        > = resolvedComponents.map((c) =>
+          c.kind === "base_drink"
+            ? { type: "base_drink", baseDrinkId: c.id, quantity: c.quantity }
+            : { type: "ingredient", ingredientId: c.id, quantity: c.quantity },
+        );
+        const savedRecipe = await saveRecipe({ data: { productId: editingProductId, items: recipe } });
+        if (!savedRecipe.ok) {
+          await load();
+          return setEditProductError(
+            `Produto salvo, mas a ficha técnica não atualizou: ${savedRecipe.message ?? "tente de novo."}`,
+          );
+        }
+      }
+
       setEditingProductId(null);
       await load();
     } catch {
@@ -906,173 +1192,16 @@ function CardapioPage() {
                     </select>
                   </label>
                 </div>
-                <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
-                  <p className="text-xs font-semibold">Do que é feito</p>
-                  <p className="mt-0.5 text-xs text-muted-foreground">
-                    Puxe do estoque o que este item consome. A cada venda a baixa acontece sozinha
-                    nos insumos. Deixe vazio só se for algo sem controle de estoque nenhum.
-                  </p>
-                  {components.length === 0 &&
-                    categories.find((c) => c.name === category)?.needs_recipe && (
-                      <p className="mt-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-600">
-                        A categoria "{category}" marca que os itens consomem insumos — este produto
-                        vai ficar pendente até você montar a ficha.
-                      </p>
-                    )}
-                  <p className="mt-1.5 text-xs font-medium text-primary">
-                    É uma dose? Clique em "+ Puxar insumo do estoque" abaixo, escolha a garrafa de
-                    origem e digite o tamanho da dose em ml no campo ao lado — ex.: Tequila + 50.
-                    Não use "Estoque inicial" mais abaixo pra isso.
-                  </p>
-
-                  {stockOptions.length === 0 ? (
-                    <p className="mt-3 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-                      Nada no estoque ainda. Cadastre em Estoque → Bebidas base ou Ingredientes.
-                    </p>
-                  ) : (
-                    <div className="mt-3 space-y-2">
-                      {components.map((row) => {
-                        const option = stockOptions.find((item) => item.id === row.stockId);
-                        const isNew = row.stockId === NEW_STOCK_ID;
-                        return (
-                          <div key={row.key} className="space-y-2">
-                            <div className="flex items-center gap-2">
-                              <select
-                                value={row.stockId}
-                                onChange={(event) =>
-                                  setComponents((current) =>
-                                    current.map((c) =>
-                                      c.key === row.key ? { ...c, stockId: event.target.value } : c,
-                                    ),
-                                  )
-                                }
-                                className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-                              >
-                                <option value="">Escolha o insumo</option>
-                                <option value={NEW_STOCK_ID}>+ Criar novo insumo</option>
-                                {stockOptions.map((item) => (
-                                  <option key={item.id} value={item.id}>
-                                    {item.name} ({item.unit})
-                                  </option>
-                                ))}
-                              </select>
-                              <input
-                                value={row.quantity}
-                                onChange={(event) =>
-                                  setComponents((current) =>
-                                    current.map((c) =>
-                                      c.key === row.key ? { ...c, quantity: event.target.value } : c,
-                                    ),
-                                  )
-                                }
-                                placeholder={
-                                  isNew ? row.newUnit || "qtd" : option ? option.unit : "qtd"
-                                }
-                                inputMode="decimal"
-                                className="h-11 w-24 shrink-0 rounded-xl border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
-                              />
-                              <button
-                                onClick={() =>
-                                  setComponents((current) => current.filter((c) => c.key !== row.key))
-                                }
-                                aria-label="Remover insumo"
-                                className="shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-destructive"
-                              >
-                                ×
-                              </button>
-                            </div>
-                            {isNew && (
-                              <div className="rounded-lg border border-dashed border-primary/40 bg-background p-2.5">
-                                <p className="text-[11px] text-muted-foreground">
-                                  Ainda não existe no estoque — nasce com saldo zero. Configure a
-                                  embalagem e dê a primeira entrada em Estoque quando a mercadoria
-                                  chegar.
-                                </p>
-                                <div className="mt-2 flex items-center gap-2">
-                                  <input
-                                    value={row.newName}
-                                    onChange={(event) =>
-                                      setComponents((current) =>
-                                        current.map((c) =>
-                                          c.key === row.key
-                                            ? { ...c, newName: event.target.value }
-                                            : c,
-                                        ),
-                                      )
-                                    }
-                                    placeholder="Nome do insumo (ex.: Tequila)"
-                                    className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-                                  />
-                                  <select
-                                    value={row.newKind}
-                                    onChange={(event) =>
-                                      setComponents((current) =>
-                                        current.map((c) =>
-                                          c.key === row.key
-                                            ? {
-                                                ...c,
-                                                newKind: event.target.value as ComponentRow["newKind"],
-                                                newUnit:
-                                                  event.target.value === "base_drink" ? "ml" : c.newUnit,
-                                              }
-                                            : c,
-                                        ),
-                                      )
-                                    }
-                                    className="h-10 shrink-0 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-ring"
-                                  >
-                                    <option value="base_drink">Bebida base</option>
-                                    <option value="ingredient">Ingrediente (drink)</option>
-                                    <option value="cozinha">Insumo de cozinha</option>
-                                  </select>
-                                  <select
-                                    value={row.newUnit}
-                                    onChange={(event) =>
-                                      setComponents((current) =>
-                                        current.map((c) =>
-                                          c.key === row.key
-                                            ? { ...c, newUnit: event.target.value }
-                                            : c,
-                                        ),
-                                      )
-                                    }
-                                    className="h-10 w-20 shrink-0 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-ring"
-                                  >
-                                    {(row.newKind === "base_drink" ? ["ml", "un"] : ["ml", "un", "g"]).map(
-                                      (u) => (
-                                        <option key={u} value={u}>
-                                          {u}
-                                        </option>
-                                      ),
-                                    )}
-                                  </select>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
-                      <button
-                        onClick={() =>
-                          setComponents((current) => [
-                            ...current,
-                            {
-                              key: `c-${Date.now()}-${current.length}`,
-                              stockId: "",
-                              quantity: "",
-                              newName: "",
-                              newKind: "base_drink",
-                              newUnit: "ml",
-                            },
-                          ])
-                        }
-                        className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-                      >
-                        + Puxar insumo do estoque
-                      </button>
-                    </div>
-                  )}
-                </div>
+                <RecipeBuilder
+                  components={components}
+                  onChange={setComponents}
+                  stockOptions={stockOptions}
+                  warning={
+                    categories.find((c) => c.name === category)?.needs_recipe
+                      ? `A categoria "${category}" marca que os itens consomem insumos — este produto vai ficar pendente até você montar a ficha.`
+                      : undefined
+                  }
+                />
 
                 {/* Produto com ficha técnica tira do estoque dos insumos, então um estoque próprio
                     aqui seria um número paralelo que nunca baixa. Some assim que uma linha de
@@ -1255,6 +1384,28 @@ function CardapioPage() {
                                   </select>
                                 </label>
                               </div>
+                              {editRecipeLoading ? (
+                                <p className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
+                                  Carregando ficha técnica atual...
+                                </p>
+                              ) : editRecipeLoadFailed ? (
+                                <p className="rounded-xl border border-dashed border-destructive/40 p-3 text-xs text-destructive">
+                                  Não foi possível carregar a ficha técnica — feche e reabra "Editar"
+                                  para tentar de novo. As outras alterações acima podem ser salvas
+                                  normalmente.
+                                </p>
+                              ) : (
+                                <RecipeBuilder
+                                  components={editComponents}
+                                  onChange={setEditComponents}
+                                  stockOptions={stockOptions}
+                                  warning={
+                                    categories.find((c) => c.name === editProductCategory)?.needs_recipe
+                                      ? `A categoria "${editProductCategory}" marca que os itens consomem insumos — este produto vai ficar pendente até a ficha ter pelo menos um insumo.`
+                                      : undefined
+                                  }
+                                />
+                              )}
                               <label className="block">
                                 <span className="text-xs font-medium text-muted-foreground">
                                   Trocar foto (opcional)
@@ -1269,7 +1420,10 @@ function CardapioPage() {
                               {editProductError && (
                                 <p className="text-xs text-destructive">{editProductError}</p>
                               )}
-                              <PrimaryButton onClick={submitEditProduct} disabled={editProductSaving}>
+                              <PrimaryButton
+                                onClick={submitEditProduct}
+                                disabled={editProductSaving || editRecipeLoading}
+                              >
                                 {editProductCompressing
                                   ? "Comprimindo foto..."
                                   : editProductSaving
