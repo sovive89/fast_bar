@@ -64,18 +64,55 @@ export const confirmSession = createServerFn({ method: "POST" })
   });
 
 /**
+ * Confere se já existe cliente com esse CPF/RG — usado pela tela de abertura manual pra
+ * autopreencher o nome assim que a equipe termina de digitar o documento, sem obrigar a
+ * redigitar o nome de quem já é cadastrado. Documento inválido não é erro aqui, só não acha nada.
+ */
+export const lookupCustomerByDocument = createServerFn({ method: "POST" })
+  .inputValidator((data: { documentType: "cpf" | "rg"; document: string }) => data)
+  .handler(async ({ data }) => {
+    const { assertRegisterAccess, sanitizeDocument, findCustomerNameByDocument } = await import(
+      "./fastbar.server"
+    );
+    await assertRegisterAccess();
+    const document = sanitizeDocument(data.documentType, data.document);
+    if (!document) return { name: null };
+    const name = await findCustomerNameByDocument(document);
+    return { name };
+  });
+
+/**
  * Abre uma comanda direto pelo caixa, sem o cliente escanear o QR code. Gera tudo igual ao fluxo
  * do QR (cliente no CRM, link de acompanhamento, mesma dedupe por celular) — muda só quem digita.
+ *
+ * Celular continua sendo o padrão, mas quando o cliente não tem, CPF ou RG servem de identificador
+ * no lugar — nunca os dois vazios, ou não haveria como achar a comanda de novo nem reconhecer o
+ * cliente que já volta. O celular nunca é obrigatório mesmo quando há documento: quem tem os dois
+ * pode informar só o documento sem digitar o celular também.
  *
  * Já nasce aberta: o status "pending" existe para a equipe conferir que o cliente do QR está mesmo
  * ali, e quando é a própria equipe que abre, essa conferência já aconteceu. Exigir confirmar
  * depois seria dois cliques para o mesmo ato.
  */
 export const openSessionByTeam = createServerFn({ method: "POST" })
-  .inputValidator((data: { name: string; phone: string; password: string }) => data)
+  .inputValidator(
+    (data: {
+      name: string;
+      phone: string;
+      document: string;
+      documentType: "cpf" | "rg" | "";
+      password: string;
+    }) => data,
+  )
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, sanitizeName, sanitizePhone, upsertCustomer } =
-      await import("./fastbar.server");
+    const {
+      admin,
+      assertRegisterAccess,
+      sanitizeName,
+      sanitizePhone,
+      sanitizeDocument,
+      upsertCustomer,
+    } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!teamPasswordMatches(data.password)) {
@@ -83,18 +120,43 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
     }
 
     const name = sanitizeName(data.name);
-    const phone = sanitizePhone(data.phone);
-    if (!name || !phone) {
-      return { ok: false as const, message: "Informe nome completo e celular com DDD." };
+    if (!name) {
+      return { ok: false as const, message: "Informe o nome completo." };
     }
 
-    // Mesma regra do fluxo do QR: celular que já tem comanda em andamento volta pra ela, em vez de
-    // abrir uma segunda comanda pro mesmo cliente e dividir o consumo em duas contas.
-    const { data: existing } = await admin()
+    // Celular vazio é válido — é o caso de "sem celular, usa documento". Só validamos o que veio
+    // preenchido: um celular digitado errado não deve passar batido só porque o documento é válido.
+    const phone = data.phone.trim() ? sanitizePhone(data.phone) : null;
+    if (data.phone.trim() && !phone) {
+      return { ok: false as const, message: "Celular inválido — confira o DDD e os dígitos." };
+    }
+    const document =
+      data.documentType && data.document.trim()
+        ? sanitizeDocument(data.documentType, data.document)
+        : null;
+    if (data.documentType && data.document.trim() && !document) {
+      return {
+        ok: false as const,
+        message:
+          data.documentType === "cpf" ? "CPF inválido." : "RG inválido — confira os dígitos.",
+      };
+    }
+    if (!phone && !document) {
+      return {
+        ok: false as const,
+        message: "Informe o celular ou, na falta dele, CPF ou RG do cliente.",
+      };
+    }
+
+    // Mesma regra do fluxo do QR: celular (ou documento, quando é o identificador usado) que já tem
+    // comanda em andamento volta pra ela, em vez de abrir uma segunda comanda pro mesmo cliente e
+    // dividir o consumo em duas contas.
+    let existingQuery = admin()
       .from("fastbar_sessions")
       .select("id")
-      .eq("phone", phone)
-      .in("status", ["pending", "open"])
+      .in("status", ["pending", "open"]);
+    existingQuery = phone ? existingQuery.eq("phone", phone) : existingQuery.eq("document", document!);
+    const { data: existing } = await existingQuery
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -102,12 +164,16 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
       return { ok: true as const, sessionId: existing.id, existed: true as const };
     }
 
-    const customerId = await upsertCustomer(name, phone);
+    const customerId = phone
+      ? await upsertCustomer(name, { phone })
+      : await upsertCustomer(name, { document: document!, documentType: data.documentType as "cpf" | "rg" });
     const { data: inserted, error } = await admin()
       .from("fastbar_sessions")
       .insert({
         customer_name: name,
         phone,
+        document,
+        document_type: document ? data.documentType : null,
         status: "open",
         started_at: new Date().toISOString(),
         customer_id: customerId,

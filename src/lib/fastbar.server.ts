@@ -29,6 +29,30 @@ export function sanitizePhone(value: unknown) {
   return phone;
 }
 
+/** Dígito verificador do CPF (módulo 11) — pega tanto erro de digitação quanto número inventado. */
+function isValidCpf(cpf: string): boolean {
+  if (cpf.length !== 11 || /^(\d)\1+$/.test(cpf)) return false;
+  const digit = (len: number) => {
+    let sum = 0;
+    for (let i = 0; i < len; i++) sum += Number(cpf[i]) * (len + 1 - i);
+    const rest = (sum * 10) % 11;
+    return rest === 10 ? 0 : rest;
+  };
+  return digit(9) === Number(cpf[9]) && digit(10) === Number(cpf[10]);
+}
+
+/**
+ * Identificador alternativo pro cliente sem celular: CPF (com dígito verificador validado) ou RG
+ * (sem padrão nacional de dígito — cada estado emite do seu jeito — então só confere um tamanho
+ * plausível). Guarda só os dígitos, igual ao celular.
+ */
+export function sanitizeDocument(type: unknown, value: unknown): string | null {
+  const raw = typeof value === "string" ? value.replace(/\D/g, "") : "";
+  if (type === "cpf") return isValidCpf(raw) ? raw : null;
+  if (type === "rg") return raw.length >= 5 && raw.length <= 12 ? raw : null;
+  return null;
+}
+
 // As operações de estoque (baixa por venda, estorno, drenagem de comanda) vivem em funções no
 // Postgres — ver a migration atomic_stock_operations. Elas ficaram lá porque só dentro do banco é
 // possível somar o saldo sem intervalo entre ler e gravar, e agrupar os vários passos numa
@@ -36,14 +60,21 @@ export function sanitizePhone(value: unknown) {
 // no meio deixando o estoque incoerente.
 
 
-/** Cria o cliente na primeira visita, ou atualiza nome/última visita/contagem numa nova visita. */
-export async function upsertCustomer(name: string, phone: string): Promise<string> {
+export type CustomerIdentifier =
+  | { phone: string; document?: undefined; documentType?: undefined }
+  | { phone?: undefined; document: string; documentType: "cpf" | "rg" };
+
+/**
+ * Cria o cliente na primeira visita, ou atualiza nome/última visita/contagem numa nova visita.
+ * Aceita celular OU documento (CPF/RG) como identificador — o que faltar fica null, nunca "".
+ */
+export async function upsertCustomer(name: string, identifier: CustomerIdentifier): Promise<string> {
   const nowIso = new Date().toISOString();
-  const { data: existing } = await supabaseAdmin
-    .from("fastbar_customers")
-    .select("id, total_visits")
-    .eq("phone", phone)
-    .maybeSingle();
+  const base = supabaseAdmin.from("fastbar_customers").select("id, total_visits");
+  const { data: existing } =
+    identifier.phone !== undefined
+      ? await base.eq("phone", identifier.phone).maybeSingle()
+      : await base.eq("document", identifier.document).maybeSingle();
 
   if (existing) {
     await supabaseAdmin
@@ -55,11 +86,33 @@ export async function upsertCustomer(name: string, phone: string): Promise<strin
 
   const { data: inserted } = await supabaseAdmin
     .from("fastbar_customers")
-    .insert({ name, phone, total_visits: 1, first_seen_at: nowIso, last_seen_at: nowIso })
+    .insert({
+      name,
+      phone: identifier.phone ?? null,
+      document: identifier.document ?? null,
+      document_type: identifier.documentType ?? null,
+      total_visits: 1,
+      first_seen_at: nowIso,
+      last_seen_at: nowIso,
+    })
     .select("id")
     .single();
 
   return inserted!.id;
+}
+
+/**
+ * Confere se já existe cliente com esse CPF/RG pra preencher o nome sozinho — a equipe só confirma
+ * em vez de digitar de novo. Não expõe mais nada do cadastro (sem celular, sem histórico): é só
+ * pra poupar digitação, não uma consulta de CRM.
+ */
+export async function findCustomerNameByDocument(document: string): Promise<string | null> {
+  const { data } = await supabaseAdmin
+    .from("fastbar_customers")
+    .select("name")
+    .eq("document", document)
+    .maybeSingle();
+  return data?.name ?? null;
 }
 
 /** Soma o consumo da comanda paga no total histórico do cliente. */

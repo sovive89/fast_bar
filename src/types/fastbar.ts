@@ -4,7 +4,9 @@ export type SessionStatus = "pending" | "open" | "closed" | "paid" | "cancelled"
 export type BarSession = {
   id: string;
   customer_name: string;
-  phone: string;
+  phone: string | null;
+  document?: string | null;
+  document_type?: "cpf" | "rg" | null;
   status: SessionStatus;
   started_at: string | null;
   closed_at: string | null;

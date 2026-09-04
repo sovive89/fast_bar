@@ -249,6 +249,8 @@ export type Database = {
           birthday_day: number | null
           birthday_month: number | null
           created_at: string
+          document: string | null
+          document_type: string | null
           favorite_music_genre: string | null
           first_seen_at: string
           full_name: string | null
@@ -258,7 +260,7 @@ export type Database = {
           marketing_opt_in: boolean
           name: string
           notes: string | null
-          phone: string
+          phone: string | null
           profession: string | null
           profile_completed_at: string | null
           total_spent: number
@@ -271,6 +273,8 @@ export type Database = {
           birthday_day?: number | null
           birthday_month?: number | null
           created_at?: string
+          document?: string | null
+          document_type?: string | null
           favorite_music_genre?: string | null
           first_seen_at?: string
           full_name?: string | null
@@ -280,7 +284,7 @@ export type Database = {
           marketing_opt_in?: boolean
           name: string
           notes?: string | null
-          phone: string
+          phone?: string | null
           profession?: string | null
           profile_completed_at?: string | null
           total_spent?: number
@@ -293,6 +297,8 @@ export type Database = {
           birthday_day?: number | null
           birthday_month?: number | null
           created_at?: string
+          document?: string | null
+          document_type?: string | null
           favorite_music_genre?: string | null
           first_seen_at?: string
           full_name?: string | null
@@ -302,7 +308,7 @@ export type Database = {
           marketing_opt_in?: boolean
           name?: string
           notes?: string | null
-          phone?: string
+          phone?: string | null
           profession?: string | null
           profile_completed_at?: string | null
           total_spent?: number
@@ -575,10 +581,12 @@ export type Database = {
           customer_id: string | null
           customer_name: string
           discount_percent: number
+          document: string | null
+          document_type: string | null
           id: string
           paid_at: string | null
           payment_method: string | null
-          phone: string
+          phone: string | null
           started_at: string | null
           status: string
           updated_at: string
@@ -590,10 +598,12 @@ export type Database = {
           customer_id?: string | null
           customer_name: string
           discount_percent?: number
+          document?: string | null
+          document_type?: string | null
           id?: string
           paid_at?: string | null
           payment_method?: string | null
-          phone: string
+          phone?: string | null
           started_at?: string | null
           status?: string
           updated_at?: string
@@ -605,6 +615,8 @@ export type Database = {
           customer_id?: string | null
           customer_name?: string
           discount_percent?: number
+          document?: string | null
+          document_type?: string | null
           id?: string
           paid_at?: string | null
           payment_method?: string | null

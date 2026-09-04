@@ -4,8 +4,9 @@ import { createServerFn } from "@tanstack/react-start";
 const PUBLIC_SESSION_COLUMNS =
   "id, customer_name, phone, status, started_at, closed_at, paid_at, discount_percent";
 
-/** Caixa-only shape — internal identifiers ok since it's behind assertRegisterAccess. */
-const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at, payment_method`;
+/** Caixa-only shape — internal identifiers ok since it's behind assertRegisterAccess. CPF/RG fica
+ * de fora do PUBLIC_SESSION_COLUMNS (link do cliente) porque é dado sensível — só a equipe vê. */
+const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at, payment_method, document, document_type`;
 
 /** Customer view: readable only with the unguessable comanda link, never sensitive columns. */
 export const getCustomerTab = createServerFn({ method: "POST" })

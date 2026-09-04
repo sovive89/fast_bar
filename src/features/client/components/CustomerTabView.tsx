@@ -52,7 +52,7 @@ export function CustomerTabView({ loading, session, items, now }: CustomerTabVie
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">FastBar</p>
           <h1 className="mt-1 truncate text-2xl font-bold">{session.customer_name}</h1>
-          <p className="text-xs text-muted-foreground">{formatPhone(session.phone)}</p>
+          <p className="text-xs text-muted-foreground">{formatPhone(session.phone ?? "")}</p>
         </div>
         <StatusBadge status={session.status} />
       </div>

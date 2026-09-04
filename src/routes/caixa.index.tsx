@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
-import { brl, digits, elapsed, formatPhone, hhmm } from "@/lib/format";
+import { brl, digits, elapsed, formatCpf, formatIdentifier, formatPhone, hhmm } from "@/lib/format";
 import { useServerFn } from "@tanstack/react-start";
 import { getRegisterOverview } from "@/lib/tab-reads.functions";
 import {
@@ -10,6 +10,7 @@ import {
   archiveSession,
   cancelSession,
   clearTabItems,
+  lookupCustomerByDocument,
   openSessionByTeam,
   openWalkInSession,
   removeTabItem,
@@ -78,6 +79,11 @@ function RegisterList() {
   const [opening, setOpening] = useState<null | "manual" | "walkin">(null);
   const [newName, setNewName] = useState("");
   const [newPhone, setNewPhone] = useState("");
+  // Sem celular: identifica pelo documento em vez de trocar de tela — mesma abertura, outro campo.
+  const [useDocument, setUseDocument] = useState(false);
+  const [newDocumentType, setNewDocumentType] = useState<"cpf" | "rg">("cpf");
+  const [newDocument, setNewDocument] = useState("");
+  const [documentMatch, setDocumentMatch] = useState<string | null>(null);
 
   const navigate = useNavigate();
   const loadOverview = useServerFn(getRegisterOverview);
@@ -90,6 +96,7 @@ function RegisterList() {
   const archiveClosed = useServerFn(archiveClosedSessions);
   const openManual = useServerFn(openSessionByTeam);
   const openWalkIn = useServerFn(openWalkInSession);
+  const lookupDocument = useServerFn(lookupCustomerByDocument);
 
   async function load() {
     const result = await loadOverview();
@@ -144,7 +151,9 @@ function RegisterList() {
         if (!term) return true;
         return (
           session.customer_name.toLowerCase().includes(term) ||
-          (termDigits.length > 0 && session.phone.includes(termDigits))
+          (termDigits.length > 0 &&
+            ((session.phone ?? "").includes(termDigits) ||
+              (session.document ?? "").includes(termDigits)))
         );
       });
   }, [sessions, search, view]);
@@ -156,13 +165,52 @@ function RegisterList() {
       !session.archived_at && ["closed", "paid", "cancelled"].includes(session.status),
   ).length;
 
+  // Assim que o CPF/RG parece completo, confere se já é cliente conhecido e preenche o nome —
+  // poupa redigitar quem já voltou, sem travar quem prefere digitar o nome direto.
+  useEffect(() => {
+    if (!useDocument) {
+      setDocumentMatch(null);
+      return;
+    }
+    const digitsOnly = digits(newDocument);
+    const complete =
+      newDocumentType === "cpf" ? digitsOnly.length === 11 : digitsOnly.length >= 5;
+    if (!complete) {
+      setDocumentMatch(null);
+      return;
+    }
+    let cancelled = false;
+    void lookupDocument({ data: { documentType: newDocumentType, document: newDocument } }).then(
+      (result) => {
+        if (cancelled) return;
+        setDocumentMatch(result.name);
+        if (result.name && !newName.trim()) setNewName(result.name);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [useDocument, newDocumentType, newDocument]);
+
   /** Abre e já leva pra comanda: quem abre quer lançar em seguida, não voltar pra lista. */
   async function confirmOpenManual(password: string) {
-    const result = await openManual({ data: { name: newName, phone: newPhone, password } });
+    const result = await openManual({
+      data: {
+        name: newName,
+        phone: useDocument ? "" : newPhone,
+        document: useDocument ? newDocument : "",
+        documentType: useDocument ? newDocumentType : "",
+        password,
+      },
+    });
     if (result.ok) {
       setOpening(null);
       setNewName("");
       setNewPhone("");
+      setUseDocument(false);
+      setNewDocument("");
+      setDocumentMatch(null);
       await navigate({ to: "/caixa/$sessionId", params: { sessionId: result.sessionId } });
     }
     return result;
@@ -211,6 +259,9 @@ function RegisterList() {
             setOpening(opening === "manual" ? null : "manual");
             setNewName("");
             setNewPhone("");
+            setUseDocument(false);
+            setNewDocument("");
+            setDocumentMatch(null);
             setError(null);
           }}
           className="h-11 flex-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground shadow-soft"
@@ -243,13 +294,77 @@ function RegisterList() {
             maxLength={80}
             className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
           />
-          <input
-            value={newPhone}
-            onChange={(event) => setNewPhone(formatPhone(event.target.value))}
-            placeholder="(11) 91234-5678"
-            inputMode="tel"
-            className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-          />
+          {!useDocument ? (
+            <>
+              <input
+                value={newPhone}
+                onChange={(event) => setNewPhone(formatPhone(event.target.value))}
+                placeholder="(11) 91234-5678"
+                inputMode="tel"
+                className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+              />
+              <button
+                type="button"
+                onClick={() => {
+                  setUseDocument(true);
+                  setNewPhone("");
+                }}
+                className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Cliente sem celular? Usar CPF ou RG
+              </button>
+            </>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex gap-2">
+                {(["cpf", "rg"] as const).map((type) => (
+                  <button
+                    key={type}
+                    type="button"
+                    onClick={() => {
+                      setNewDocumentType(type);
+                      setNewDocument("");
+                      setDocumentMatch(null);
+                    }}
+                    className={`h-9 flex-1 rounded-lg text-xs font-semibold uppercase transition-colors ${newDocumentType === type ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
+                  >
+                    {type}
+                  </button>
+                ))}
+              </div>
+              <input
+                value={newDocumentType === "cpf" ? formatCpf(newDocument) : newDocument}
+                onChange={(event) =>
+                  setNewDocument(
+                    newDocumentType === "cpf"
+                      ? digits(event.target.value)
+                      : event.target.value.replace(/[^0-9A-Za-z]/g, ""),
+                  )
+                }
+                placeholder={newDocumentType === "cpf" ? "000.000.000-00" : "Número do RG"}
+                inputMode={newDocumentType === "cpf" ? "numeric" : "text"}
+                maxLength={newDocumentType === "cpf" ? 14 : 12}
+                className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+              />
+              {documentMatch && (
+                <p className="text-xs text-muted-foreground">
+                  Cliente já cadastrado como <span className="font-medium">{documentMatch}</span> —
+                  nome preenchido, pode ajustar se for outra pessoa.
+                </p>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setUseDocument(false);
+                  setNewDocument("");
+                  setDocumentMatch(null);
+                }}
+                className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+              >
+                Cliente tem celular afinal? Usar celular
+              </button>
+            </div>
+          )}
           <PasswordConfirm
             message="Confirme com a senha da equipe para abrir a comanda."
             confirmLabel="Abrir comanda"
@@ -356,7 +471,7 @@ function RegisterList() {
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {formatPhone(session.phone)}
+                            {formatIdentifier(session.phone, session.document, session.document_type)}
                             {session.started_at ? ` · abertura ${hhmm(session.started_at)}` : ""} ·{" "}
                             {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
                           </p>

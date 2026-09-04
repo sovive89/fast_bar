@@ -5,7 +5,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TabItemList } from "@/components/shared/TabItemList";
 import { ProductPicker } from "@/features/register/components/ProductPicker";
 import { useLiveTab } from "@/hooks/use-live-tab";
-import { brl, elapsed, formatPhone, hhmm } from "@/lib/format";
+import { brl, elapsed, formatIdentifier, hhmm } from "@/lib/format";
 import {
   addTabItem,
   closeSession,
@@ -100,7 +100,7 @@ function RegisterTabDetail() {
         <div className="min-w-0">
           <h1 className="truncate text-2xl font-bold">{session.customer_name}</h1>
           <p className="text-xs text-muted-foreground">
-            {formatPhone(session.phone)}
+            {formatIdentifier(session.phone, session.document, session.document_type)}
             {session.started_at ? ` · abertura ${hhmm(session.started_at)}` : ""} ·{" "}
             {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
           </p>

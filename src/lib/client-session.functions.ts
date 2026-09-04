@@ -29,7 +29,7 @@ export const openClientSession = createServerFn({ method: "POST" })
       return { ok: true as const, sessionId: existing.id, profileCompleted };
     }
 
-    const customerId = await upsertCustomer(name, phone);
+    const customerId = await upsertCustomer(name, { phone });
 
     const { data: inserted, error } = await admin()
       .from("fastbar_sessions")

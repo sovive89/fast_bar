@@ -35,6 +35,26 @@ export function formatPhone(value: string) {
   return `(${d.slice(0, 2)}) ${d.slice(2, 7)}-${d.slice(7)}`;
 }
 
+export function formatCpf(value: string) {
+  const d = digits(value).slice(0, 11);
+  if (d.length <= 3) return d;
+  if (d.length <= 6) return `${d.slice(0, 3)}.${d.slice(3)}`;
+  if (d.length <= 9) return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6)}`;
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+/** Mostra o identificador que a comanda de fato tem — celular formatado, ou CPF/RG marcado. */
+export function formatIdentifier(
+  phone: string | null | undefined,
+  document?: string | null,
+  documentType?: "cpf" | "rg" | null,
+) {
+  if (phone) return formatPhone(phone);
+  if (document && documentType === "cpf") return `CPF ${formatCpf(document)}`;
+  if (document && documentType === "rg") return `RG ${document}`;
+  return "—";
+}
+
 export function elapsed(startedAt: string | null, endAt?: string | null, now?: number) {
   if (!startedAt) return "—";
   const start = new Date(startedAt).getTime();
