@@ -681,6 +681,36 @@ export type Database = {
           },
         ]
       }
+      fastbar_supply_item_aliases: {
+        Row: {
+          component_id: string
+          component_kind: string
+          created_at: string
+          id: string
+          raw_text: string
+          raw_text_normalized: string
+          updated_at: string
+        }
+        Insert: {
+          component_id: string
+          component_kind: string
+          created_at?: string
+          id?: string
+          raw_text: string
+          raw_text_normalized?: string
+          updated_at?: string
+        }
+        Update: {
+          component_id?: string
+          component_kind?: string
+          created_at?: string
+          id?: string
+          raw_text?: string
+          raw_text_normalized?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       fastbar_suppliers: {
         Row: {
           active: boolean

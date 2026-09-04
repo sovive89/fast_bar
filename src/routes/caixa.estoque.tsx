@@ -95,7 +95,7 @@ function StockOverview() {
           onClick={() => void loadComponentesParaNota().then((ok) => ok && setScanningNota(true))}
           className="rounded-full border border-primary/50 px-3.5 py-1.5 text-xs font-medium text-primary hover:bg-primary/5"
         >
-          Ler nota fiscal (QR code)
+          Dar entrada por nota/planilha
         </button>
       </div>
 

@@ -2,9 +2,17 @@ import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { PrimaryButton, TextField } from "@/components/stock/SharedFormFields";
 import { parseAmount } from "@/lib/format";
-import { confirmarNotaFiscal, lookupNotaFiscal } from "@/lib/nota-fiscal.functions";
+import {
+  confirmarEntradaEstoque,
+  confirmarNotaFiscal,
+  getSupplyItemAliases,
+  lookupNotaFiscal,
+  parseSupplyFile,
+} from "@/lib/nota-fiscal.functions";
 
 type ComponentOption = { id: string; name: string; kind: "base_drink" | "ingredient" };
+
+type Alias = { rawTextNormalized: string; kind: "base_drink" | "ingredient"; componentId: string };
 
 type ItemLido = {
   descricao: string;
@@ -23,12 +31,25 @@ type LinhaConfirmacao = {
   purchaseCost: string;
 };
 
-/** Casamento simples: item da nota bate com item do estoque se um nome contém o outro
- * (case-insensitive) -- não é fuzzy match de verdade, só o suficiente pra pré-selecionar o campo
- * óbvio ("Heineken Long Neck" na nota vs. "Heineken" cadastrada) e deixar o resto pra escolha manual. */
-function sugerirComponente(descricaoNota: string, componentes: ComponentOption[]): ComponentOption | null {
+/** Casamento do item externo (nota, planilha) com um insumo do estoque, em duas etapas: primeiro
+ * tenta o que já foi aprendido (a equipe confirmou essa mesma descrição antes -- ver
+ * upsertSupplyAliases no servidor), que é exato e não erra; só na ausência disso cai pro casamento
+ * por substring ("Heineken Long Neck" contém "Heineken"), que é só uma pré-seleção, não uma
+ * certeza -- por isso sempre revisável na tela de confirmação. */
+function sugerirComponente(
+  descricaoNota: string,
+  componentes: ComponentOption[],
+  aliases: Alias[],
+): ComponentOption | null {
   const alvo = descricaoNota.trim().toLowerCase();
   if (!alvo) return null;
+
+  const aprendido = aliases.find((a) => a.rawTextNormalized === alvo);
+  if (aprendido) {
+    const match = componentes.find((c) => c.id === aprendido.componentId && c.kind === aprendido.kind);
+    if (match) return match;
+  }
+
   const exato = componentes.find((c) => c.name.trim().toLowerCase() === alvo);
   if (exato) return exato;
   const parcial = componentes.find(
@@ -48,9 +69,18 @@ export function NotaFiscalImport(props: {
     ...props.ingredients.map((i) => ({ id: i.id, name: i.name, kind: "ingredient" as const })),
   ];
 
-  const [mode, setMode] = useState<"scanning" | "looking_up" | "confirming" | "done">("scanning");
+  const [mode, setMode] = useState<"choosing" | "scanning" | "looking_up" | "parsing_file" | "confirming" | "done">(
+    "choosing",
+  );
+  // De onde vieram os itens em confirmação -- decide qual server function o "Confirmar" chama:
+  // nota fiscal tem chave de acesso (trava contra reimportar a mesma nota), planilha não tem
+  // esse identificador único, então usa um caminho de confirmação mais simples.
+  const [origem, setOrigem] = useState<"qr" | "arquivo" | null>(null);
+  const [arquivoNome, setArquivoNome] = useState("");
+  const [aliases, setAliases] = useState<Alias[]>([]);
   const [cameraError, setCameraError] = useState<string | null>(null);
   const [lookupError, setLookupError] = useState<string | null>(null);
+  const [arquivoError, setArquivoError] = useState<string | null>(null);
   const [avisoItensVazios, setAvisoItensVazios] = useState(false);
   const [chave, setChave] = useState("");
   const [uf, setUf] = useState<string | null>(null);
@@ -67,9 +97,25 @@ export function NotaFiscalImport(props: {
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const stoppedRef = useRef(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const lookup = useServerFn(lookupNotaFiscal);
   const confirmar = useServerFn(confirmarNotaFiscal);
+  const confirmarArquivo = useServerFn(confirmarEntradaEstoque);
+  const parseArquivo = useServerFn(parseSupplyFile);
+  const loadAliases = useServerFn(getSupplyItemAliases);
+
+  useEffect(() => {
+    // Carrega o que já foi aprendido uma vez, ao abrir o painel -- não depende do modo, porque
+    // tanto o caminho de QR quanto o de planilha usam a mesma lista de sugestões.
+    loadAliases()
+      .then((result) => setAliases(result.aliases))
+      .catch(() => {
+        /* sem aliases carregados, as sugestões caem pro casamento por substring -- não é um erro
+           que precise travar a tela por causa disso. */
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     if (mode !== "scanning") return;
@@ -151,6 +197,7 @@ export function NotaFiscalImport(props: {
       // Chave de acesso lida com sucesso mas o portal da SEFAZ não respondeu -- ainda dá pra
       // aproveitar a chave e completar os itens à mão, em vez de forçar escanear tudo de novo.
       if (result.code === "portal_indisponivel" && result.chave) {
+        setOrigem("qr");
         setChave(result.chave);
         setUf(result.uf ?? null);
         setEmitenteNome(null);
@@ -166,6 +213,7 @@ export function NotaFiscalImport(props: {
       setMode("scanning");
       return;
     }
+    setOrigem("qr");
     setChave(result.chave);
     setUf(result.uf);
     setEmitenteNome(result.emitenteNome);
@@ -174,7 +222,7 @@ export function NotaFiscalImport(props: {
     setAvisoItensVazios(result.avisoItensVazios);
     setLinhas(
       result.itens.map((item: ItemLido, index: number) => {
-        const sugestao = sugerirComponente(item.descricao, componentes);
+        const sugestao = sugerirComponente(item.descricao, componentes, aliases);
         return {
           key: `nf-${index}`,
           descricaoOriginal: item.descricao,
@@ -186,6 +234,67 @@ export function NotaFiscalImport(props: {
           // com "24 UN" não vira 24 embalagens). Deixa em branco de propósito: a equipe informa
           // quantas embalagens comprou de fato, só usando a quantidade da nota (mostrada acima do
           // campo) como referência visual, nunca preenchendo esse número sozinho.
+          packs: "",
+          purchaseCost:
+            item.valorUnitario > 0 ? String(item.valorUnitario * item.quantidade).replace(".", ",") : "",
+        };
+      }),
+    );
+    setMode("confirming");
+  }
+
+  async function onArquivoSelecionado(file: File) {
+    setArquivoError(null);
+    setMode("parsing_file");
+    setArquivoNome(file.name);
+
+    const base64 = await new Promise<string | null>((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const result = reader.result;
+        if (typeof result !== "string") return resolve(null);
+        const [, data] = result.split(",");
+        resolve(data ?? null);
+      };
+      reader.onerror = () => resolve(null);
+      reader.readAsDataURL(file);
+    });
+    if (!base64) {
+      setArquivoError("Não foi possível ler esse arquivo.");
+      setMode("choosing");
+      return;
+    }
+
+    let result: Awaited<ReturnType<typeof parseArquivo>>;
+    try {
+      result = await parseArquivo({ data: { fileName: file.name, base64 } });
+    } catch {
+      setArquivoError("Não foi possível processar o arquivo agora -- tente de novo.");
+      setMode("choosing");
+      return;
+    }
+    if (!result.ok) {
+      setArquivoError(result.message);
+      setMode("choosing");
+      return;
+    }
+
+    setOrigem("arquivo");
+    setChave("");
+    setUf(null);
+    setEmitenteNome(null);
+    setEmitenteDocumento(null);
+    setValorTotal(null);
+    setAvisoItensVazios(false);
+    setLinhas(
+      result.itens.map((item, index) => {
+        const sugestao = sugerirComponente(item.descricao, componentes, aliases);
+        return {
+          key: `arq-${index}`,
+          descricaoOriginal: item.descricao,
+          quantidadeNota: `${item.quantidade} ${item.unidade}`,
+          kind: sugestao?.kind ?? "base_drink",
+          componentId: sugestao?.id ?? "",
           packs: "",
           purchaseCost:
             item.valorUnitario > 0 ? String(item.valorUnitario * item.quantidade).replace(".", ",") : "",
@@ -221,6 +330,7 @@ export function NotaFiscalImport(props: {
       componentId: string;
       packs: number;
       purchaseCost?: number;
+      descricaoOriginal?: string;
     }> = [];
     for (const linha of linhas) {
       if (!linha.componentId) continue;
@@ -243,10 +353,35 @@ export function NotaFiscalImport(props: {
         componentId: linha.componentId,
         packs,
         ...(purchaseCost !== undefined ? { purchaseCost } : {}),
+        ...(linha.descricaoOriginal.trim() ? { descricaoOriginal: linha.descricaoOriginal.trim() } : {}),
       });
     }
     if (itensValidos.length === 0) {
       setConfirmError("Escolha o item correspondente em pelo menos uma linha.");
+      return;
+    }
+
+    // Planilha não tem chave de acesso -- não há como travar contra reenvio duplicado como na
+    // nota fiscal, então usa o caminho mais simples, sem a lógica de retry/reconciliação abaixo
+    // (que existe especificamente pra aproveitar essa trava).
+    if (origem === "arquivo") {
+      setConfirming(true);
+      try {
+        const result = await confirmarArquivo({
+          data: { origem: `planilha: ${arquivoNome}`, itens: itensValidos },
+        });
+        if (!result.ok) {
+          setConfirmError(result.message ?? "Não foi possível confirmar a entrada.");
+          return;
+        }
+        setResultado(`${itensValidos.length} item(ns) lançados no estoque.`);
+        setMode("done");
+        props.onImported();
+      } catch {
+        setConfirmError("Não foi possível confirmar agora -- confira o estoque antes de tentar de novo.");
+      } finally {
+        setConfirming(false);
+      }
       return;
     }
 
@@ -326,14 +461,73 @@ export function NotaFiscalImport(props: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
       <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-4">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-sm font-semibold">Ler nota fiscal (QR code)</p>
+          <p className="text-sm font-semibold">Dar entrada no estoque</p>
           <button onClick={props.onClose} className="text-xs text-muted-foreground underline">
             Fechar
           </button>
         </div>
 
+        {mode === "choosing" && (
+          <div className="space-y-2">
+            <p className="mb-1 text-xs text-muted-foreground">Como você quer lançar essa entrada?</p>
+            <button
+              onClick={() => {
+                setOrigem("qr");
+                setCameraError(null);
+                setLookupError(null);
+                setMode("scanning");
+              }}
+              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+            >
+              <p className="text-xs font-semibold">Ler QR code da nota fiscal</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Aponta a câmera pro QR do cupom -- busca os itens direto no portal da SEFAZ.
+              </p>
+            </button>
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+            >
+              <p className="text-xs font-semibold">Subir planilha do fornecedor</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                .xlsx, .xls ou .csv com produto, quantidade e valor -- normaliza e você confere
+                antes de lançar.
+              </p>
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".csv,.xlsx,.xls"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.target.value = "";
+                if (file) void onArquivoSelecionado(file);
+              }}
+            />
+            <div className="w-full cursor-not-allowed rounded-xl border border-dashed border-border p-3 text-left opacity-60">
+              <p className="text-xs font-semibold">Foto da nota (em breve)</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Ler uma foto de nota sem QR precisa de leitura por IA, que ainda não está
+                configurada neste projeto.
+              </p>
+            </div>
+            {arquivoError && <p className="text-xs text-destructive">{arquivoError}</p>}
+          </div>
+        )}
+
+        {mode === "parsing_file" && (
+          <p className="py-8 text-center text-sm text-muted-foreground">Lendo a planilha...</p>
+        )}
+
         {mode === "scanning" && (
           <div>
+            <button
+              onClick={() => setMode("choosing")}
+              className="mb-2 text-[11px] font-medium text-muted-foreground underline hover:text-foreground"
+            >
+              ← voltar
+            </button>
             <p className="mb-2 text-xs text-muted-foreground">
               Aponte a câmera pro QR code impresso no cupom fiscal.
             </p>
@@ -357,12 +551,18 @@ export function NotaFiscalImport(props: {
 
         {mode === "confirming" && (
           <div className="space-y-3">
-            <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
-              <p>Chave: {chave}</p>
-              {uf && <p>UF: {uf}</p>}
-              {emitenteNome && <p>Emitente: {emitenteNome}</p>}
-              {valorTotal != null && <p>Valor total da nota: {valorTotal.toFixed(2).replace(".", ",")}</p>}
-            </div>
+            {origem === "qr" ? (
+              <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
+                <p>Chave: {chave}</p>
+                {uf && <p>UF: {uf}</p>}
+                {emitenteNome && <p>Emitente: {emitenteNome}</p>}
+                {valorTotal != null && <p>Valor total da nota: {valorTotal.toFixed(2).replace(".", ",")}</p>}
+              </div>
+            ) : (
+              <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
+                <p>Planilha: {arquivoNome}</p>
+              </div>
+            )}
 
             {avisoItensVazios && (
               <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">

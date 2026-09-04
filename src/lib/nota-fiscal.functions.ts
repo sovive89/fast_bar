@@ -240,6 +240,50 @@ export const lookupNotaFiscal = createServerFn({ method: "POST" })
     };
   });
 
+// ============ APRENDIZADO DE CORRESPONDÊNCIA (aliases) ============
+// Cada vez que a equipe confirma qual insumo do estoque corresponde a uma descrição de item vinda
+// de fora (nota fiscal por QR, foto, planilha), essa correspondência fica guardada -- a próxima
+// vez que a MESMA descrição aparecer, de qualquer fonte, a sugestão já vem pronta.
+
+/** Só grava quando a fonte trouxe uma descrição de verdade (linha adicionada manualmente, sem
+ * texto original, não tem o que aprender) e o lançamento daquele item teve sucesso -- aprender a
+ * partir de um item que falhou arriscaria salvar uma correspondência que a equipe nem chegou a
+ * validar de fato (ex.: quantidade inválida barrou antes de confirmar a escolha). */
+async function upsertSupplyAliases(
+  itens: Array<{ descricaoOriginal?: string | undefined; kind: "base_drink" | "ingredient"; componentId: string }>,
+) {
+  const { admin } = await import("./fastbar.server");
+  const rows = itens
+    .filter((item) => item.descricaoOriginal && item.descricaoOriginal.trim().length >= 2)
+    .map((item) => ({
+      raw_text: item.descricaoOriginal!.trim(),
+      component_kind: item.kind,
+      component_id: item.componentId,
+    }));
+  if (rows.length === 0) return;
+  // onConflict na coluna gerada (raw_text_normalized) -- upsert atualiza pro componente escolhido
+  // mais recentemente pra aquele texto, sem duplicar linha nem exigir um passo de "corrigir alias".
+  await admin().from("fastbar_supply_item_aliases").upsert(rows, { onConflict: "raw_text_normalized" });
+}
+
+/** Todas as correspondências aprendidas até agora -- o cliente usa como primeira tentativa de
+ * casar a descrição de um item externo com um insumo do estoque, antes do casamento por substring
+ * (que é só um fallback, bem menos confiável). */
+export const getSupplyItemAliases = createServerFn({ method: "POST" }).handler(async () => {
+  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  await assertRegisterAccess();
+  const { data } = await admin()
+    .from("fastbar_supply_item_aliases")
+    .select("raw_text_normalized, component_kind, component_id");
+  return {
+    aliases: (data ?? []).map((row) => ({
+      rawTextNormalized: row.raw_text_normalized,
+      kind: row.component_kind as "base_drink" | "ingredient",
+      componentId: row.component_id,
+    })),
+  };
+});
+
 export const confirmarNotaFiscal = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
@@ -254,6 +298,7 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
         componentId: string;
         packs: number;
         purchaseCost?: number | undefined;
+        descricaoOriginal?: string | undefined;
       }>;
     }) => data,
   )
@@ -353,6 +398,12 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
     const falhas = resultados.filter((r) => !r.ok);
     const sucessos = resultados.length - falhas.length;
 
+    // Aprende só das linhas que de fato lançaram -- ver comentário de upsertSupplyAliases.
+    const idsComSucesso = new Set(resultados.filter((r) => r.ok).map((r) => r.componentId));
+    await upsertSupplyAliases(
+      data.itens.filter((item) => idsComSucesso.has(item.componentId)),
+    );
+
     // Só libera retry se nenhuma chamada de entrada chegou a ser tentada -- aí sim é seguro
     // garantir que não sobrou efeito colateral nenhum (ver comentário acima).
     if (sucessos === 0 && !algumaTentativaFeita) {
@@ -379,3 +430,182 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
           : undefined,
     };
   });
+
+// ============ ENTRADA DE ESTOQUE SEM NOTA FISCAL (planilha, futuramente foto) ============
+// Mesmo lançamento de sempre (addBaseDrinkEntry/addIngredientEntry), mas sem a trava de chave de
+// acesso -- uma planilha ou foto não tem um identificador único de 44 dígitos como a NFC-e, então
+// não há uma forma confiável de detectar "essa mesma entrada já foi confirmada antes" aqui. Um
+// clique duplo em "Confirmar" duplica a entrada, do mesmo jeito que duplicaria clicando duas vezes
+// em "+ Entrada" na tela de estoque -- não é pior que o caminho manual que já existia.
+
+export const confirmarEntradaEstoque = createServerFn({ method: "POST" })
+  .inputValidator(
+    (data: {
+      origem: string; // rótulo curto pra nota do movimento, ex.: "planilha: notas.xlsx"
+      fornecedorId?: string | undefined;
+      itens: Array<{
+        kind: "base_drink" | "ingredient";
+        componentId: string;
+        packs: number;
+        purchaseCost?: number | undefined;
+        descricaoOriginal?: string | undefined;
+      }>;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    const { assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    if (data.itens.length === 0) {
+      return { ok: false as const, message: "Adicione ao menos um item antes de confirmar." };
+    }
+
+    const resultados: Array<{ componentId: string; ok: boolean; message?: string }> = [];
+    for (const item of data.itens) {
+      if (!Number.isInteger(item.packs) || item.packs <= 0) {
+        resultados.push({ componentId: item.componentId, ok: false, message: "Quantidade inválida." });
+        continue;
+      }
+      const result =
+        item.kind === "base_drink"
+          ? await addBaseDrinkEntry({
+              data: {
+                baseDrinkId: item.componentId,
+                packs: item.packs,
+                ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
+                ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
+                note: `Entrada via ${data.origem}`,
+              },
+            })
+          : await addIngredientEntry({
+              data: {
+                ingredientId: item.componentId,
+                packs: item.packs,
+                ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
+                ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
+                note: `Entrada via ${data.origem}`,
+              },
+            });
+      resultados.push(
+        result.ok
+          ? { componentId: item.componentId, ok: true }
+          : { componentId: item.componentId, ok: false, message: result.message ?? "Falha ao registrar." },
+      );
+    }
+
+    const falhas = resultados.filter((r) => !r.ok);
+    const sucessos = resultados.length - falhas.length;
+
+    const idsComSucesso = new Set(resultados.filter((r) => r.ok).map((r) => r.componentId));
+    await upsertSupplyAliases(data.itens.filter((item) => idsComSucesso.has(item.componentId)));
+
+    return {
+      ok: falhas.length === 0,
+      resultados,
+      message:
+        falhas.length > 0
+          ? `${sucessos} de ${resultados.length} itens lançados. Os demais falharam -- confira o estoque e lance manualmente pela tela de estoque o que faltar.`
+          : undefined,
+    };
+  });
+
+// ============ LEITURA DE PLANILHA (.xlsx / .xls / .csv) ============
+
+type LinhaArquivo = { descricao: string; quantidade: number; unidade: string; valorUnitario: number };
+
+const CABECALHO_NOME = /produto|descri|item|nome/i;
+const CABECALHO_QTD = /qtd|quant/i;
+const CABECALHO_UNIDADE = /^un$|^und$|unidade/i;
+const CABECALHO_VALOR_UNIT = /valor.*unit|pre[cç]o.*unit|vl.*unit|unit[aá]rio/i;
+const CABECALHO_VALOR_GENERICO = /valor|pre[cç]o/i;
+
+/**
+ * Acha a linha de cabeçalho (primeira com uma coluna de nome + uma de quantidade reconhecíveis) e
+ * lê as linhas seguintes como itens. Layout de planilha de fornecedor varia muito -- por isso é
+ * heurístico, igual ao parser de HTML da nota fiscal: quando não acha as colunas certas, devolve
+ * erro claro em vez de itens errados; quando acha, campos que não bateram (unidade, valor) ficam
+ * com um valor neutro e a equipe completa na tela de confirmação.
+ */
+export const parseSupplyFile = createServerFn({ method: "POST" })
+  .inputValidator((data: { fileName: string; base64: string }) => data)
+  .handler(
+    async ({ data }): Promise<{ ok: true; itens: LinhaArquivo[] } | { ok: false; message: string }> => {
+      const { assertRegisterAccess } = await import("./fastbar.server");
+      await assertRegisterAccess();
+
+      let buffer: Buffer;
+      try {
+        buffer = Buffer.from(data.base64, "base64");
+      } catch {
+        return { ok: false, message: "Arquivo inválido." };
+      }
+      if (buffer.length === 0) return { ok: false, message: "Arquivo vazio." };
+      if (buffer.length > 5 * 1024 * 1024) {
+        return { ok: false, message: "Arquivo muito grande (máximo 5MB)." };
+      }
+
+      const XLSX = await import("xlsx");
+      let sheetRows: unknown[][];
+      try {
+        const workbook = XLSX.read(buffer, { type: "buffer" });
+        const firstSheetName = workbook.SheetNames[0];
+        const sheet = firstSheetName ? workbook.Sheets[firstSheetName] : undefined;
+        if (!sheet) return { ok: false, message: "Nenhuma planilha encontrada no arquivo." };
+        sheetRows = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: true, defval: "" }) as unknown[][];
+      } catch {
+        return {
+          ok: false,
+          message:
+            "Não consegui ler esse arquivo -- confirme que é uma planilha (.xlsx, .xls ou .csv) válida.",
+        };
+      }
+
+      // Procura nas primeiras 20 linhas -- planilha exportada às vezes tem linhas em branco ou um
+      // título da empresa antes do cabeçalho de verdade.
+      let headerIndex = -1;
+      let colNome = -1;
+      let colQtd = -1;
+      let colUnidade = -1;
+      let colValor = -1;
+      for (let i = 0; i < Math.min(sheetRows.length, 20); i++) {
+        const row = sheetRows[i] ?? [];
+        const nome = row.findIndex((cell) => CABECALHO_NOME.test(String(cell ?? "")));
+        const qtd = row.findIndex((cell) => CABECALHO_QTD.test(String(cell ?? "")));
+        if (nome >= 0 && qtd >= 0) {
+          headerIndex = i;
+          colNome = nome;
+          colQtd = qtd;
+          colUnidade = row.findIndex((cell) => CABECALHO_UNIDADE.test(String(cell ?? "").trim()));
+          colValor = row.findIndex((cell) => CABECALHO_VALOR_UNIT.test(String(cell ?? "")));
+          if (colValor < 0) {
+            colValor = row.findIndex((cell) => CABECALHO_VALOR_GENERICO.test(String(cell ?? "")));
+          }
+          break;
+        }
+      }
+      if (headerIndex < 0) {
+        return {
+          ok: false,
+          message:
+            'Não encontrei colunas de produto e quantidade nesse arquivo -- confira se a primeira linha tem os nomes das colunas (ex.: "Produto", "Quantidade", "Valor unitário").',
+        };
+      }
+
+      const itens: LinhaArquivo[] = [];
+      for (let i = headerIndex + 1; i < sheetRows.length; i++) {
+        const row = sheetRows[i] ?? [];
+        const descricao = String(row[colNome] ?? "").trim();
+        if (!descricao) continue;
+        const quantidade = parseNumeroBr(String(row[colQtd] ?? "")) ?? 0;
+        const unidade = colUnidade >= 0 ? String(row[colUnidade] ?? "").trim() || "un" : "un";
+        const valorUnitario = colValor >= 0 ? (parseNumeroBr(String(row[colValor] ?? "")) ?? 0) : 0;
+        itens.push({ descricao, quantidade, unidade, valorUnitario });
+      }
+
+      if (itens.length === 0) {
+        return { ok: false, message: "Não encontrei nenhum item com nome preenchido nas linhas do arquivo." };
+      }
+
+      return { ok: true, itens };
+    },
+  );
