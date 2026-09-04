@@ -370,6 +370,7 @@ export type Database = {
           created_at: string
           current_stock: number
           id: string
+          kind: string
           min_stock: number
           name: string
           purchase_unit: string | null
@@ -384,6 +385,7 @@ export type Database = {
           created_at?: string
           current_stock?: number
           id?: string
+          kind?: string
           min_stock?: number
           name: string
           purchase_unit?: string | null
@@ -398,6 +400,7 @@ export type Database = {
           created_at?: string
           current_stock?: number
           id?: string
+          kind?: string
           min_stock?: number
           name?: string
           purchase_unit?: string | null
@@ -448,16 +451,19 @@ export type Database = {
           created_at: string
           id: string
           name: string
+          needs_recipe: boolean
         }
         Insert: {
           created_at?: string
           id?: string
           name: string
+          needs_recipe?: boolean
         }
         Update: {
           created_at?: string
           id?: string
           name?: string
+          needs_recipe?: boolean
         }
         Relationships: []
       }

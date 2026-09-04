@@ -136,6 +136,9 @@ type StockComponent = {
   units_per_pack: number;
   content_amount: number;
   doses: Array<{ productName: string; doses: number }>;
+  // Só existe pra ingredientes — bebida base não tem esse campo (vem undefined, e o card não
+  // mostra nada, o que é o comportamento certo pra ela).
+  kind?: "drink" | "cozinha";
 };
 
 type Supplier = { id: string; name: string; document: string | null; phone: string | null; active: boolean };
@@ -604,7 +607,20 @@ function ComponentStockTab(props: {
               <li key={item.id} className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
                   <div className="min-w-0">
-                    <p className="truncate font-semibold">{item.name}</p>
+                    <p className="truncate font-semibold">
+                      {item.name}
+                      {item.kind === "cozinha" && (
+                        <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 align-middle text-[10px] font-medium text-secondary-foreground">
+                          Cozinha
+                        </span>
+                      )}
+                    </p>
+                    {Number(item.current_stock) === 0 && !item.purchase_unit && (
+                      <p className="mt-0.5 text-[11px] font-medium text-amber-600">
+                        Aguardando primeira entrada — veio de uma ficha técnica, configure a
+                        embalagem e dê entrada quando a mercadoria chegar.
+                      </p>
+                    )}
                     <p className="text-xs text-muted-foreground">
                       Custo médio: {brl(item.average_cost)} / {item.unit}
                       {item.purchase_unit

@@ -7,8 +7,11 @@ import { brl } from "@/lib/format";
 import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
 import { deactivateProduct, deleteProduct as deleteProductFn } from "@/lib/register.functions";
 import {
+  createBaseDrink,
+  createIngredient,
   createProduct,
   createProductCategory,
+  setCategoryNeedsRecipe,
   deleteProductCategory,
   getBaseDrinksOverview,
   listProductCategories,
@@ -60,8 +63,20 @@ type StockOption = {
   kind: "base_drink" | "ingredient";
 };
 
-/** Uma linha da ficha técnica sendo montada junto com o produto. */
-type ComponentRow = { key: string; stockId: string; quantity: string };
+/** Uma linha da ficha técnica sendo montada junto com o produto. stockId "__new__" significa que
+ * a linha ainda não aponta pra um insumo do estoque — o próprio nome vem sendo digitado aqui, e o
+ * insumo só é criado (com saldo zero) no momento de salvar o produto. É o que inverte a ordem:
+ * não precisa mais ir cadastrar o insumo antes pra depois voltar aqui e montar a ficha. */
+type ComponentRow = {
+  key: string;
+  stockId: string;
+  quantity: string;
+  newName: string;
+  newKind: "base_drink" | "ingredient" | "cozinha";
+  newUnit: string;
+};
+
+const NEW_STOCK_ID = "__new__";
 
 /**
  * Reduz a foto pro tamanho de upload (server functions em serverless têm limite de payload,
@@ -143,7 +158,10 @@ function CardapioPage() {
 
   // Categoria é uma divisão do menu, não um produto — cadastro próprio, separado do formulário
   // de produto, pra "criar categoria" nunca virar "criar um produto vazio só pra registrar o nome".
-  const [categories, setCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [categories, setCategories] = useState<
+    Array<{ id: string; name: string; needs_recipe: boolean }>
+  >([]);
+  const [newCategoryNeedsRecipe, setNewCategoryNeedsRecipe] = useState(false);
   const [showCategoryForm, setShowCategoryForm] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [categorySaving, setCategorySaving] = useState(false);
@@ -172,6 +190,7 @@ function CardapioPage() {
   const loadStock = useServerFn(getBaseDrinksOverview);
   const loadCategories = useServerFn(listProductCategories);
   const createCategory = useServerFn(createProductCategory);
+  const toggleCategoryNeedsRecipe = useServerFn(setCategoryNeedsRecipe);
   const deleteCategory = useServerFn(deleteProductCategory);
   const renameCategory = useServerFn(updateProductCategory);
   const productEntry = useServerFn(addProductEntry);
@@ -179,6 +198,8 @@ function CardapioPage() {
   const deleteProduct = useServerFn(deleteProductFn);
   const uploadPhoto = useServerFn(uploadProductPhoto);
   const create = useServerFn(createProduct);
+  const createBaseDrinkFn = useServerFn(createBaseDrink);
+  const createIngredientFn = useServerFn(createIngredient);
   const update = useServerFn(updateProductFn);
   const saveRecipe = useServerFn(setRecipeItems);
 
@@ -215,9 +236,12 @@ function CardapioPage() {
     setCategoryError(null);
     setCategorySaving(true);
     try {
-      const result = await createCategory({ data: { name: newCategoryName } });
+      const result = await createCategory({
+        data: { name: newCategoryName, needsRecipe: newCategoryNeedsRecipe },
+      });
       if (!result.ok) return setCategoryError(result.message ?? "Não foi possível criar.");
       setNewCategoryName("");
+      setNewCategoryNeedsRecipe(false);
       setShowCategoryForm(false);
       // Categoria já foi criada nesse ponto — se o load() que só atualiza a tela falhar, isso não
       // pode virar "não foi possível criar" no catch de fora, que atribuiria a falha errada.
@@ -230,6 +254,22 @@ function CardapioPage() {
       setCategoryError("Não foi possível criar — tente de novo.");
     } finally {
       setCategorySaving(false);
+    }
+  }
+
+  async function toggleNeedsRecipe(cat: { id: string; needs_recipe: boolean }) {
+    // Otimista: é um botão que se aperta e solta rápido — esperar o round-trip pra atualizar a
+    // tela deixaria o clique parecendo que não fez nada.
+    setCategories((current) =>
+      current.map((c) => (c.id === cat.id ? { ...c, needs_recipe: !cat.needs_recipe } : c)),
+    );
+    const result = await toggleCategoryNeedsRecipe({
+      data: { id: cat.id, needsRecipe: !cat.needs_recipe },
+    });
+    if (!result.ok) {
+      setCategories((current) =>
+        current.map((c) => (c.id === cat.id ? { ...c, needs_recipe: cat.needs_recipe } : c)),
+      );
     }
   }
 
@@ -418,26 +458,70 @@ function CardapioPage() {
 
     // Valida a ficha antes de criar o produto: melhor recusar agora do que deixar um produto
     // gravado com a receita pela metade.
-    const recipe: Array<
-      | { type: "base_drink"; baseDrinkId: string; quantity: number }
-      | { type: "ingredient"; ingredientId: string; quantity: number }
-    > = [];
     for (const row of components) {
       if (!row.stockId) return setError("Escolha o insumo em todas as linhas, ou remova a linha.");
+      if (row.stockId === NEW_STOCK_ID && row.newName.trim().length < 2) {
+        return setError("Digite o nome do novo insumo em todas as linhas marcadas como novo.");
+      }
       const quantity = Number(row.quantity.replace(",", "."));
       if (!Number.isFinite(quantity) || quantity <= 0) {
         return setError("Informe uma quantidade maior que zero para cada insumo.");
       }
-      const option = stockOptions.find((item) => item.id === row.stockId);
-      if (!option) return setError("Insumo não encontrado — recarregue a página.");
-      recipe.push(
-        option.kind === "base_drink"
-          ? { type: "base_drink", baseDrinkId: option.id, quantity }
-          : { type: "ingredient", ingredientId: option.id, quantity },
-      );
+      if (row.stockId !== NEW_STOCK_ID && !stockOptions.find((item) => item.id === row.stockId)) {
+        return setError("Insumo não encontrado — recarregue a página.");
+      }
     }
 
     setSaving(true);
+
+    // Linhas marcadas "+ Criar novo insumo" ainda não existem no estoque — nascem agora, com
+    // saldo zero, antes de a ficha ser salva. É esse passo que inverte a ordem: o insumo pode ser
+    // apontado na ficha antes de existir fisicamente no bar.
+    const resolvedComponents: Array<{
+      kind: "base_drink" | "ingredient";
+      id: string;
+      quantity: number;
+    }> = [];
+    for (const row of components) {
+      const quantity = Number(row.quantity.replace(",", "."));
+      if (row.stockId !== NEW_STOCK_ID) {
+        const option = stockOptions.find((item) => item.id === row.stockId)!;
+        resolvedComponents.push({ kind: option.kind, id: option.id, quantity });
+        continue;
+      }
+      if (row.newKind === "base_drink") {
+        const created = await createBaseDrinkFn({
+          data: { name: row.newName, unit: row.newUnit as "ml" | "un" },
+        });
+        if (!created.ok) {
+          setSaving(false);
+          return setError(`Não foi possível criar o insumo "${row.newName}": ${created.message ?? ""}`);
+        }
+        resolvedComponents.push({ kind: "base_drink", id: created.id, quantity });
+      } else {
+        const created = await createIngredientFn({
+          data: {
+            name: row.newName,
+            unit: row.newUnit as "ml" | "un" | "g",
+            kind: row.newKind === "cozinha" ? "cozinha" : "drink",
+          },
+        });
+        if (!created.ok) {
+          setSaving(false);
+          return setError(`Não foi possível criar o insumo "${row.newName}": ${created.message ?? ""}`);
+        }
+        resolvedComponents.push({ kind: "ingredient", id: created.id, quantity });
+      }
+    }
+
+    const recipe: Array<
+      | { type: "base_drink"; baseDrinkId: string; quantity: number }
+      | { type: "ingredient"; ingredientId: string; quantity: number }
+    > = resolvedComponents.map((c) =>
+      c.kind === "base_drink"
+        ? { type: "base_drink", baseDrinkId: c.id, quantity: c.quantity }
+        : { type: "ingredient", ingredientId: c.id, quantity: c.quantity },
+    );
     let imageUrl: string | undefined;
     if (photoFile) {
       setCompressing(true);
@@ -539,7 +623,14 @@ function CardapioPage() {
   function addComponentFromStock(stockId: string) {
     setComponents((current) => [
       ...current,
-      { key: `c-${Date.now()}-${current.length}`, stockId, quantity: "" },
+      {
+        key: `c-${Date.now()}-${current.length}`,
+        stockId,
+        quantity: "",
+        newName: "",
+        newKind: "base_drink",
+        newUnit: "ml",
+      },
     ]);
     setDismissedSuggestionIds((current) => new Set([...current, stockId]));
   }
@@ -635,6 +726,17 @@ function CardapioPage() {
                         {cat.name}
                       </button>
                       <button
+                        onClick={() => void toggleNeedsRecipe(cat)}
+                        title={
+                          cat.needs_recipe
+                            ? "Itens desta categoria consomem insumos — clique para desligar"
+                            : "Marcar que itens desta categoria consomem insumos (precisam de ficha técnica)"
+                        }
+                        className={`rounded-full px-1 ${cat.needs_recipe ? "text-primary" : "text-muted-foreground/50 hover:text-muted-foreground"}`}
+                      >
+                        🧪
+                      </button>
+                      <button
                         onClick={() =>
                           setDeletingCategoryId(deletingCategoryId === cat.id ? null : cat.id)
                         }
@@ -660,22 +762,34 @@ function CardapioPage() {
               </div>
             )}
             {showCategoryForm && (
-              <div className="mt-3 flex gap-2">
-                <input
-                  value={newCategoryName}
-                  onChange={(event) => setNewCategoryName(event.target.value)}
-                  placeholder="Nome da categoria"
-                  autoFocus
-                  onKeyDown={(event) => event.key === "Enter" && void submitNewCategory()}
-                  className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-                />
-                <button
-                  onClick={() => void submitNewCategory()}
-                  disabled={categorySaving || newCategoryName.trim().length < 2}
-                  className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-                >
-                  {categorySaving ? "Salvando..." : "Criar"}
-                </button>
+              <div className="mt-3 space-y-2">
+                <div className="flex gap-2">
+                  <input
+                    value={newCategoryName}
+                    onChange={(event) => setNewCategoryName(event.target.value)}
+                    placeholder="Nome da categoria"
+                    autoFocus
+                    onKeyDown={(event) => event.key === "Enter" && void submitNewCategory()}
+                    className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+                  />
+                  <button
+                    onClick={() => void submitNewCategory()}
+                    disabled={categorySaving || newCategoryName.trim().length < 2}
+                    className="h-11 rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+                  >
+                    {categorySaving ? "Salvando..." : "Criar"}
+                  </button>
+                </div>
+                <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                  <input
+                    type="checkbox"
+                    checked={newCategoryNeedsRecipe}
+                    onChange={(event) => setNewCategoryNeedsRecipe(event.target.checked)}
+                    className="h-4 w-4 rounded border-border"
+                  />
+                  Itens desta categoria consomem insumos (drinks, cozinha) — aponta os produtos sem
+                  ficha técnica como pendentes
+                </label>
               </div>
             )}
             {categoryError && <p className="mt-2 text-xs text-destructive">{categoryError}</p>}
@@ -798,6 +912,13 @@ function CardapioPage() {
                     Puxe do estoque o que este item consome. A cada venda a baixa acontece sozinha
                     nos insumos. Deixe vazio só se for algo sem controle de estoque nenhum.
                   </p>
+                  {components.length === 0 &&
+                    categories.find((c) => c.name === category)?.needs_recipe && (
+                      <p className="mt-1.5 rounded-lg bg-amber-500/10 px-2.5 py-1.5 text-xs font-medium text-amber-600">
+                        A categoria "{category}" marca que os itens consomem insumos — este produto
+                        vai ficar pendente até você montar a ficha.
+                      </p>
+                    )}
                   <p className="mt-1.5 text-xs font-medium text-primary">
                     É uma dose? Clique em "+ Puxar insumo do estoque" abaixo, escolha a garrafa de
                     origem e digite o tamanho da dose em ml no campo ao lado — ex.: Tequila + 50.
@@ -812,48 +933,122 @@ function CardapioPage() {
                     <div className="mt-3 space-y-2">
                       {components.map((row) => {
                         const option = stockOptions.find((item) => item.id === row.stockId);
+                        const isNew = row.stockId === NEW_STOCK_ID;
                         return (
-                          <div key={row.key} className="flex items-center gap-2">
-                            <select
-                              value={row.stockId}
-                              onChange={(event) =>
-                                setComponents((current) =>
-                                  current.map((c) =>
-                                    c.key === row.key ? { ...c, stockId: event.target.value } : c,
-                                  ),
-                                )
-                              }
-                              className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-                            >
-                              <option value="">Escolha o insumo</option>
-                              {stockOptions.map((item) => (
-                                <option key={item.id} value={item.id}>
-                                  {item.name} ({item.unit})
-                                </option>
-                              ))}
-                            </select>
-                            <input
-                              value={row.quantity}
-                              onChange={(event) =>
-                                setComponents((current) =>
-                                  current.map((c) =>
-                                    c.key === row.key ? { ...c, quantity: event.target.value } : c,
-                                  ),
-                                )
-                              }
-                              placeholder={option ? option.unit : "qtd"}
-                              inputMode="decimal"
-                              className="h-11 w-24 shrink-0 rounded-xl border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
-                            />
-                            <button
-                              onClick={() =>
-                                setComponents((current) => current.filter((c) => c.key !== row.key))
-                              }
-                              aria-label="Remover insumo"
-                              className="shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-destructive"
-                            >
-                              ×
-                            </button>
+                          <div key={row.key} className="space-y-2">
+                            <div className="flex items-center gap-2">
+                              <select
+                                value={row.stockId}
+                                onChange={(event) =>
+                                  setComponents((current) =>
+                                    current.map((c) =>
+                                      c.key === row.key ? { ...c, stockId: event.target.value } : c,
+                                    ),
+                                  )
+                                }
+                                className="h-11 min-w-0 flex-1 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                              >
+                                <option value="">Escolha o insumo</option>
+                                <option value={NEW_STOCK_ID}>+ Criar novo insumo</option>
+                                {stockOptions.map((item) => (
+                                  <option key={item.id} value={item.id}>
+                                    {item.name} ({item.unit})
+                                  </option>
+                                ))}
+                              </select>
+                              <input
+                                value={row.quantity}
+                                onChange={(event) =>
+                                  setComponents((current) =>
+                                    current.map((c) =>
+                                      c.key === row.key ? { ...c, quantity: event.target.value } : c,
+                                    ),
+                                  )
+                                }
+                                placeholder={
+                                  isNew ? row.newUnit || "qtd" : option ? option.unit : "qtd"
+                                }
+                                inputMode="decimal"
+                                className="h-11 w-24 shrink-0 rounded-xl border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
+                              />
+                              <button
+                                onClick={() =>
+                                  setComponents((current) => current.filter((c) => c.key !== row.key))
+                                }
+                                aria-label="Remover insumo"
+                                className="shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-destructive"
+                              >
+                                ×
+                              </button>
+                            </div>
+                            {isNew && (
+                              <div className="rounded-lg border border-dashed border-primary/40 bg-background p-2.5">
+                                <p className="text-[11px] text-muted-foreground">
+                                  Ainda não existe no estoque — nasce com saldo zero. Configure a
+                                  embalagem e dê a primeira entrada em Estoque quando a mercadoria
+                                  chegar.
+                                </p>
+                                <div className="mt-2 flex items-center gap-2">
+                                  <input
+                                    value={row.newName}
+                                    onChange={(event) =>
+                                      setComponents((current) =>
+                                        current.map((c) =>
+                                          c.key === row.key
+                                            ? { ...c, newName: event.target.value }
+                                            : c,
+                                        ),
+                                      )
+                                    }
+                                    placeholder="Nome do insumo (ex.: Tequila)"
+                                    className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                                  />
+                                  <select
+                                    value={row.newKind}
+                                    onChange={(event) =>
+                                      setComponents((current) =>
+                                        current.map((c) =>
+                                          c.key === row.key
+                                            ? {
+                                                ...c,
+                                                newKind: event.target.value as ComponentRow["newKind"],
+                                                newUnit:
+                                                  event.target.value === "base_drink" ? "ml" : c.newUnit,
+                                              }
+                                            : c,
+                                        ),
+                                      )
+                                    }
+                                    className="h-10 shrink-0 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-ring"
+                                  >
+                                    <option value="base_drink">Bebida base</option>
+                                    <option value="ingredient">Ingrediente (drink)</option>
+                                    <option value="cozinha">Insumo de cozinha</option>
+                                  </select>
+                                  <select
+                                    value={row.newUnit}
+                                    onChange={(event) =>
+                                      setComponents((current) =>
+                                        current.map((c) =>
+                                          c.key === row.key
+                                            ? { ...c, newUnit: event.target.value }
+                                            : c,
+                                        ),
+                                      )
+                                    }
+                                    className="h-10 w-20 shrink-0 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-ring"
+                                  >
+                                    {(row.newKind === "base_drink" ? ["ml", "un"] : ["ml", "un", "g"]).map(
+                                      (u) => (
+                                        <option key={u} value={u}>
+                                          {u}
+                                        </option>
+                                      ),
+                                    )}
+                                  </select>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         );
                       })}
@@ -861,7 +1056,14 @@ function CardapioPage() {
                         onClick={() =>
                           setComponents((current) => [
                             ...current,
-                            { key: `c-${Date.now()}-${current.length}`, stockId: "", quantity: "" },
+                            {
+                              key: `c-${Date.now()}-${current.length}`,
+                              stockId: "",
+                              quantity: "",
+                              newName: "",
+                              newKind: "base_drink",
+                              newUnit: "ml",
+                            },
                           ])
                         }
                         className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"

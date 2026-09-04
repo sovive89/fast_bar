@@ -398,7 +398,7 @@ export const listIngredients = createServerFn({ method: "POST" }).handler(async 
   const { data } = await admin()
     .from("fastbar_drink_ingredients")
     .select(
-      "id, name, unit, current_stock, min_stock, average_cost, active, purchase_unit, units_per_pack, content_amount",
+      "id, name, unit, current_stock, min_stock, average_cost, active, purchase_unit, units_per_pack, content_amount, kind",
     )
     .eq("active", true)
     .order("name");
@@ -410,6 +410,7 @@ export const createIngredient = createServerFn({ method: "POST" })
     (data: {
       name: string;
       unit: "ml" | "un" | "g";
+      kind?: "drink" | "cozinha" | undefined;
       minStock?: number | undefined;
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
@@ -424,6 +425,7 @@ export const createIngredient = createServerFn({ method: "POST" })
     if (!["ml", "un", "g"].includes(data.unit)) {
       return { ok: false as const, message: "Unidade inválida." };
     }
+    const kind = data.kind === "cozinha" ? "cozinha" : "drink";
     const packaging = readPackaging(data);
     if (!packaging.ok) return packaging;
     // Mesmo motivo de createBaseDrink: o id volta para a tela dar a entrada em seguida.
@@ -432,6 +434,7 @@ export const createIngredient = createServerFn({ method: "POST" })
       .insert({
         name,
         unit: data.unit,
+        kind,
         min_stock: data.minStock && data.minStock > 0 ? data.minStock : 0,
         purchase_unit: data.purchaseUnit?.trim() || null,
         units_per_pack: packaging.unitsPerPack,
@@ -639,7 +642,7 @@ export const listProductCategories = createServerFn({ method: "POST" }).handler(
   await assertRegisterAccess();
   const { data, error } = await admin()
     .from("fastbar_product_categories")
-    .select("id, name")
+    .select("id, name, needs_recipe")
     .order("name");
   // Falha de leitura não pode virar "lista vazia" — isso faria a tela mandar a equipe "criar uma
   // categoria" quando o problema real é o banco fora do ar, escondendo o erro em vez de mostrar.
@@ -648,7 +651,7 @@ export const listProductCategories = createServerFn({ method: "POST" }).handler(
 });
 
 export const createProductCategory = createServerFn({ method: "POST" })
-  .inputValidator((data: { name: string }) => data)
+  .inputValidator((data: { name: string; needsRecipe?: boolean | undefined }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
@@ -658,7 +661,9 @@ export const createProductCategory = createServerFn({ method: "POST" })
     const name = data.name.trim();
     if (name.length < 2) return { ok: false as const, message: "Digite um nome de categoria." };
 
-    const { error } = await admin().from("fastbar_product_categories").insert({ name });
+    const { error } = await admin()
+      .from("fastbar_product_categories")
+      .insert({ name, needs_recipe: data.needsRecipe ?? false });
     if (error) {
       // Nome único: categoria repetida (mesmo com maiúscula/minúscula diferente) cai aqui.
       if (error.code === "23505") {
@@ -666,6 +671,24 @@ export const createProductCategory = createServerFn({ method: "POST" })
       }
       return { ok: false as const, message: "Não foi possível criar a categoria." };
     }
+    return { ok: true as const };
+  });
+
+/** Liga/desliga "itens desta categoria consomem insumos" — aponta a necessidade de ficha técnica
+ * pros produtos dela, sem travar nada: um produto nessa categoria sem ficha continua vendável,
+ * só aparece marcado como pendente (mesmo alerta que já existia para item sem ficha e sem
+ * entrada). Não usa senha nem a trava por nome da RPC de renomear: não mexe no texto que
+ * fastbar_products.category referencia, é só um booleano de apoio à tela. */
+export const setCategoryNeedsRecipe = createServerFn({ method: "POST" })
+  .inputValidator((data: { id: string; needsRecipe: boolean }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { error } = await admin()
+      .from("fastbar_product_categories")
+      .update({ needs_recipe: data.needsRecipe })
+      .eq("id", data.id);
+    if (error) return { ok: false as const, message: "Não foi possível salvar." };
     return { ok: true as const };
   });
 
@@ -985,7 +1008,7 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
     admin()
       .from("fastbar_drink_ingredients")
       .select(
-        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount",
+        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount, kind",
       )
       .eq("active", true)
       .order("name"),
