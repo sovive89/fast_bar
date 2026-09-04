@@ -72,12 +72,22 @@ type ComponentRow = {
   key: string;
   stockId: string;
   quantity: string;
+  // "whole" = consome unidades inteiras do insumo (ex.: 1 lata) — quantidade é número inteiro.
+  // "fraction" = consome uma fração/dose do insumo (ex.: 50ml de uma garrafa de 1L).
+  quantityMode: "whole" | "fraction";
   newName: string;
   newKind: "base_drink" | "ingredient" | "cozinha";
   newUnit: string;
 };
 
 const NEW_STOCK_ID = "__new__";
+
+/** Quando a ficha já existe (edição) e a linha não guardou o modo escolhido na hora — infere pela
+ * unidade do insumo e pelo valor: unidade "un" com quantidade inteira normalmente é "unidade
+ * inteira" (ex.: 1 lata); qualquer outra coisa (ml, g, ou fração de "un") é "fraction". */
+function inferQuantityMode(quantity: number, unit: string | undefined): "whole" | "fraction" {
+  return unit === "un" && Number.isInteger(quantity) ? "whole" : "fraction";
+}
 
 /**
  * Reduz a foto pro tamanho de upload (server functions em serverless têm limite de payload,
@@ -131,8 +141,11 @@ function RecipeBuilder(props: {
   onChange: (updater: (current: ComponentRow[]) => ComponentRow[]) => void;
   stockOptions: StockOption[];
   warning: string | undefined;
+  // Limita quantas linhas cabem — usado no modo "puxar direto do estoque" (1 insumo só). Sem
+  // limite (undefined) no modo "elaborar ficha técnica", que aceita vários insumos.
+  maxRows: number | undefined;
 }) {
-  const { components, onChange, stockOptions, warning } = props;
+  const { components, onChange, stockOptions, warning, maxRows } = props;
   return (
     <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
       <p className="text-xs font-semibold">Do que é feito</p>
@@ -146,9 +159,8 @@ function RecipeBuilder(props: {
         </p>
       )}
       <p className="mt-1.5 text-xs font-medium text-primary">
-        É uma dose? Clique em "+ Puxar insumo do estoque" abaixo, escolha a garrafa de origem e
-        digite o tamanho da dose em ml no campo ao lado — ex.: Tequila + 50. Não use "Estoque
-        inicial" mais abaixo pra isso.
+        Cada insumo marca se sai do estoque por unidade inteira (ex.: 1 lata) ou por fração/dose
+        (ex.: 50ml de uma garrafa de 1L) — escolha embaixo do insumo.
       </p>
 
       {stockOptions.length === 0 ? (
@@ -160,8 +172,9 @@ function RecipeBuilder(props: {
           {components.map((row) => {
             const option = stockOptions.find((item) => item.id === row.stockId);
             const isNew = row.stockId === NEW_STOCK_ID;
+            const isWhole = row.quantityMode === "whole";
             return (
-              <div key={row.key} className="space-y-2">
+              <div key={row.key} className="space-y-1.5">
                 <div className="flex items-center gap-2">
                   <select
                     value={row.stockId}
@@ -191,8 +204,11 @@ function RecipeBuilder(props: {
                         ),
                       )
                     }
-                    placeholder={isNew ? row.newUnit || "qtd" : option ? option.unit : "qtd"}
-                    inputMode="decimal"
+                    placeholder={isWhole ? "1" : isNew ? row.newUnit || "qtd" : option ? option.unit : "qtd"}
+                    inputMode={isWhole ? "numeric" : "decimal"}
+                    type={isWhole ? "number" : "text"}
+                    min={isWhole ? 1 : undefined}
+                    step={isWhole ? 1 : undefined}
                     className="h-11 w-24 shrink-0 rounded-xl border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
                   />
                   <button
@@ -201,6 +217,42 @@ function RecipeBuilder(props: {
                     className="shrink-0 rounded-full px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-destructive"
                   >
                     ×
+                  </button>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() =>
+                      onChange((current) =>
+                        current.map((c) =>
+                          c.key === row.key
+                            ? { ...c, quantityMode: "whole", quantity: c.quantity || "1" }
+                            : c,
+                        ),
+                      )
+                    }
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                      isWhole
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-secondary-foreground"
+                    }`}
+                  >
+                    Unidade inteira
+                  </button>
+                  <button
+                    onClick={() =>
+                      onChange((current) =>
+                        current.map((c) =>
+                          c.key === row.key ? { ...c, quantityMode: "fraction" } : c,
+                        ),
+                      )
+                    }
+                    className={`rounded-full px-2.5 py-1 text-[11px] font-medium ${
+                      !isWhole
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-secondary-foreground"
+                    }`}
+                  >
+                    Fração / dose
                   </button>
                 </div>
                 {isNew && (
@@ -266,24 +318,27 @@ function RecipeBuilder(props: {
               </div>
             );
           })}
-          <button
-            onClick={() =>
-              onChange((current) => [
-                ...current,
-                {
-                  key: `c-${Date.now()}-${current.length}`,
-                  stockId: "",
-                  quantity: "",
-                  newName: "",
-                  newKind: "base_drink",
-                  newUnit: "ml",
-                },
-              ])
-            }
-            className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-          >
-            + Puxar insumo do estoque
-          </button>
+          {(maxRows === undefined || components.length < maxRows) && (
+            <button
+              onClick={() =>
+                onChange((current) => [
+                  ...current,
+                  {
+                    key: `c-${Date.now()}-${current.length}`,
+                    stockId: "",
+                    quantity: "",
+                    quantityMode: "fraction",
+                    newName: "",
+                    newKind: "base_drink",
+                    newUnit: "ml",
+                  },
+                ])
+              }
+              className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
+            >
+              + Puxar insumo do estoque
+            </button>
+          )}
         </div>
       )}
     </div>
@@ -324,6 +379,10 @@ function CardapioPage() {
   // isso, montar o cardápio exigia digitar o nome do zero e depois ir a outra aba fazer a ligação.
   const [stockOptions, setStockOptions] = useState<StockOption[]>([]);
   const [components, setComponents] = useState<ComponentRow[]>([]);
+  // null = ainda não escolheu; "stock" = puxar um insumo só direto do estoque; "recipe" = montar
+  // ficha técnica com vários insumos. Só decide a apresentação — os dois usam a mesma tabela de
+  // receita por baixo, então trocar de modo não perde nada além das linhas já digitadas.
+  const [productMode, setProductMode] = useState<"stock" | "recipe" | null>(null);
 
   // Categoria é uma divisão do menu, não um produto — cadastro próprio, separado do formulário
   // de produto, pra "criar categoria" nunca virar "criar um produto vazio só pra registrar o nome".
@@ -578,14 +637,18 @@ function CardapioPage() {
     try {
       const result = await loadRecipeItems({ data: { productId: product.id } });
       setEditComponents(
-        result.items.map((item, index) => ({
-          key: `e-${product.id}-${item.id ?? index}`,
-          stockId: item.base_drink_id ?? item.ingredient_id ?? "",
-          quantity: String(item.quantity).replace(".", ","),
-          newName: "",
-          newKind: "base_drink" as const,
-          newUnit: item.base_drink?.unit ?? item.ingredient?.unit ?? "ml",
-        })),
+        result.items.map((item, index) => {
+          const unit = item.base_drink?.unit ?? item.ingredient?.unit ?? "ml";
+          return {
+            key: `e-${product.id}-${item.id ?? index}`,
+            stockId: item.base_drink_id ?? item.ingredient_id ?? "",
+            quantity: String(item.quantity).replace(".", ","),
+            quantityMode: inferQuantityMode(Number(item.quantity), unit),
+            newName: "",
+            newKind: "base_drink" as const,
+            newUnit: unit,
+          };
+        }),
       );
     } catch {
       // Se falhar, marca a ficha como não carregada — salvar não mexe na receita existente até
@@ -621,6 +684,9 @@ function CardapioPage() {
         const quantity = Number(row.quantity.replace(",", "."));
         if (!Number.isFinite(quantity) || quantity <= 0) {
           return setEditProductError("Informe uma quantidade maior que zero para cada insumo.");
+        }
+        if (row.quantityMode === "whole" && !Number.isInteger(quantity)) {
+          return setEditProductError("Unidade inteira precisa de uma quantidade inteira (1, 2, 3...).");
         }
         if (row.stockId !== NEW_STOCK_ID && !stockOptions.find((item) => item.id === row.stockId)) {
           return setEditProductError("Insumo não encontrado — recarregue a página.");
@@ -753,6 +819,9 @@ function CardapioPage() {
       if (!Number.isFinite(quantity) || quantity <= 0) {
         return setError("Informe uma quantidade maior que zero para cada insumo.");
       }
+      if (row.quantityMode === "whole" && !Number.isInteger(quantity)) {
+        return setError("Unidade inteira precisa de uma quantidade inteira (1, 2, 3...).");
+      }
       if (row.stockId !== NEW_STOCK_ID && !stockOptions.find((item) => item.id === row.stockId)) {
         return setError("Insumo não encontrado — recarregue a página.");
       }
@@ -864,6 +933,7 @@ function CardapioPage() {
 
     setSaving(false);
     setComponents([]);
+    setProductMode(null);
     setName("");
     setPrice("");
     setUnit("un");
@@ -907,12 +977,14 @@ function CardapioPage() {
   }
 
   function addComponentFromStock(stockId: string) {
+    const option = stockOptions.find((item) => item.id === stockId);
     setComponents((current) => [
       ...current,
       {
         key: `c-${Date.now()}-${current.length}`,
         stockId,
         quantity: "",
+        quantityMode: option?.unit === "un" ? "whole" : "fraction",
         newName: "",
         newKind: "base_drink",
         newUnit: "ml",
@@ -1192,22 +1264,80 @@ function CardapioPage() {
                     </select>
                   </label>
                 </div>
-                <RecipeBuilder
-                  components={components}
-                  onChange={setComponents}
-                  stockOptions={stockOptions}
-                  warning={
-                    categories.find((c) => c.name === category)?.needs_recipe
-                      ? `A categoria "${category}" marca que os itens consomem insumos — este produto vai ficar pendente até você montar a ficha.`
-                      : undefined
-                  }
-                />
+                {productMode === null ? (
+                  <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
+                    <p className="text-xs font-semibold">Do que é feito</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      Esse item consome algo do estoque pra vender? Escolha como — ou deixe assim
+                      e use "Estoque inicial" logo abaixo pra um item sem insumo nenhum.
+                    </p>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <button
+                        onClick={() => {
+                          setProductMode("stock");
+                          setComponents([
+                            {
+                              key: `c-${Date.now()}-0`,
+                              stockId: "",
+                              quantity: "",
+                              quantityMode: "whole",
+                              newName: "",
+                              newKind: "base_drink",
+                              newUnit: "ml",
+                            },
+                          ]);
+                        }}
+                        className="rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+                      >
+                        <p className="text-xs font-semibold">Puxar direto do estoque</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          Um insumo só — ex.: cerveja lata (unidade inteira) ou uma dose de uma
+                          garrafa (fração).
+                        </p>
+                      </button>
+                      <button
+                        onClick={() => {
+                          setProductMode("recipe");
+                          setComponents([]);
+                        }}
+                        className="rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+                      >
+                        <p className="text-xs font-semibold">Elaborar ficha técnica</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground">
+                          Vários insumos juntos — drinks e pratos com mais de um componente.
+                        </p>
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-1.5">
+                    <button
+                      onClick={() => {
+                        setProductMode(null);
+                        setComponents([]);
+                      }}
+                      className="text-[11px] font-medium text-muted-foreground underline hover:text-foreground"
+                    >
+                      ← trocar modo
+                    </button>
+                    <RecipeBuilder
+                      components={components}
+                      onChange={setComponents}
+                      stockOptions={stockOptions}
+                      maxRows={productMode === "stock" ? 1 : undefined}
+                      warning={
+                        categories.find((c) => c.name === category)?.needs_recipe
+                          ? `A categoria "${category}" marca que os itens consomem insumos — este produto vai ficar pendente até você montar a ficha.`
+                          : undefined
+                      }
+                    />
+                  </div>
+                )}
 
-                {/* Produto com ficha técnica tira do estoque dos insumos, então um estoque próprio
-                    aqui seria um número paralelo que nunca baixa. Some assim que uma linha de
-                    insumo é adicionada — visto ao vivo alguém digitar "60" aqui pensando que era o
-                    tamanho da dose, quando o campo certo é o de quantidade em "Do que é feito". */}
-                {components.length === 0 && (
+                {/* Só aparece antes de escolher um modo de "Do que é feito" — depois que o modo é
+                    escolhido (mesmo com a lista ainda vazia), o campo certo pra saldo é a ficha,
+                    não esse aqui, senão vira um número paralelo que nunca baixa. */}
+                {productMode === null && (
                   <TextField
                     label="Estoque inicial (só para item SEM insumo escolhido acima, ex.: cerveja lata fechada)"
                     value={stockQuantity}
@@ -1399,6 +1529,7 @@ function CardapioPage() {
                                   components={editComponents}
                                   onChange={setEditComponents}
                                   stockOptions={stockOptions}
+                                  maxRows={undefined}
                                   warning={
                                     categories.find((c) => c.name === editProductCategory)?.needs_recipe
                                       ? `A categoria "${editProductCategory}" marca que os itens consomem insumos — este produto vai ficar pendente até a ficha ter pelo menos um insumo.`
