@@ -11,12 +11,22 @@ import { createServerFn } from "@tanstack/react-start";
  * Cliente que já verificou o celular numa visita anterior (fastbar_customers.phone_verified) pula
  * a etapa de OTP de novo — verificar o mesmo número toda vez que a pessoa volta ao bar não
  * protegeria nada a mais, só atrito repetido.
+ *
+ * Sem credenciais do Twilio no deploy, a etapa de OTP inteira é pulada e a comanda nasce direto em
+ * "pending", na fila de confirmação da equipe. Antes desse guarda a comanda era gravada como
+ * "unverified" e só depois o provedor Twilio estourava por falta de credencial: a linha ficava no
+ * banco num status que a tela do caixa nem consulta, então a comanda sumia — o cliente via o botão
+ * travado e a equipe nunca via a comanda pra confirmar. A verificação de celular é um reforço
+ * opcional; o portão de verdade sempre foi a confirmação da equipe no balcão.
  */
 export const openClientSession = createServerFn({ method: "POST" })
   .inputValidator((data: { name: string; phone: string }) => data)
   .handler(async ({ data }) => {
     const { admin, sanitizeName, sanitizePhone, upsertCustomer } = await import("./fastbar.server");
-    const { requestPhoneVerification } = await import("./verification/service.server");
+    const { requestPhoneVerification, isVerificationConfigured } = await import(
+      "./verification/service.server"
+    );
+    const verificationOn = isVerificationConfigured();
 
     const name = sanitizeName(data.name);
     const phone = sanitizePhone(data.phone);
@@ -51,7 +61,9 @@ export const openClientSession = createServerFn({ method: "POST" })
       .select("phone_verified")
       .eq("phone", phone)
       .maybeSingle();
-    const alreadyVerified = existingCustomer?.phone_verified === true;
+    // Sem Twilio configurado, todo celular entra como "já verificado": não há OTP pra pedir, e
+    // segurar a comanda em "unverified" só a esconderia da equipe.
+    const alreadyVerified = !verificationOn || existingCustomer?.phone_verified === true;
 
     const customerId = await upsertCustomer(name, { phone });
 

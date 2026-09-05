@@ -18,11 +18,6 @@ export function OpenTabForm() {
     event.preventDefault();
     if (busy) return;
 
-    const confirmMessage = phone
-      ? `Abrir comanda para ${name} (${phone})?`
-      : `Abrir comanda para ${name}?`;
-    if (!window.confirm(confirmMessage)) return;
-
     setBusy(true);
     setError(null);
 
