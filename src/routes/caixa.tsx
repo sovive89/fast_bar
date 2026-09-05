@@ -13,6 +13,7 @@ import {
   ClipboardList,
   LogOut,
   Package,
+  Palette,
   Plug,
   UtensilsCrossed,
   Users,
@@ -50,6 +51,7 @@ const MODULES = [
   { key: "crm", label: "CRM", to: "/caixa/crm", icon: Users },
   { key: "relatorios", label: "Relatórios Vendas", to: "/caixa/relatorios", icon: BarChart3 },
   { key: "alertas", label: "Alertas", to: "/caixa/alertas", icon: AlertTriangle },
+  { key: "marca", label: "Marca", to: "/caixa/marca", icon: Palette },
   { key: "conexoes", label: "Conexões", to: "/caixa/conexoes", icon: Plug },
 ] as const;
 

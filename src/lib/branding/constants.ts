@@ -8,6 +8,8 @@ export const DEFAULT_BRANDING: TenantBranding = {
   brandName: DEFAULT_BRAND_NAME,
   logoUrl: null,
   primaryColor: null,
+  instagramUser: null,
+  whatsappNumber: null,
 };
 
 export const HEX_COLOR_PATTERN = /^#[0-9a-fA-F]{6}$/;

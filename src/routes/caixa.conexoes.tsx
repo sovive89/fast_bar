@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import QRCode from "qrcode";
 import {
   CheckCircle2,
   MessageCircle,
@@ -9,9 +8,6 @@ import {
   CreditCard,
   Phone,
   Printer,
-  Palette,
-  Download,
-  ExternalLink,
 } from "lucide-react";
 import {
   getIntegrations,
@@ -22,12 +18,6 @@ import {
   type IntegrationRow,
 } from "@/lib/integrations.functions";
 import type { PointTerminal } from "@/lib/mercadopago/types";
-import {
-  uploadBrandLogo,
-  hasReadableContrast,
-  brandingStyle,
-  HEX_COLOR_PATTERN,
-} from "@/lib/branding";
 
 export const Route = createFileRoute("/caixa/conexoes")({
   head: () => ({
@@ -184,274 +174,6 @@ function ConnectionCard({
         >
           {saving ? "Salvando..." : "Salvar configuração"}
         </button>
-      </div>
-    </div>
-  );
-}
-
-/** Reduz o logo pro tamanho de upload — mesma lógica usada pra foto de produto (evita passar do
- * limite de payload das server functions e deixa a imagem leve). */
-async function compressImageForUpload(
-  file: File,
-  maxDimension = 512,
-  quality = 0.9,
-): Promise<{ base64: string; contentType: string }> {
-  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
-  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-  const width = Math.round(bitmap.width * scale);
-  const height = Math.round(bitmap.height * scale);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas não suportado neste navegador.");
-  ctx.drawImage(bitmap, 0, 0, width, height);
-
-  const blob = await new Promise<Blob>((resolve, reject) => {
-    canvas.toBlob(
-      (result) => (result ? resolve(result) : reject(new Error("Falha ao comprimir a imagem."))),
-      "image/png",
-      quality,
-    );
-  });
-
-  const dataUrl = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result as string);
-    reader.onerror = reject;
-    reader.readAsDataURL(blob);
-  });
-  const [, base64] = dataUrl.split(",");
-  if (!base64) throw new Error("Falha ao codificar a imagem.");
-  return { base64, contentType: "image/png" };
-}
-
-const DEFAULT_PRIMARY_COLOR = "#f97316";
-
-/**
- * "Interface do cliente": tudo que muda o que o cliente vê a partir do QR code (/abrir, tela ao
- * vivo da comanda) — nome, logo e cor de destaque do estabelecimento — sem mexer em estrutura
- * nenhuma (layout, campos, fluxo continuam os mesmos pra todo mundo). Mostra uma prévia ao vivo e
- * gera o QR code que aponta pra /abrir, pronto pra imprimir e colar no balcão. A config salva
- * aqui é a mesma linha 'branding' de fastbar_integrations que o hub genérico usava antes; ganhou
- * tela própria porque upload de logo e QR code não cabem no card de texto genérico dos outros
- * conectores.
- */
-function BrandingModule({
-  row,
-  onSave,
-}: {
-  row: IntegrationRow | undefined;
-  onSave: (key: IntegrationKey, enabled: boolean, config: Record<string, string>) => Promise<void>;
-}) {
-  const config = (row?.config ?? {}) as Record<string, string>;
-  const [brandName, setBrandName] = useState(config["brandName"] ?? "");
-  const [logoUrl, setLogoUrl] = useState(config["logoUrl"] ?? "");
-  const [primaryColor, setPrimaryColor] = useState(config["primaryColor"] ?? "");
-  const [saving, setSaving] = useState(false);
-  const [uploading, setUploading] = useState(false);
-  const [savedMsg, setSavedMsg] = useState(false);
-  const [abrirUrl, setAbrirUrl] = useState("");
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const uploadLogo = useServerFn(uploadBrandLogo);
-  const isValidColor = HEX_COLOR_PATTERN.test(primaryColor);
-  // Mesma função usada nas rotas reais do cliente (brandingStyle) — a prévia não é uma
-  // implementação visual paralela, é os tokens de verdade aplicados num recorte pequeno da tela.
-  const previewStyle = brandingStyle({ primaryColor: isValidColor ? primaryColor : null });
-
-  useEffect(() => {
-    // A URL da página de abertura depende do domínio de produção (ainda pode mudar até o domínio
-    // próprio ser configurado) — pega sempre do navegador em vez de fixar no código.
-    setAbrirUrl(`${window.location.origin}/abrir`);
-  }, []);
-
-  useEffect(() => {
-    if (!abrirUrl || !canvasRef.current) return;
-    void QRCode.toCanvas(canvasRef.current, abrirUrl, { width: 220, margin: 1 });
-  }, [abrirUrl]);
-
-  async function handleLogoFile(file: File) {
-    setUploading(true);
-    try {
-      const compressed = await compressImageForUpload(file);
-      const result = await uploadLogo({
-        data: { fileName: file.name, base64: compressed.base64, contentType: compressed.contentType },
-      });
-      if (result.ok) setLogoUrl(result.url);
-    } finally {
-      setUploading(false);
-    }
-  }
-
-  async function handleSave() {
-    setSaving(true);
-    try {
-      await onSave("branding", row?.enabled ?? true, { brandName, logoUrl, primaryColor });
-      setSavedMsg(true);
-      setTimeout(() => setSavedMsg(false), 2000);
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function downloadQr() {
-    if (!canvasRef.current) return;
-    const link = document.createElement("a");
-    link.download = `qr-code-${(brandName || "fastbar").toLowerCase().replace(/\s+/g, "-")}.png`;
-    link.href = canvasRef.current.toDataURL("image/png");
-    link.click();
-  }
-
-  return (
-    <div className="rounded-2xl border border-border bg-card p-4">
-      <div className="flex items-start gap-3">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-          <Palette className="h-4 w-4" />
-        </span>
-        <div>
-          <p className="text-sm font-semibold">Interface do cliente</p>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Nome, logo e cor de destaque exibidos em /abrir e na comanda ao vivo do cliente, mais
-            o QR code pra imprimir no balcão. Só o visual muda — o fluxo é o mesmo pra todo mundo.
-          </p>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto]">
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Nome exibido</label>
-            <input
-              type="text"
-              value={brandName}
-              placeholder="ex.: Golpe Baixo"
-              onChange={(e) => setBrandName(e.target.value)}
-              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-            />
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Logo</label>
-            <div className="mt-1 flex items-center gap-3">
-              {logoUrl && (
-                <img src={logoUrl} alt="Logo" className="h-10 w-10 rounded-lg object-cover" />
-              )}
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) void handleLogoFile(file);
-                  e.target.value = "";
-                }}
-              />
-              <button
-                type="button"
-                disabled={uploading}
-                onClick={() => fileInputRef.current?.click()}
-                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
-              >
-                {uploading ? "Enviando..." : logoUrl ? "Trocar logo" : "Enviar logo"}
-              </button>
-            </div>
-          </div>
-
-          <div>
-            <label className="text-xs font-medium text-muted-foreground">Cor de destaque</label>
-            <div className="mt-1 flex items-center gap-2">
-              <input
-                type="color"
-                value={isValidColor ? primaryColor : DEFAULT_PRIMARY_COLOR}
-                onChange={(e) => setPrimaryColor(e.target.value)}
-                className="h-8 w-10 cursor-pointer rounded border border-border bg-background p-0.5"
-              />
-              <input
-                type="text"
-                value={primaryColor}
-                placeholder="#f97316 (padrão do Pop9Bar se deixar em branco)"
-                onChange={(e) => setPrimaryColor(e.target.value)}
-                className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-              />
-              {primaryColor && (
-                <button
-                  type="button"
-                  onClick={() => setPrimaryColor("")}
-                  className="shrink-0 text-xs font-medium text-muted-foreground hover:text-foreground"
-                >
-                  Limpar
-                </button>
-              )}
-            </div>
-            {isValidColor && !hasReadableContrast(primaryColor) && (
-              <p className="mt-1.5 text-xs text-amber-500">
-                A combinação escolhida apresenta baixo contraste. Considere usar uma cor mais clara
-                ou mais escura.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <span className="text-xs font-medium text-muted-foreground">Prévia</span>
-            <div
-              className="mt-1 space-y-2 rounded-xl border border-border bg-background p-3"
-              style={previewStyle}
-            >
-              <div className="flex items-center gap-2">
-                {logoUrl && (
-                  <img src={logoUrl} alt="Logo" className="h-6 w-6 rounded-lg object-cover" />
-                )}
-                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
-                  {brandName || "Bar"}
-                </p>
-              </div>
-              <p className="text-sm font-bold">Sua comanda digital</p>
-              <button
-                type="button"
-                disabled
-                className="w-full rounded-xl bg-primary px-4 py-2 text-center text-xs font-semibold text-primary-foreground"
-              >
-                Abrir comanda
-              </button>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 pt-1">
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => void handleSave()}
-              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
-            >
-              {saving ? "Salvando..." : "Salvar"}
-            </button>
-            {savedMsg && <span className="text-xs text-emerald-500">Salvo.</span>}
-            {abrirUrl && (
-              <a
-                href="/abrir"
-                target="_blank"
-                rel="noreferrer"
-                className="flex items-center gap-1 text-xs font-medium text-primary underline underline-offset-4"
-              >
-                Ver página <ExternalLink className="h-3 w-3" />
-              </a>
-            )}
-          </div>
-        </div>
-
-        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-3">
-          <canvas ref={canvasRef} className="h-[140px] w-[140px]" />
-          <button
-            type="button"
-            onClick={downloadQr}
-            className="flex items-center gap-1 text-xs font-medium text-primary underline underline-offset-4"
-          >
-            <Download className="h-3 w-3" /> Baixar QR code
-          </button>
-        </div>
       </div>
     </div>
   );
@@ -764,7 +486,6 @@ function ConnectionsPage() {
         <p className="mt-6 text-sm text-muted-foreground">Carregando...</p>
       ) : (
         <div className="mt-6 space-y-3">
-          <BrandingModule row={rows.find((r) => r.key === "branding")} onSave={handleSave} />
           <VerificationStatusCard />
           <MercadoPagoModule row={rows.find((r) => r.key === "mercado_pago")} onSave={handleSave} />
           {CARDS.map((card) => (

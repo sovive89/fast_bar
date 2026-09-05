@@ -22,6 +22,7 @@ import { Route as CaixaCardapioRouteImport } from './routes/caixa.cardapio'
 import { Route as CaixaConexoesRouteImport } from './routes/caixa.conexoes'
 import { Route as CaixaCrmRouteImport } from './routes/caixa.crm'
 import { Route as CaixaEstoqueRouteImport } from './routes/caixa.estoque'
+import { Route as CaixaMarcaRouteImport } from './routes/caixa.marca'
 import { Route as CaixaRelatoriosRouteImport } from './routes/caixa.relatorios'
 import { Route as ComandaSessionIdRouteImport } from './routes/comanda.$sessionId'
 import { Route as ApiMercadopagoWebhookRouteImport } from './routes/api.mercadopago.webhook'
@@ -97,6 +98,11 @@ const CaixaEstoqueRoute = CaixaEstoqueRouteImport.update({
   path: '/estoque',
   getParentRoute: () => CaixaRoute,
 } as any)
+const CaixaMarcaRoute = CaixaMarcaRouteImport.update({
+  id: '/marca',
+  path: '/marca',
+  getParentRoute: () => CaixaRoute,
+} as any)
 const CaixaRelatoriosRoute = CaixaRelatoriosRouteImport.update({
   id: '/relatorios',
   path: '/relatorios',
@@ -157,6 +163,7 @@ export interface FileRoutesByFullPath {
   '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
+  '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa/': typeof CaixaIndexRoute
@@ -179,6 +186,7 @@ export interface FileRoutesByTo {
   '/caixa/cardapio': typeof CaixaCardapioRoute
   '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/estoque': typeof CaixaEstoqueRoute
+  '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa': typeof CaixaIndexRoute
@@ -204,6 +212,7 @@ export interface FileRoutesById {
   '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
+  '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa/': typeof CaixaIndexRoute
@@ -230,6 +239,7 @@ export interface FileRouteTypes {
     | '/caixa/conexoes'
     | '/caixa/crm'
     | '/caixa/estoque'
+    | '/caixa/marca'
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
     | '/caixa/'
@@ -252,6 +262,7 @@ export interface FileRouteTypes {
     | '/caixa/cardapio'
     | '/caixa/conexoes'
     | '/caixa/estoque'
+    | '/caixa/marca'
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
     | '/caixa'
@@ -276,6 +287,7 @@ export interface FileRouteTypes {
     | '/caixa/conexoes'
     | '/caixa/crm'
     | '/caixa/estoque'
+    | '/caixa/marca'
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
     | '/caixa/'
@@ -394,6 +406,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CaixaEstoqueRouteImport
       parentRoute: typeof CaixaRoute
     }
+    '/caixa/marca': {
+      id: '/caixa/marca'
+      path: '/marca'
+      fullPath: '/caixa/marca'
+      preLoaderRoute: typeof CaixaMarcaRouteImport
+      parentRoute: typeof CaixaRoute
+    }
     '/caixa/relatorios': {
       id: '/caixa/relatorios'
       path: '/relatorios'
@@ -485,6 +504,7 @@ interface CaixaRouteChildren {
   CaixaConexoesRoute: typeof CaixaConexoesRoute
   CaixaCrmRoute: typeof CaixaCrmRouteWithChildren
   CaixaEstoqueRoute: typeof CaixaEstoqueRoute
+  CaixaMarcaRoute: typeof CaixaMarcaRoute
   CaixaRelatoriosRoute: typeof CaixaRelatoriosRoute
   CaixaIndexRoute: typeof CaixaIndexRoute
 }
@@ -496,6 +516,7 @@ const CaixaRouteChildren: CaixaRouteChildren = {
   CaixaConexoesRoute: CaixaConexoesRoute,
   CaixaCrmRoute: CaixaCrmRouteWithChildren,
   CaixaEstoqueRoute: CaixaEstoqueRoute,
+  CaixaMarcaRoute: CaixaMarcaRoute,
   CaixaRelatoriosRoute: CaixaRelatoriosRoute,
   CaixaIndexRoute: CaixaIndexRoute,
 }

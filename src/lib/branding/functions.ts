@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { DEFAULT_BRAND_NAME, HEX_COLOR_PATTERN } from "./constants";
+import { sanitizeInstagramUser, sanitizeWhatsappNumber } from "./social";
 import type { TenantBranding } from "./types";
 
 /**
@@ -23,7 +24,11 @@ export const getPublicBranding = createServerFn({ method: "GET" }).handler(
     const primaryColor = HEX_COLOR_PATTERN.test(config["primaryColor"] ?? "")
       ? config["primaryColor"]!
       : null;
-    return { brandName, logoUrl, primaryColor };
+    // Sanitiza também na leitura, não só ao salvar: config gravada antes desses campos existirem
+    // (ou editada direto no banco) continua chegando aqui do jeito que estiver.
+    const instagramUser = sanitizeInstagramUser(config["instagramUser"]);
+    const whatsappNumber = sanitizeWhatsappNumber(config["whatsappNumber"]);
+    return { brandName, logoUrl, primaryColor, instagramUser, whatsappNumber };
   },
 );
 

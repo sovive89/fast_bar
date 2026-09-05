@@ -12,4 +12,8 @@ export interface TenantBranding {
   brandName: string;
   logoUrl: string | null;
   primaryColor: string | null;
+  /** Usuário do Instagram já normalizado — só o handle, sem "@" nem URL. */
+  instagramUser: string | null;
+  /** WhatsApp só em dígitos (DDD + número), sem o 55 do país. */
+  whatsappNumber: string | null;
 }
