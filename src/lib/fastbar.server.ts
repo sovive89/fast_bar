@@ -17,7 +17,7 @@ export const admin = () => supabaseAdmin;
 let _defaultTenantId: string | undefined;
 export async function getDefaultTenantId(): Promise<string> {
   if (_defaultTenantId) return _defaultTenantId;
-  const slug = process.env["FASTBAR_TENANT_SLUG"] || "golpe-baixo";
+  const slug = process.env["FASTBAR_TENANT_SLUG"] || "golpebaixo";
   const { data, error } = await supabaseAdmin.from("fastbar_tenants").select("id").eq("slug", slug).single();
   if (error || !data) throw new Error(`Tenant "${slug}" não encontrado (fastbar_tenants).`);
   _defaultTenantId = data.id;
