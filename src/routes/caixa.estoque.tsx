@@ -24,6 +24,7 @@ import {
   setRecipeItems,
   updateBaseDrink,
   updateIngredient,
+  updateStockLot,
 } from "@/lib/base-drinks.functions";
 
 export const Route = createFileRoute("/caixa/estoque")({
@@ -151,6 +152,7 @@ type StockLot = {
   expiresOn: string | null;
   receivedAt: string;
   note: string | null;
+  supplierId: string | null;
   supplierName: string | null;
 };
 
@@ -195,6 +197,16 @@ function ComponentStockTab(props: {
   lotsFn: (input: {
     data: { componentId: string };
   }) => Promise<{ lots: StockLot[] }>;
+  updateLotFn: (input: {
+    data: {
+      lotId: string;
+      quantityReceived: number;
+      unitCost?: number | undefined;
+      supplierId?: string | undefined;
+      expiresOn?: string | undefined;
+      note?: string | undefined;
+    };
+  }) => Promise<{ ok: boolean; message?: string }>;
   deleteFn: (input: {
     data: { id: string; password: string };
   }) => Promise<{ ok: boolean; message?: string }>;
@@ -234,6 +246,18 @@ function ComponentStockTab(props: {
   const [openLotsId, setOpenLotsId] = useState<string | null>(null);
   const [lots, setLots] = useState<StockLot[]>([]);
   const [lotsLoading, setLotsLoading] = useState(false);
+
+  // Edição de um lote já recebido — quantidade, custo, validade e fornecedor podem estar errados
+  // desde a hora do lançamento (típico: apertou salvar antes de conferir), e sem isso a única saída
+  // era registrar perda/entrada compensando, o que suja o histórico.
+  const [editingLotId, setEditingLotId] = useState<string | null>(null);
+  const [lotQuantity, setLotQuantity] = useState("");
+  const [lotUnitCost, setLotUnitCost] = useState("");
+  const [lotSupplierId, setLotSupplierId] = useState("");
+  const [lotExpiresOn, setLotExpiresOn] = useState("");
+  const [lotNote, setLotNote] = useState("");
+  const [lotError, setLotError] = useState<string | null>(null);
+  const [lotBusy, setLotBusy] = useState(false);
 
   const [openLossId, setOpenLossId] = useState<string | null>(null);
   const [lossQuantity, setLossQuantity] = useState("");
@@ -416,6 +440,47 @@ function ComponentStockTab(props: {
     setOpenLotsId(item.id);
     setLots([]);
     await loadLots(item);
+  }
+
+  function openLotEditor(lot: StockLot) {
+    setEditingLotId(lot.id);
+    setLotQuantity(String(lot.quantityReceived));
+    setLotUnitCost(lot.unitCost !== null ? String(lot.unitCost) : "");
+    setLotSupplierId(lot.supplierId ?? "");
+    setLotExpiresOn(lot.expiresOn ?? "");
+    setLotNote(lot.note ?? "");
+    setLotError(null);
+  }
+
+  async function submitLotEdit(item: StockComponent) {
+    setLotError(null);
+    const quantity = parseAmount(lotQuantity);
+    if (quantity === null || quantity <= 0) {
+      return setLotError(`Informe uma quantidade recebida válida em ${item.unit}.`);
+    }
+    let unitCost: number | undefined;
+    if (lotUnitCost.trim()) {
+      const parsed = parseAmount(lotUnitCost);
+      if (parsed === null || parsed < 0) return setLotError("Custo por unidade inválido.");
+      unitCost = parsed;
+    }
+
+    setLotBusy(true);
+    const result = await props.updateLotFn({
+      data: {
+        lotId: editingLotId as string,
+        quantityReceived: quantity,
+        unitCost,
+        supplierId: lotSupplierId || undefined,
+        expiresOn: lotExpiresOn || undefined,
+        note: lotNote.trim() || undefined,
+      },
+    });
+    setLotBusy(false);
+    if (!result.ok) return setLotError(result.message ?? "Não foi possível salvar o lote.");
+    setEditingLotId(null);
+    await loadLots(item);
+    await load();
   }
 
   async function submitLoss(item: StockComponent) {
@@ -755,19 +820,98 @@ function ComponentStockTab(props: {
                     ) : (
                       <ul className="mt-2 space-y-2">
                         {lots.map((lot) => (
-                          <li
-                            key={lot.id}
-                            className="rounded-lg bg-muted/40 px-2.5 py-2 text-xs text-muted-foreground"
-                          >
-                            <span className="font-medium text-foreground">
-                              {lot.quantityRemaining} / {lot.quantityReceived} {item.unit}
-                            </span>{" "}
-                            restante · recebido {new Date(lot.receivedAt).toLocaleDateString("pt-BR")}
-                            {lot.expiresOn
-                              ? ` · vence ${new Date(`${lot.expiresOn}T00:00:00`).toLocaleDateString("pt-BR")}`
-                              : ""}
-                            {lot.unitCost !== null ? ` · ${brl(lot.unitCost)}/${item.unit}` : ""}
-                            {lot.supplierName ? ` · ${lot.supplierName}` : ""}
+                          <li key={lot.id} className="rounded-lg bg-muted/40 px-2.5 py-2 text-xs">
+                            {editingLotId === lot.id ? (
+                              <div className="space-y-2">
+                                <div className="flex gap-2">
+                                  <input
+                                    type="number"
+                                    inputMode="decimal"
+                                    value={lotQuantity}
+                                    onChange={(event) => setLotQuantity(event.target.value)}
+                                    placeholder={`Quantidade recebida (${item.unit})`}
+                                    className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
+                                  />
+                                  <input
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={lotUnitCost}
+                                    onChange={(event) => setLotUnitCost(event.target.value)}
+                                    placeholder={`Custo por ${item.unit} (R$)`}
+                                    className="h-10 flex-1 rounded-lg border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
+                                  />
+                                </div>
+                                <select
+                                  value={lotSupplierId}
+                                  onChange={(event) => setLotSupplierId(event.target.value)}
+                                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                                >
+                                  <option value="">Sem fornecedor</option>
+                                  {suppliers.map((supplier) => (
+                                    <option key={supplier.id} value={supplier.id}>
+                                      {supplier.name}
+                                    </option>
+                                  ))}
+                                </select>
+                                <input
+                                  type="date"
+                                  value={lotExpiresOn}
+                                  onChange={(event) => setLotExpiresOn(event.target.value)}
+                                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                                />
+                                <input
+                                  type="text"
+                                  value={lotNote}
+                                  onChange={(event) => setLotNote(event.target.value)}
+                                  placeholder="Observação (opcional)"
+                                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
+                                />
+                                {lot.quantityReceived !== lot.quantityRemaining && (
+                                  <p className="text-[11px] text-muted-foreground">
+                                    Já saíram {lot.quantityReceived - lot.quantityRemaining} {item.unit}{" "}
+                                    desse lote (venda ou perda) — a quantidade recebida não pode cair
+                                    abaixo disso.
+                                  </p>
+                                )}
+                                {lotError && <p className="text-destructive">{lotError}</p>}
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => setEditingLotId(null)}
+                                    className="h-9 flex-1 rounded-lg border border-border text-xs font-medium text-muted-foreground"
+                                  >
+                                    Cancelar
+                                  </button>
+                                  <button
+                                    onClick={() => void submitLotEdit(item)}
+                                    disabled={lotBusy}
+                                    className="h-9 flex-1 rounded-lg bg-primary text-xs font-semibold text-primary-foreground disabled:opacity-60"
+                                  >
+                                    {lotBusy ? "Salvando..." : "Salvar lote"}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="flex items-center justify-between gap-2 text-muted-foreground">
+                                <span>
+                                  <span className="font-medium text-foreground">
+                                    {lot.quantityRemaining} / {lot.quantityReceived} {item.unit}
+                                  </span>{" "}
+                                  restante · recebido{" "}
+                                  {new Date(lot.receivedAt).toLocaleDateString("pt-BR")}
+                                  {lot.expiresOn
+                                    ? ` · vence ${new Date(`${lot.expiresOn}T00:00:00`).toLocaleDateString("pt-BR")}`
+                                    : ""}
+                                  {lot.unitCost !== null ? ` · ${brl(lot.unitCost)}/${item.unit}` : ""}
+                                  {lot.supplierName ? ` · ${lot.supplierName}` : ""}
+                                </span>
+                                <button
+                                  onClick={() => openLotEditor(lot)}
+                                  className="shrink-0 text-xs font-medium text-primary"
+                                >
+                                  Editar
+                                </button>
+                              </div>
+                            )}
                           </li>
                         ))}
                       </ul>
@@ -1011,6 +1155,7 @@ function BebidasBaseTab() {
   const deleteFn = useServerFn(deleteBaseDrink);
   const lossFn = useServerFn(addBaseDrinkLoss);
   const lotsFn = useServerFn(getStockLots);
+  const updateLotFn = useServerFn(updateStockLot);
   return (
     <ComponentStockTab
       kind="base_drink"
@@ -1048,6 +1193,7 @@ function BebidasBaseTab() {
         lossFn({ data: { baseDrinkId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
       }
       lotsFn={(input) => lotsFn({ data: { kind: "base_drink", componentId: input.data.componentId } })}
+      updateLotFn={(input) => updateLotFn({ data: { kind: "base_drink", ...input.data } })}
     />
   );
 }
@@ -1059,6 +1205,7 @@ function IngredientesTab() {
   const deleteFn = useServerFn(deleteIngredient);
   const lossFn = useServerFn(addIngredientLoss);
   const lotsFn = useServerFn(getStockLots);
+  const updateLotFn = useServerFn(updateStockLot);
   return (
     <ComponentStockTab
       kind="ingredient"
@@ -1093,6 +1240,7 @@ function IngredientesTab() {
       }
       deleteFn={(input) => deleteFn({ data: input.data })}
       lotsFn={(input) => lotsFn({ data: { kind: "ingredient", componentId: input.data.componentId } })}
+      updateLotFn={(input) => updateLotFn({ data: { kind: "ingredient", ...input.data } })}
       lossFn={(input) =>
         lossFn({ data: { ingredientId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
       }

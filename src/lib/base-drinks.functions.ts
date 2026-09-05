@@ -1112,7 +1112,7 @@ export const getStockLots = createServerFn({ method: "POST" })
     const { data: lots } = await admin()
       .from("fastbar_stock_lots")
       .select(
-        "id, unit_cost, quantity_received, quantity_remaining, expires_on, received_at, note, fastbar_suppliers(name)",
+        "id, unit_cost, quantity_received, quantity_remaining, expires_on, received_at, note, supplier_id, fastbar_suppliers(name)",
       )
       .eq("component_kind", data.kind)
       .eq("component_id", data.componentId)
@@ -1132,10 +1132,121 @@ export const getStockLots = createServerFn({ method: "POST" })
           expiresOn: lot.expires_on,
           receivedAt: lot.received_at,
           note: lot.note,
+          supplierId: lot.supplier_id,
           supplierName: supplierName ?? null,
         };
       }),
     };
+  });
+
+/**
+ * Edita um lote já registrado — quantidade recebida, custo, validade, fornecedor e observação,
+ * mesmo que o lote já tenha sido parcialmente vendido. O saldo do item e o custo médio são
+ * corrigidos na hora, não recalculados do zero: a correção "desfaz" o valor que esse lote tinha
+ * contribuído (na quantidade e custo antigos) e reaplica com os novos números — mesma lógica que
+ * já é usada pra somar uma entrada nova ao custo médio, só que em cima do que esse lote específico
+ * trouxe, não do histórico inteiro.
+ *
+ * Não deixa reduzir a quantidade recebida abaixo do que já foi consumido desse lote (venda ou
+ * perda já tiraram esse tanto dele) — isso deixaria o saldo restante do lote negativo.
+ */
+export const updateStockLot = createServerFn({ method: "POST" })
+  .inputValidator(
+    (data: {
+      kind: "base_drink" | "ingredient";
+      lotId: string;
+      quantityReceived: number;
+      unitCost?: number | undefined;
+      supplierId?: string | undefined;
+      expiresOn?: string | undefined;
+      note?: string | undefined;
+    }) => data,
+  )
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    const quantityReceived = Number(data.quantityReceived);
+    if (!Number.isFinite(quantityReceived) || quantityReceived <= 0) {
+      return { ok: false as const, message: "Informe uma quantidade recebida válida." };
+    }
+
+    let unitCost: number | null = null;
+    if (data.unitCost !== undefined) {
+      if (!Number.isFinite(data.unitCost) || data.unitCost < 0) {
+        return { ok: false as const, message: "Custo por unidade inválido." };
+      }
+      unitCost = data.unitCost > 0 ? data.unitCost : null;
+    }
+
+    const { data: lot } = await admin()
+      .from("fastbar_stock_lots")
+      .select("id, component_kind, component_id, unit_cost, quantity_received, quantity_remaining")
+      .eq("id", data.lotId)
+      .maybeSingle();
+    if (!lot || lot.component_kind !== data.kind) {
+      return { ok: false as const, message: "Lote não encontrado." };
+    }
+
+    const consumed = Number(lot.quantity_received) - Number(lot.quantity_remaining);
+    const newRemaining = quantityReceived - consumed;
+    if (newRemaining < 0) {
+      return {
+        ok: false as const,
+        message: `Esse lote já teve ${consumed} consumido (venda ou perda) — não dá pra reduzir a quantidade recebida abaixo disso.`,
+      };
+    }
+
+    const table = data.kind === "base_drink" ? "fastbar_base_drinks" : "fastbar_drink_ingredients";
+    const { data: component } = await admin()
+      .from(table)
+      .select("id, current_stock, average_cost")
+      .eq("id", lot.component_id)
+      .maybeSingle();
+    if (!component) return { ok: false as const, message: "Item não encontrado." };
+
+    const deltaQty = quantityReceived - Number(lot.quantity_received);
+    const newComponentStock = Number(component.current_stock) + deltaQty;
+    if (newComponentStock < 0) {
+      return { ok: false as const, message: "Esse ajuste deixaria o estoque do item negativo." };
+    }
+
+    // "Desfaz" o valor que o lote antigo tinha somado ao custo médio (na quantidade/custo de antes)
+    // e soma de volta com os números novos. Lote sem custo informado conta como se tivesse entrado
+    // no custo médio de então — mesma regra usada quando a entrada original foi lançada.
+    const currentAvg = Number(component.average_cost);
+    const oldUnitCost = lot.unit_cost !== null ? Number(lot.unit_cost) : currentAvg;
+    const newUnitCost = unitCost !== null ? unitCost : currentAvg;
+    const totalValueBefore = Number(component.current_stock) * currentAvg;
+    const totalValueAfter =
+      totalValueBefore - oldUnitCost * Number(lot.quantity_received) + newUnitCost * quantityReceived;
+    const newAvg = newComponentStock > 0 ? Math.max(totalValueAfter / newComponentStock, 0) : 0;
+
+    const { error: lotError } = await admin()
+      .from("fastbar_stock_lots")
+      .update({
+        quantity_received: quantityReceived,
+        quantity_remaining: newRemaining,
+        unit_cost: unitCost,
+        supplier_id: data.supplierId || null,
+        expires_on: data.expiresOn?.trim() || null,
+        note: data.note?.trim() || null,
+      })
+      .eq("id", lot.id);
+    if (lotError) return { ok: false as const, message: "Não foi possível salvar o lote." };
+
+    const { error: componentError } = await admin()
+      .from(table)
+      .update({ current_stock: newComponentStock, average_cost: newAvg })
+      .eq("id", component.id);
+    if (componentError) {
+      return {
+        ok: false as const,
+        message: "Lote salvo, mas o saldo do item não foi atualizado — confira o Estoque.",
+      };
+    }
+
+    return { ok: true as const };
   });
 
 /**
