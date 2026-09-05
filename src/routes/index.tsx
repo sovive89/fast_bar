@@ -1,9 +1,6 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { Lock } from "lucide-react";
-import { getPublicBranding, type PublicBranding } from "@/lib/integrations.functions";
-import { brandColorStyle } from "@/lib/brand-color";
+import { BrandingProvider, useBranding } from "@/lib/branding";
 
 export const Route = createFileRoute("/")({
   head: () => ({
@@ -20,18 +17,20 @@ export const Route = createFileRoute("/")({
 });
 
 function ClientHome() {
-  const [branding, setBranding] = useState<PublicBranding | null>(null);
-  const loadBranding = useServerFn(getPublicBranding);
+  return (
+    <BrandingProvider>
+      <ClientHomeContent />
+    </BrandingProvider>
+  );
+}
 
-  useEffect(() => {
-    void loadBranding().then(setBranding);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+function ClientHomeContent() {
+  const { branding, style } = useBranding();
 
   return (
     <main
       className="relative mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10"
-      style={brandColorStyle(branding?.primaryColor)}
+      style={style}
     >
       <Link
         to="/equipe"
@@ -40,7 +39,7 @@ function ClientHome() {
       >
         <Lock className="h-4 w-4" />
       </Link>
-      {branding?.logoUrl && (
+      {branding.logoUrl && (
         <img
           src={branding.logoUrl}
           alt={branding.brandName}
@@ -48,7 +47,7 @@ function ClientHome() {
         />
       )}
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-        {branding?.brandName ?? ""}
+        {branding.brandName}
       </p>
       <h1 className="mt-2 text-4xl font-bold">Sua comanda digital</h1>
       <p className="mt-2 text-sm text-muted-foreground">

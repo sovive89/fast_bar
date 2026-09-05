@@ -1,9 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
 import { OpenTabForm } from "@/features/client/components/OpenTabForm";
-import { getPublicBranding, type PublicBranding } from "@/lib/integrations.functions";
-import { brandColorStyle } from "@/lib/brand-color";
+import { BrandingProvider, useBranding } from "@/lib/branding";
 
 export const Route = createFileRoute("/abrir")({
   head: () => ({
@@ -20,28 +17,30 @@ export const Route = createFileRoute("/abrir")({
 });
 
 function AbrirPage() {
-  const [branding, setBranding] = useState<PublicBranding | null>(null);
-  const loadBranding = useServerFn(getPublicBranding);
+  return (
+    <BrandingProvider>
+      <AbrirPageContent />
+    </BrandingProvider>
+  );
+}
 
-  useEffect(() => {
-    void loadBranding().then(setBranding);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+function AbrirPageContent() {
+  const { branding, style } = useBranding();
 
   return (
     <main
       className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10"
-      style={brandColorStyle(branding?.primaryColor)}
+      style={style}
     >
       <div className="mb-6 flex flex-col items-center gap-2 text-center">
-        {branding?.logoUrl && (
+        {branding.logoUrl && (
           <img
             src={branding.logoUrl}
             alt={branding.brandName}
             className="h-16 w-16 rounded-2xl object-cover shadow-soft"
           />
         )}
-        <h1 className="text-xl font-bold">{branding?.brandName ?? "Bar"}</h1>
+        <h1 className="text-xl font-bold">{branding.brandName}</h1>
       </div>
       <OpenTabForm />
     </main>

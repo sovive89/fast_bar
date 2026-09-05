@@ -16,10 +16,15 @@ import {
 import {
   getIntegrations,
   updateIntegration,
-  uploadBrandLogo,
   type IntegrationKey,
   type IntegrationRow,
 } from "@/lib/integrations.functions";
+import {
+  uploadBrandLogo,
+  hasReadableContrast,
+  brandingStyle,
+  HEX_COLOR_PATTERN,
+} from "@/lib/branding";
 
 export const Route = createFileRoute("/caixa/conexoes")({
   head: () => ({
@@ -271,6 +276,10 @@ function BrandingModule({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const uploadLogo = useServerFn(uploadBrandLogo);
+  const isValidColor = HEX_COLOR_PATTERN.test(primaryColor);
+  // Mesma função usada nas rotas reais do cliente (brandingStyle) — a prévia não é uma
+  // implementação visual paralela, é os tokens de verdade aplicados num recorte pequeno da tela.
+  const previewStyle = brandingStyle({ primaryColor: isValidColor ? primaryColor : null });
 
   useEffect(() => {
     // A URL da página de abertura depende do domínio de produção (ainda pode mudar até o domínio
@@ -376,7 +385,7 @@ function BrandingModule({
             <div className="mt-1 flex items-center gap-2">
               <input
                 type="color"
-                value={/^#[0-9a-fA-F]{6}$/.test(primaryColor) ? primaryColor : DEFAULT_PRIMARY_COLOR}
+                value={isValidColor ? primaryColor : DEFAULT_PRIMARY_COLOR}
                 onChange={(e) => setPrimaryColor(e.target.value)}
                 className="h-8 w-10 cursor-pointer rounded border border-border bg-background p-0.5"
               />
@@ -396,6 +405,37 @@ function BrandingModule({
                   Limpar
                 </button>
               )}
+            </div>
+            {isValidColor && !hasReadableContrast(primaryColor) && (
+              <p className="mt-1.5 text-xs text-amber-500">
+                A combinação escolhida apresenta baixo contraste. Considere usar uma cor mais clara
+                ou mais escura.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <span className="text-xs font-medium text-muted-foreground">Prévia</span>
+            <div
+              className="mt-1 space-y-2 rounded-xl border border-border bg-background p-3"
+              style={previewStyle}
+            >
+              <div className="flex items-center gap-2">
+                {logoUrl && (
+                  <img src={logoUrl} alt="Logo" className="h-6 w-6 rounded-lg object-cover" />
+                )}
+                <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+                  {brandName || "Bar"}
+                </p>
+              </div>
+              <p className="text-sm font-bold">Sua comanda digital</p>
+              <button
+                type="button"
+                disabled
+                className="w-full rounded-xl bg-primary px-4 py-2 text-center text-xs font-semibold text-primary-foreground"
+              >
+                Abrir comanda
+              </button>
             </div>
           </div>
 

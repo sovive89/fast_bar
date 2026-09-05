@@ -1,8 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
-import { useServerFn } from "@tanstack/react-start";
-import { getPublicBranding, type PublicBranding } from "@/lib/integrations.functions";
-import { brandColorStyle } from "@/lib/brand-color";
+import { BrandingProvider, useBranding } from "@/lib/branding";
 
 export const Route = createFileRoute("/politica-privacidade")({
   head: () => ({
@@ -17,21 +14,19 @@ export const Route = createFileRoute("/politica-privacidade")({
  * ajustar o texto se o estabelecimento tiver uma política própria mais detalhada.
  */
 function PrivacyPolicyPage() {
-  const [branding, setBranding] = useState<PublicBranding | null>(null);
-  const loadBranding = useServerFn(getPublicBranding);
+  return (
+    <BrandingProvider>
+      <PrivacyPolicyContent />
+    </BrandingProvider>
+  );
+}
 
-  useEffect(() => {
-    void loadBranding().then(setBranding);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const brandName = branding?.brandName ?? "o estabelecimento";
+function PrivacyPolicyContent() {
+  const { branding, style } = useBranding();
+  const brandName = branding.brandName || "o estabelecimento";
 
   return (
-    <main
-      className="mx-auto w-full max-w-md px-5 py-10"
-      style={brandColorStyle(branding?.primaryColor)}
-    >
+    <main className="mx-auto w-full max-w-md px-5 py-10" style={style}>
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Privacidade</p>
       <h1 className="mt-1 text-2xl font-bold">Política de Privacidade</h1>
 

@@ -1,9 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Field } from "@/components/shared/Field";
-import { getPublicBranding, type PublicBranding } from "@/lib/integrations.functions";
-import { brandColorStyle } from "@/lib/brand-color";
+import { BrandingProvider, useBranding } from "@/lib/branding";
 import {
   ADMINISTRATIVE_REGIONS,
   HOW_FOUND_OUT_OPTIONS,
@@ -44,12 +43,19 @@ function selectClass() {
 }
 
 function CustomerProfilePage() {
+  return (
+    <BrandingProvider>
+      <CustomerProfileContent />
+    </BrandingProvider>
+  );
+}
+
+function CustomerProfileContent() {
   const { sessionId } = Route.useParams();
   const navigate = useNavigate();
   const submit = useServerFn(submitCustomerProfile);
-  const loadBranding = useServerFn(getPublicBranding);
+  const { branding, style } = useBranding();
 
-  const [branding, setBranding] = useState<PublicBranding | null>(null);
   const [fullName, setFullName] = useState("");
   const [birthdayDay, setBirthdayDay] = useState("");
   const [birthdayMonth, setBirthdayMonth] = useState("");
@@ -58,11 +64,6 @@ function CustomerProfilePage() {
   const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    void loadBranding().then(setBranding);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   async function goToTab() {
     await navigate({ to: "/c/$sessionId", params: { sessionId } });
@@ -95,13 +96,13 @@ function CustomerProfilePage() {
   return (
     <main
       className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10"
-      style={brandColorStyle(branding?.primaryColor)}
+      style={style}
     >
       <div>
         <h1 className="text-2xl font-bold">Complete seu cadastro</h1>
         <p className="mt-1 text-sm text-muted-foreground">
           Ganhe um brinde da casa e receba ofertas e novidades{" "}
-          {branding?.brandName ? `do ${branding.brandName}` : "do estabelecimento"}.
+          {branding.brandName ? `do ${branding.brandName}` : "do estabelecimento"}.
         </p>
       </div>
 
@@ -192,7 +193,7 @@ function CustomerProfilePage() {
             />
             <span className="text-sm">
               Sim, quero receber ofertas, novidades, eventos e benefícios
-              {branding?.brandName ? ` do ${branding.brandName}` : " do estabelecimento"} pelo
+              {branding.brandName ? ` do ${branding.brandName}` : " do estabelecimento"} pelo
               WhatsApp e/ou e-mail.
             </span>
           </label>
