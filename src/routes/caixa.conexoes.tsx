@@ -180,19 +180,61 @@ function ConnectionCard({
 }
 
 /**
- * Card só de status pro Twilio Verify (verificação de celular por WhatsApp no /abrir). Diferente
- * dos outros cards de Conexões, não tem campos de formulário: as credenciais Twilio vivem só em
- * variável de ambiente do deploy, nunca no banco — então aqui só mostra se estão configuradas ou
- * não, pra equipe/dono saberem sem precisar olhar o Vercel.
+ * Verificação de celular (Twilio Verify) — confirma o número do cliente por WhatsApp ou SMS antes
+ * de abrir a comanda pelo QR code. Config por tenant em fastbar_integrations (key "twilio"), igual
+ * ao resto de Conexões: cada bar usa a própria conta Twilio (número, custo e limite são dele), não
+ * uma variável de ambiente compartilhada do deploy. Sem essa config completa e habilitada, a etapa
+ * de OTP fica desligada e a comanda pelo QR abre direto pra fila de confirmação da equipe.
  */
-function VerificationStatusCard() {
+function TwilioVerificationModule({
+  row,
+  onSave,
+}: {
+  row: IntegrationRow | undefined;
+  onSave: (key: IntegrationKey, enabled: boolean, config: Record<string, string>) => Promise<void>;
+}) {
+  const config = (row?.config ?? {}) as Record<string, string>;
+  const [accountSid, setAccountSid] = useState(config["accountSid"] ?? "");
+  const [authToken, setAuthToken] = useState(config["authToken"] ?? "");
+  const [verifyServiceSid, setVerifyServiceSid] = useState(config["verifyServiceSid"] ?? "");
+  const [saving, setSaving] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+  const enabled = row?.enabled ?? false;
   const [configured, setConfigured] = useState<boolean | null>(null);
-  const load = useServerFn(getVerificationStatus);
+  const loadStatus = useServerFn(getVerificationStatus);
 
   useEffect(() => {
-    void load().then((res) => setConfigured(res.configured));
+    void loadStatus().then((res) => setConfigured(res.configured));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [row?.updated_at]);
+
+  function currentValues() {
+    return { accountSid, authToken, verifyServiceSid };
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave("twilio", enabled, currentValues());
+      const res = await loadStatus();
+      setConfigured(res.configured);
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleToggle(next: boolean) {
+    setSaving(true);
+    try {
+      await onSave("twilio", next, currentValues());
+      const res = await loadStatus();
+      setConfigured(res.configured);
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <div className="rounded-2xl border border-border bg-card p-4">
@@ -203,7 +245,7 @@ function VerificationStatusCard() {
           </span>
           <div>
             <div className="flex items-center gap-2">
-              <p className="text-sm font-semibold">Verificação por WhatsApp (Twilio Verify)</p>
+              <p className="text-sm font-semibold">Verificação por celular (Twilio Verify)</p>
               {configured === true && (
                 <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">
                   <CheckCircle2 className="h-3 w-3" /> Configurado
@@ -216,12 +258,67 @@ function VerificationStatusCard() {
               )}
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Confirma o celular do cliente antes de abrir a comanda pelo QR code. Por segurança,
-              as credenciais Twilio são configuradas direto no ambiente do servidor (variáveis de
-              ambiente), não aqui — fale com quem cuida do deploy para configurar ou trocar.
+              Confirma o celular do cliente (WhatsApp ou SMS, o cliente escolhe) antes de abrir a
+              comanda pelo QR code. Pegue essas três informações no Console da Twilio
+              (twilio.com/console) — Account SID e Auth Token na página inicial, e o Verify Service
+              SID em Verify → Services (crie um serviço se ainda não tiver).
             </p>
           </div>
         </div>
+        <label className="flex shrink-0 cursor-pointer items-center gap-2">
+          <input
+            type="checkbox"
+            className="h-4 w-4 accent-primary"
+            checked={enabled}
+            disabled={saving}
+            onChange={(e) => void handleToggle(e.target.checked)}
+          />
+        </label>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Account SID</label>
+          <input
+            type="text"
+            value={accountSid}
+            placeholder="AC..."
+            onChange={(e) => setAccountSid(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+          />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-muted-foreground">Auth Token</label>
+          <input
+            type="password"
+            value={authToken}
+            placeholder="token secreto da conta"
+            onChange={(e) => setAuthToken(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+          />
+        </div>
+        <div className="sm:col-span-2">
+          <label className="text-xs font-medium text-muted-foreground">Verify Service SID</label>
+          <input
+            type="text"
+            value={verifyServiceSid}
+            placeholder="VA..."
+            onChange={(e) => setVerifyServiceSid(e.target.value)}
+            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+          />
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center justify-end gap-3">
+        {savedMsg && <span className="text-xs text-emerald-500">Salvo.</span>}
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() => void handleSave()}
+          className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+        >
+          {saving ? "Salvando..." : "Salvar configuração"}
+        </button>
       </div>
     </div>
   );
@@ -233,9 +330,8 @@ function VerificationStatusCard() {
  * da equipe caçar o ID na mão), a URL do webhook pronta pra copiar e colar no painel do Mercado
  * Pago, e o campo do segredo do webhook (usado só pra conferir que a notificação é mesmo do
  * Mercado Pago, nunca aparece de novo depois de salvo). Fica salvo na mesma linha 'mercado_pago' de
- * fastbar_integrations que o hub genérico usava antes — o resto de Conexões continua guardando
- * config no banco normalmente; só o Twilio Verify (verificação de celular) é env-var-only, por
- * exigência própria daquela integração.
+ * fastbar_integrations que o hub genérico usava antes — todo o resto de Conexões (Twilio incluído)
+ * guarda config no banco do mesmo jeito, por tenant.
  */
 function MercadoPagoModule({
   row,
@@ -486,7 +582,7 @@ function ConnectionsPage() {
         <p className="mt-6 text-sm text-muted-foreground">Carregando...</p>
       ) : (
         <div className="mt-6 space-y-3">
-          <VerificationStatusCard />
+          <TwilioVerificationModule row={rows.find((r) => r.key === "twilio")} onSave={handleSave} />
           <MercadoPagoModule row={rows.find((r) => r.key === "mercado_pago")} onSave={handleSave} />
           {CARDS.map((card) => (
             <ConnectionCard

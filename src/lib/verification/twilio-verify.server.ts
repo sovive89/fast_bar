@@ -10,30 +10,18 @@ import type {
  * tentativas do código; este app nunca vê nem armazena o código em si). É o único arquivo do
  * projeto que sabe que existe Twilio.
  *
- * Credenciais SÓ por variável de ambiente — nunca na tabela fastbar_integrations (banco), nunca no
- * frontend, nunca versionadas no Git. Diferente do resto do módulo Conexões (que guarda config no
- * banco por conector): aqui é exigência explícita da especificação de segurança para esta
- * integração específica, por lidar com autenticação de identidade.
+ * Credenciais chegam por parâmetro (config do tenant, lida em service.server.ts), não por
+ * variável de ambiente. Isso mudou de propósito: a versão anterior lia direto de
+ * process.env porque na época só existia um deploy. Numa versão multi-tenant, cada bar tem sua
+ * própria conta Twilio (número, custo e limites são dele) — variável de ambiente do Vercel é uma
+ * config só, compartilhada por todo mundo que sobe nesse deploy, o que não serve pra isso.
  */
 export class TwilioVerificationProvider implements VerificationProvider {
-  private readonly accountSid: string;
-  private readonly authToken: string;
-  private readonly verifyServiceSid: string;
-
-  constructor() {
-    const accountSid = process.env["TWILIO_ACCOUNT_SID"];
-    const authToken = process.env["TWILIO_AUTH_TOKEN"];
-    const verifyServiceSid = process.env["TWILIO_VERIFY_SERVICE_SID"];
-    if (!accountSid || !authToken || !verifyServiceSid) {
-      throw new Error(
-        "Twilio Verify não configurado: defina TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN e " +
-          "TWILIO_VERIFY_SERVICE_SID nas variáveis de ambiente do deploy.",
-      );
-    }
-    this.accountSid = accountSid;
-    this.authToken = authToken;
-    this.verifyServiceSid = verifyServiceSid;
-  }
+  constructor(
+    private readonly accountSid: string,
+    private readonly authToken: string,
+    private readonly verifyServiceSid: string,
+  ) {}
 
   private authHeader() {
     const encoded = Buffer.from(`${this.accountSid}:${this.authToken}`).toString("base64");

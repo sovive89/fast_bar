@@ -54,17 +54,15 @@ export const updateIntegration = createServerFn({ method: "POST" })
 // (WhatsApp/Instagram/Mercado Pago/etc.) guardadas nesta tabela.
 
 /**
- * Status da verificação de celular por WhatsApp (Twilio Verify) — só diz se as credenciais estão
- * configuradas, nunca os valores. Diferente do resto de Conexões, essa integração não guarda
- * config em fastbar_integrations: as credenciais Twilio vivem só em variável de ambiente do
- * deploy (exigência de segurança específica pra essa integração, por lidar com verificação de
- * identidade). Por isso o card em Conexões é só um indicador, sem campos de formulário.
+ * Status da verificação de celular por WhatsApp/SMS (Twilio Verify) — só diz se a config salva em
+ * Conexões (key "twilio") está completa e habilitada, nunca os valores. Usado pro selo
+ * "Configurado"/"Não configurado" no card — o card em si já mostra e edita os campos.
  */
 export const getVerificationStatus = createServerFn({ method: "POST" }).handler(async () => {
   const { assertRegisterAccess } = await import("./fastbar.server");
   await assertRegisterAccess();
   const { isVerificationConfigured } = await import("./verification/service.server");
-  return { configured: isVerificationConfigured() };
+  return { configured: await isVerificationConfigured() };
 });
 
 /** Diz se a maquininha (Mercado Pago Point) está pronta pra cobrar — habilitada, com token e

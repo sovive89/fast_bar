@@ -29,7 +29,7 @@ export const openClientSession = createServerFn({ method: "POST" })
       "./verification/service.server"
     );
     const channel = data.channel === "sms" ? "sms" : "whatsapp";
-    const verificationOn = isVerificationConfigured();
+    const verificationOn = await isVerificationConfigured();
 
     const name = sanitizeName(data.name);
     const phone = sanitizePhone(data.phone);
