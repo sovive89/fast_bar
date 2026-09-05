@@ -1,4 +1,4 @@
-import type { VerificationProvider } from "./types";
+import type { VerificationChannel, VerificationProvider } from "./types";
 
 let _provider: VerificationProvider | undefined;
 
@@ -30,9 +30,17 @@ export function toE164BR(phone: string): string {
   return `+55${phone}`;
 }
 
-export async function requestPhoneVerification(phone: string) {
+/**
+ * Canal escolhido pelo cliente na tela de abertura. WhatsApp é o padrão (chega na hora e não custa
+ * SMS), mas quem não usa WhatsApp — ou está sem internet no celular — precisa do SMS pra conseguir
+ * abrir a comanda, então a escolha é dele, não nossa.
+ */
+export async function requestPhoneVerification(
+  phone: string,
+  channel: VerificationChannel = "whatsapp",
+) {
   const provider = await getProvider();
-  return provider.sendCode(toE164BR(phone), "whatsapp");
+  return provider.sendCode(toE164BR(phone), channel);
 }
 
 export async function checkPhoneVerification(phone: string, code: string) {

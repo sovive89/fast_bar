@@ -64,13 +64,15 @@ function VerifyCodeContent() {
     }
   }
 
-  async function handleResend() {
+  // O reenvio pode trocar de canal: quem não recebeu no WhatsApp normalmente quer tentar por
+  // SMS (ou o contrário), e obrigar a recomeçar a comanda só pra mudar isso seria absurdo.
+  async function handleResend(channel: "whatsapp" | "sms") {
     if (resending || cooldown > 0) return;
     setResending(true);
     setError(null);
     let result: { ok: boolean; message?: string };
     try {
-      result = await resend({ data: { sessionId } });
+      result = await resend({ data: { sessionId, channel } });
     } catch {
       setResending(false);
       setError("Não foi possível reenviar o código. Atualize a página e tente de novo.");
@@ -97,8 +99,7 @@ function VerifyCodeContent() {
       </p>
       <h1 className="mt-2 text-2xl font-bold">Confirme seu celular</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Mandamos um código de 4 dígitos por WhatsApp pro número que você informou. Digite abaixo
-        pra continuar.
+        Mandamos um código de 4 dígitos pro número que você informou. Digite abaixo pra continuar.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -122,18 +123,33 @@ function VerifyCodeContent() {
         </button>
       </form>
 
-      <button
-        type="button"
-        onClick={() => void handleResend()}
-        disabled={resending || cooldown > 0}
-        className="mt-4 text-center text-xs font-medium text-muted-foreground underline underline-offset-2 disabled:opacity-60"
-      >
-        {resending
-          ? "Reenviando..."
-          : cooldown > 0
-            ? `Reenviar código (${cooldown}s)`
-            : "Reenviar código"}
-      </button>
+      <div className="mt-5 text-center">
+        {resending ? (
+          <p className="text-xs font-medium text-muted-foreground">Reenviando...</p>
+        ) : cooldown > 0 ? (
+          <p className="text-xs font-medium text-muted-foreground">
+            Reenviar código em {cooldown}s
+          </p>
+        ) : (
+          <div className="flex items-center justify-center gap-4">
+            <span className="text-xs text-muted-foreground">Não chegou? Reenviar por</span>
+            <button
+              type="button"
+              onClick={() => void handleResend("whatsapp")}
+              className="text-xs font-semibold text-primary underline underline-offset-2"
+            >
+              WhatsApp
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleResend("sms")}
+              className="text-xs font-semibold text-primary underline underline-offset-2"
+            >
+              SMS
+            </button>
+          </div>
+        )}
+      </div>
       {resent && <p className="mt-1 text-center text-xs text-emerald-500">Código reenviado.</p>}
     </main>
   );

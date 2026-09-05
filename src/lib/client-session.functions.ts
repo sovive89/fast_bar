@@ -20,12 +20,15 @@ import { createServerFn } from "@tanstack/react-start";
  * opcional; o portão de verdade sempre foi a confirmação da equipe no balcão.
  */
 export const openClientSession = createServerFn({ method: "POST" })
-  .inputValidator((data: { name: string; phone: string }) => data)
+  .inputValidator(
+    (data: { name: string; phone: string; channel?: "sms" | "whatsapp" | undefined }) => data,
+  )
   .handler(async ({ data }) => {
     const { admin, sanitizeName, sanitizePhone, upsertCustomer } = await import("./fastbar.server");
     const { requestPhoneVerification, isVerificationConfigured } = await import(
       "./verification/service.server"
     );
+    const channel = data.channel === "sms" ? "sms" : "whatsapp";
     const verificationOn = isVerificationConfigured();
 
     const name = sanitizeName(data.name);
@@ -85,7 +88,7 @@ export const openClientSession = createServerFn({ method: "POST" })
         };
       }
 
-      const sendResult = await requestPhoneVerification(phone);
+      const sendResult = await requestPhoneVerification(phone, channel);
       if (!sendResult.ok) return { ok: false as const, message: sendResult.message };
       return {
         ok: true as const,
@@ -120,7 +123,7 @@ export const openClientSession = createServerFn({ method: "POST" })
       };
     }
 
-    const sendResult = await requestPhoneVerification(phone);
+    const sendResult = await requestPhoneVerification(phone, channel);
     if (!sendResult.ok) {
       return { ok: false as const, message: sendResult.message };
     }
@@ -189,7 +192,9 @@ export const verifyClientCode = createServerFn({ method: "POST" })
 /** Pede um código novo pro Twilio Verify pra mesma comanda ainda não verificada — usado pelo link
  * "Reenviar código" quando o código expirou, não chegou ou o cliente errou demais. */
 export const resendVerificationCode = createServerFn({ method: "POST" })
-  .inputValidator((data: { sessionId: string }) => data)
+  .inputValidator(
+    (data: { sessionId: string; channel?: "sms" | "whatsapp" | undefined }) => data,
+  )
   .handler(async ({ data }) => {
     const { admin } = await import("./fastbar.server");
     const { requestPhoneVerification } = await import("./verification/service.server");
@@ -204,7 +209,11 @@ export const resendVerificationCode = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Comanda não encontrada ou já verificada." };
     }
 
-    const sendResult = await requestPhoneVerification(session.phone);
+    // Reenvio pode trocar de canal: quem não recebeu no WhatsApp costuma querer tentar por SMS.
+    const sendResult = await requestPhoneVerification(
+      session.phone,
+      data.channel === "sms" ? "sms" : "whatsapp",
+    );
     if (!sendResult.ok) return { ok: false as const, message: sendResult.message };
 
     return { ok: true as const };

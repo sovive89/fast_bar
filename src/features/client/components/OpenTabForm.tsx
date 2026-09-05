@@ -11,6 +11,9 @@ export function OpenTabForm() {
 
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  // WhatsApp é o padrão (chega na hora e não gasta SMS), mas quem não usa WhatsApp ou está sem
+  // internet no celular precisa do SMS pra conseguir abrir a comanda — a escolha é do cliente.
+  const [channel, setChannel] = useState<"whatsapp" | "sms">("whatsapp");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -26,7 +29,7 @@ export function OpenTabForm() {
     // pra sempre, sem mensagem nenhuma: a pessoa só descobria recarregando a página por conta
     // própria. Agora qualquer falha mostra um erro e libera o botão de novo.
     try {
-      const result = await openSession({ data: { name, phone } });
+      const result = await openSession({ data: { name, phone, channel } });
 
       if (!result.ok) {
         setError(result.message);
@@ -72,13 +75,37 @@ export function OpenTabForm() {
         inputMode="tel"
         placeholder="(11) 91234-5678"
       />
+      <div>
+        <span className="text-sm font-medium">Receber o código por</span>
+        <div className="mt-1.5 grid grid-cols-2 gap-3">
+          {(
+            [
+              { id: "whatsapp", label: "WhatsApp" },
+              { id: "sms", label: "SMS" },
+            ] as const
+          ).map((option) => (
+            <button
+              key={option.id}
+              type="button"
+              onClick={() => setChannel(option.id)}
+              className={`h-12 rounded-xl text-sm font-semibold transition-colors ${
+                channel === option.id
+                  ? "bg-primary text-primary-foreground shadow-soft"
+                  : "border border-border text-muted-foreground"
+              }`}
+            >
+              {option.label}
+            </button>
+          ))}
+        </div>
+      </div>
       {error && <p className="text-sm text-destructive">{error}</p>}
       <button
         type="submit"
         disabled={busy}
         className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
       >
-        {busy ? "Abrindo comanda..." : "Abrir comanda"}
+        {busy ? "Enviando código..." : "Receber código de verificação"}
       </button>
     </form>
   );
