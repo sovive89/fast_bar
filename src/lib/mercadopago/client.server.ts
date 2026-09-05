@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { PointOrder, PointTerminal } from "./types";
 
 /**
@@ -87,7 +88,17 @@ export async function getPointOrder(accessToken: string, orderId: string): Promi
 
 export async function cancelPointOrder(accessToken: string, orderId: string): Promise<boolean> {
   try {
-    const res = await mpFetch(accessToken, `/v1/orders/${orderId}/cancel`, { method: "POST" });
+    // X-Idempotency-Key é obrigatório aqui — sem ele o Mercado Pago recusa com HTTP 400
+    // (empty_required_header) e o pedido continua vivo do lado deles (podendo travar o
+    // terminal pra próxima cobrança, com o mesmo 409 de "já na fila" que já vimos antes).
+    const res = await mpFetch(accessToken, `/v1/orders/${orderId}/cancel`, {
+      method: "POST",
+      headers: { "X-Idempotency-Key": randomUUID() },
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      console.error("Mercado Pago recusou o cancelamento do pedido:", res.status, JSON.stringify(json));
+    }
     return res.ok;
   } catch (err) {
     console.error("Mercado Pago: erro de rede ao cancelar pedido", err);
