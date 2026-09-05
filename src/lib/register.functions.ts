@@ -507,6 +507,18 @@ export const checkMachineChargeStatus = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/** Estorna o pagamento de uma comanda já paga na maquininha — cliente pagou errado, valor errado,
+ * ou pediu o dinheiro de volta. Não reabre a comanda nem desfaz o "paid": só devolve o dinheiro no
+ * Mercado Pago e marca o estorno na comanda. */
+export const refundMachineCharge = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const { assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { refundPointCharge } = await import("./mercadopago/service.server");
+    return refundPointCharge(data.sessionId);
+  });
+
 /**
  * Limpa a tela arquivando de uma vez todas as comandas já fechadas/pagas. Nada é apagado: os
  * valores continuam no faturamento e nos relatórios. Comanda aberta nunca é tocada.

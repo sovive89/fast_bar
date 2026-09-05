@@ -86,6 +86,32 @@ export async function getPointOrder(accessToken: string, orderId: string): Promi
   }
 }
 
+/** Estorno total de um pedido já pago (status "finished" na nossa consulta / "processed" na API
+ * crua do Mercado Pago). Só funciona dentro de 90 dias do pagamento (regra deles, não nossa). */
+export async function refundPointOrder(
+  accessToken: string,
+  orderId: string,
+): Promise<{ ok: true } | { ok: false; message: string }> {
+  try {
+    const res = await mpFetch(accessToken, `/v1/orders/${orderId}/refund`, {
+      method: "POST",
+      headers: { "X-Idempotency-Key": randomUUID() },
+      body: "{}",
+    });
+    if (!res.ok) {
+      const json = await res.json().catch(() => null);
+      console.error("Mercado Pago recusou o estorno do pedido:", res.status, JSON.stringify(json));
+      const message =
+        typeof json?.message === "string" ? json.message : `Mercado Pago recusou o estorno (HTTP ${res.status}).`;
+      return { ok: false, message };
+    }
+    return { ok: true };
+  } catch (err) {
+    console.error("Mercado Pago: erro de rede ao estornar pedido", err);
+    return { ok: false, message: "Não foi possível estornar o pagamento. Tente novamente." };
+  }
+}
+
 export async function cancelPointOrder(accessToken: string, orderId: string): Promise<boolean> {
   try {
     // X-Idempotency-Key é obrigatório aqui — sem ele o Mercado Pago recusa com HTTP 400

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { cancelPointOrder, createPointOrder, getPointOrder, listPointTerminals } from "./client.server";
+import { cancelPointOrder, createPointOrder, getPointOrder, listPointTerminals, refundPointOrder } from "./client.server";
 
 /** Config salva em fastbar_integrations (key='mercado_pago') — mesmo padrão DB-config do resto de
  * Conexões (diferente do Twilio, que ficou só em env var por exigência específica daquela
@@ -151,6 +151,7 @@ export async function reconcilePointOrder(orderId: string) {
         paid_at: nowIso,
         payment_method: method,
         pos_order_id: null,
+        pos_paid_order_id: orderId,
         pos_requested_at: null,
       })
       .eq("id", sessionId)
@@ -169,4 +170,36 @@ export async function reconcilePointOrder(orderId: string) {
       .eq("pos_order_id", orderId);
   }
   // created/processing/at_terminal: cobrança ainda em andamento, nada a fazer ainda.
+}
+
+/** Estorna o pagamento feito na maquininha pra uma comanda já paga. Não desfaz a comanda em si
+ * (os itens já foram servidos) — só devolve o dinheiro pro cliente e marca `pos_refunded_at`, pra
+ * a equipe saber que aquele pagamento específico não vale mais como receita de verdade. Só
+ * funciona pra comandas pagas via maquininha (é só delas que a gente guarda o pos_paid_order_id) e
+ * dentro do prazo que o Mercado Pago aceita (90 dias). */
+export async function refundPointCharge(sessionId: string) {
+  const { admin } = await import("../fastbar.server");
+  const { data: session } = await admin()
+    .from("fastbar_sessions")
+    .select("pos_paid_order_id, pos_refunded_at")
+    .eq("id", sessionId)
+    .maybeSingle();
+  if (!session?.pos_paid_order_id) {
+    return { ok: false as const, message: "Essa comanda não foi paga pela maquininha, não dá pra estornar por aqui." };
+  }
+  if (session.pos_refunded_at) {
+    return { ok: false as const, message: "Esse pagamento já foi estornado." };
+  }
+
+  const cfg = await getConfig();
+  if (!cfg.accessToken) return { ok: false as const, message: "Maquininha não configurada em Conexões." };
+
+  const result = await refundPointOrder(cfg.accessToken, session.pos_paid_order_id);
+  if (!result.ok) return { ok: false as const, message: result.message };
+
+  await admin()
+    .from("fastbar_sessions")
+    .update({ pos_refunded_at: new Date().toISOString() })
+    .eq("id", sessionId);
+  return { ok: true as const };
 }

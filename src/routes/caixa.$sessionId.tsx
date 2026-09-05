@@ -13,6 +13,7 @@ import {
   checkMachineChargeStatus,
   closeSession,
   confirmSession,
+  refundMachineCharge,
   registerPayment,
   removeTabItem,
   reopenSession,
@@ -61,6 +62,7 @@ function RegisterTabDetail() {
   const startCharge = useServerFn(startMachineCharge);
   const cancelCharge = useServerFn(cancelMachineCharge);
   const checkCharge = useServerFn(checkMachineChargeStatus);
+  const refundCharge = useServerFn(refundMachineCharge);
   const machineStatus = useServerFn(getMachinePaymentStatus);
 
   useEffect(() => {
@@ -330,6 +332,32 @@ function RegisterTabDetail() {
           >
             Reabrir comanda
           </button>
+        )}
+
+        {session.status === "paid" && session.pos_paid_order_id && (
+          <div className="space-y-2 rounded-xl border border-dashed border-border p-4">
+            {session.pos_refunded_at ? (
+              <p className="text-xs font-medium text-muted-foreground">
+                Pagamento estornado em {hhmm(session.pos_refunded_at)}.
+              </p>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  Pago na maquininha. Cliente pediu o dinheiro de volta ou pagou errado? Dá pra
+                  estornar direto no Mercado Pago (até 90 dias após o pagamento).
+                </p>
+                <button
+                  onClick={() =>
+                    void run(() => refundCharge({ data: { sessionId: session.id } }))
+                  }
+                  disabled={busy}
+                  className="h-10 w-full rounded-xl border border-destructive/40 text-sm font-medium text-destructive disabled:opacity-60"
+                >
+                  Estornar pagamento
+                </button>
+              </>
+            )}
+          </div>
         )}
       </section>
     </main>

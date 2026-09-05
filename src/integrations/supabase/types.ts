@@ -729,6 +729,8 @@ export type Database = {
           phone: string | null
           pos_amount: number | null
           pos_order_id: string | null
+          pos_paid_order_id: string | null
+          pos_refunded_at: string | null
           pos_requested_at: string | null
           started_at: string | null
           status: string
@@ -750,6 +752,8 @@ export type Database = {
           phone?: string | null
           pos_amount?: number | null
           pos_order_id?: string | null
+          pos_paid_order_id?: string | null
+          pos_refunded_at?: string | null
           pos_requested_at?: string | null
           started_at?: string | null
           status?: string
@@ -771,6 +775,8 @@ export type Database = {
           phone?: string | null
           pos_amount?: number | null
           pos_order_id?: string | null
+          pos_paid_order_id?: string | null
+          pos_refunded_at?: string | null
           pos_requested_at?: string | null
           started_at?: string | null
           status?: string

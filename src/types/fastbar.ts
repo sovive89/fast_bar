@@ -19,6 +19,11 @@ export type BarSession = {
   // "aguardando o terminal"; some sozinho quando o pagamento é confirmado (ou cancelado).
   pos_order_id?: string | null;
   pos_amount?: number | null;
+  // ID do pedido no Mercado Pago que efetivamente pagou a comanda — preservado mesmo depois que
+  // pos_order_id é zerado (que acontece assim que o pagamento é confirmado), pra dar pra estornar
+  // depois. Só existe pra comandas pagas via maquininha.
+  pos_paid_order_id?: string | null;
+  pos_refunded_at?: string | null;
 };
 
 export type BarTabItem = {
