@@ -49,13 +49,14 @@ export const updateIntegration = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
-export type PublicBranding = { brandName: string; logoUrl: string | null };
+export type PublicBranding = { brandName: string; logoUrl: string | null; primaryColor: string | null };
 
 /**
  * Lê a identidade visual pra renderizar em rotas do CLIENTE (sem gate de senha, ex.: /abrir e
- * /c/{sessionId}) — por isso não passa por assertRegisterAccess. Só devolve nome/logo, nunca as
- * outras integrações (tokens/ids ficam só no card de admin). Sem config salva, cai pro nome
- * genérico "Pop9Bar" — a tela nunca fica sem marca nenhuma.
+ * /c/{sessionId}) — por isso não passa por assertRegisterAccess. Só devolve nome/logo/cor, nunca
+ * as outras integrações (tokens/ids ficam só no card de admin). Sem config salva, cai pro nome
+ * genérico "Bar" e sem cor customizada — a tela nunca fica sem marca nenhuma, mas também nunca
+ * mostra o nome do software (Pop9Bar) pro cliente final, só a identidade do estabelecimento.
  */
 export const getPublicBranding = createServerFn({ method: "GET" }).handler(async (): Promise<PublicBranding> => {
   const { admin } = await import("./fastbar.server");
@@ -65,9 +66,12 @@ export const getPublicBranding = createServerFn({ method: "GET" }).handler(async
     .eq("key", "branding")
     .maybeSingle();
   const config = (data?.config ?? {}) as IntegrationConfig;
-  const brandName = config["brandName"]?.trim() || "Pop9Bar";
+  const brandName = config["brandName"]?.trim() || "Bar";
   const logoUrl = config["logoUrl"]?.trim() || null;
-  return { brandName, logoUrl };
+  const primaryColor = /^#[0-9a-fA-F]{6}$/.test(config["primaryColor"] ?? "")
+    ? config["primaryColor"]!
+    : null;
+  return { brandName, logoUrl, primaryColor };
 });
 
 /** Sobe o logo da marca pro Storage (bucket público fastbar-branding) e devolve a URL pública. */

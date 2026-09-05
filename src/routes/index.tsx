@@ -1,23 +1,38 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
+import { useServerFn } from "@tanstack/react-start";
 import { Lock } from "lucide-react";
+import { getPublicBranding, type PublicBranding } from "@/lib/integrations.functions";
+import { brandColorStyle } from "@/lib/brand-color";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Pop9Bar | Home" },
+      { title: "Comanda digital" },
       {
         name: "description",
-        content: "Pop9Bar — comanda digital. Abra sua comanda e acompanhe o consumo pelo celular.",
+        content: "Abra sua comanda e acompanhe o consumo pelo celular.",
       },
-      { property: "og:title", content: "Pop9Bar | Home" },
+      { property: "og:title", content: "Comanda digital" },
     ],
   }),
   component: ClientHome,
 });
 
 function ClientHome() {
+  const [branding, setBranding] = useState<PublicBranding | null>(null);
+  const loadBranding = useServerFn(getPublicBranding);
+
+  useEffect(() => {
+    void loadBranding().then(setBranding);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
-    <main className="relative mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
+    <main
+      className="relative mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10"
+      style={brandColorStyle(branding?.primaryColor)}
+    >
       <Link
         to="/equipe"
         aria-label="Acesso da equipe"
@@ -25,7 +40,16 @@ function ClientHome() {
       >
         <Lock className="h-4 w-4" />
       </Link>
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Pop9Bar</p>
+      {branding?.logoUrl && (
+        <img
+          src={branding.logoUrl}
+          alt={branding.brandName}
+          className="mb-2 h-12 w-12 rounded-xl object-cover shadow-soft"
+        />
+      )}
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+        {branding?.brandName ?? ""}
+      </p>
       <h1 className="mt-2 text-4xl font-bold">Sua comanda digital</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Informe seus dados e acompanhe seu consumo pelo celular. O lançamento dos

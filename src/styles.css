@@ -157,9 +157,14 @@
     font-family: var(--font-body);
   }
 
-  /* Marca d'água discreta: o ícone FB ampliado, quase invisível, só como textura de fundo.
-     Fixo (não rola com a página), atrás de todo o conteúdo, sem interferir na leitura. */
-  body::before {
+  /* Marca d'água discreta do Pop9Bar (o software) — só nas telas da equipe/admin. Nas telas do
+     cliente (abrir comanda, acompanhamento) quem aparece é a identidade do estabelecimento, nunca
+     a do software, então essa classe não entra lá. */
+  .app-watermark {
+    position: relative;
+  }
+
+  .app-watermark::before {
     content: "";
     position: fixed;
     inset: 0;

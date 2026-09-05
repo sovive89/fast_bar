@@ -43,7 +43,7 @@ function StaffUnlock() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
+    <main className="app-watermark mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Área restrita</p>
       <h1 className="mt-2 text-3xl font-bold">Acesso do caixa</h1>
       <p className="mt-2 text-sm text-muted-foreground">

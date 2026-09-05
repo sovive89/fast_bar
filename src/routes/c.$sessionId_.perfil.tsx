@@ -13,7 +13,7 @@ import {
 export const Route = createFileRoute("/c/$sessionId_/perfil")({
   head: () => ({
     meta: [
-      { title: "Só mais um pouquinho | Pop9Bar" },
+      { title: "Só mais um pouquinho" },
       {
         name: "description",
         content: "Conte um pouco mais sobre você — tudo opcional, exceto uma pergunta.",

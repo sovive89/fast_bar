@@ -1,10 +1,13 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { Link } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TabItemList } from "@/components/shared/TabItemList";
 import { MenuList } from "@/features/client/components/MenuList";
 import { brl, elapsed, formatPhone, hhmm } from "@/lib/format";
 import { tabTotal, tabTotalWithDiscount } from "@/services/supabase/tabItems";
+import { getPublicBranding, type PublicBranding } from "@/lib/integrations.functions";
+import { brandColorStyle } from "@/lib/brand-color";
 import type { BarSession, BarTabItem } from "@/types/fastbar";
 
 export interface CustomerTabViewProps {
@@ -14,7 +17,40 @@ export interface CustomerTabViewProps {
   now: string | number | Date;
 }
 
+/** Cabeçalho de marca das telas do cliente — mostra a identidade do estabelecimento (logo/nome
+ * configurados em Conexões), nunca a marca do software. Sem config salva, cai pro nome genérico
+ * já resolvido por getPublicBranding lá no servidor. */
+function BrandHeader({ branding }: { branding: PublicBranding | null }) {
+  if (branding?.logoUrl) {
+    return (
+      <div className="mb-1 flex items-center gap-2">
+        <img
+          src={branding.logoUrl}
+          alt={branding.brandName}
+          className="h-6 w-6 rounded-lg object-cover"
+        />
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+          {branding.brandName}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+      {branding?.brandName ?? ""}
+    </p>
+  );
+}
+
 export function CustomerTabView({ loading, session, items, now }: CustomerTabViewProps) {
+  const [branding, setBranding] = useState<PublicBranding | null>(null);
+  const loadBranding = useServerFn(getPublicBranding);
+
+  useEffect(() => {
+    void loadBranding().then(setBranding);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   if (loading) {
     return <p className="p-6 text-sm text-muted-foreground">Carregando comanda...</p>;
   }
@@ -32,8 +68,11 @@ export function CustomerTabView({ loading, session, items, now }: CustomerTabVie
 
   if (session.status === "pending") {
     return (
-      <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Pop9Bar</p>
+      <main
+        className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10"
+        style={brandColorStyle(branding?.primaryColor)}
+      >
+        <BrandHeader branding={branding} />
         <h1 className="mt-2 text-3xl font-bold">Quase lá, {session.customer_name.split(" ")[0]}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Mostre essa tela para a equipe no caixa confirmar sua comanda. É rapidinho.
@@ -47,10 +86,13 @@ export function CustomerTabView({ loading, session, items, now }: CustomerTabVie
   }
 
   return (
-    <main className="mx-auto w-full max-w-md px-5 py-8">
+    <main
+      className="mx-auto w-full max-w-md px-5 py-8"
+      style={brandColorStyle(branding?.primaryColor)}
+    >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Pop9Bar</p>
+          <BrandHeader branding={branding} />
           <h1 className="mt-1 truncate text-2xl font-bold">{session.customer_name}</h1>
           <p className="text-xs text-muted-foreground">{formatPhone(session.phone ?? "")}</p>
         </div>

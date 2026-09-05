@@ -3,11 +3,12 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { OpenTabForm } from "@/features/client/components/OpenTabForm";
 import { getPublicBranding, type PublicBranding } from "@/lib/integrations.functions";
+import { brandColorStyle } from "@/lib/brand-color";
 
 export const Route = createFileRoute("/abrir")({
   head: () => ({
     meta: [
-      { title: "Abrir comanda | Pop9Bar" },
+      { title: "Abrir comanda" },
       {
         name: "description",
         content:
@@ -28,7 +29,10 @@ function AbrirPage() {
   }, []);
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
+    <main
+      className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10"
+      style={brandColorStyle(branding?.primaryColor)}
+    >
       <div className="mb-6 flex flex-col items-center gap-2 text-center">
         {branding?.logoUrl && (
           <img
@@ -37,7 +41,7 @@ function AbrirPage() {
             className="h-16 w-16 rounded-2xl object-cover shadow-soft"
           />
         )}
-        <h1 className="text-xl font-bold">{branding?.brandName ?? "Pop9Bar"}</h1>
+        <h1 className="text-xl font-bold">{branding?.brandName ?? "Bar"}</h1>
       </div>
       <OpenTabForm />
     </main>

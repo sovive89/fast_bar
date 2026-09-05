@@ -5,12 +5,12 @@ import CustomerTabView from "@/features/client/components/CustomerTabView";
 export const Route = createFileRoute("/c/$sessionId")({
   head: () => ({
     meta: [
-      { title: "Minha comanda | Pop9Bar" },
+      { title: "Minha comanda" },
       {
         name: "description",
         content: "Acompanhe os itens lançados pelo caixa, o total e o tempo no bar.",
       },
-      { property: "og:title", content: "Minha comanda | Pop9Bar" },
+      { property: "og:title", content: "Minha comanda" },
       {
         property: "og:description",
         content: "Itens, total e tempo de permanência da sua comanda, em tempo real.",

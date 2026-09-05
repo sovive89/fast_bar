@@ -242,12 +242,16 @@ async function compressImageForUpload(
   return { base64, contentType: "image/png" };
 }
 
+const DEFAULT_PRIMARY_COLOR = "#f97316";
+
 /**
- * Módulo dedicado da página de abertura de comanda (/abrir): edita nome + logo exibidos nela (e
- * na tela ao vivo do cliente), mostra uma prévia ao vivo e gera o QR code que aponta pra ela —
- * pronto pra imprimir e colar no balcão. A config salva aqui é a mesma linha 'branding' de
- * fastbar_integrations que o hub genérico usava antes; ganhou tela própria porque upload de logo
- * e QR code não cabem no card de texto genérico dos outros conectores.
+ * "Interface do cliente": tudo que muda o que o cliente vê a partir do QR code (/abrir, tela ao
+ * vivo da comanda) — nome, logo e cor de destaque do estabelecimento — sem mexer em estrutura
+ * nenhuma (layout, campos, fluxo continuam os mesmos pra todo mundo). Mostra uma prévia ao vivo e
+ * gera o QR code que aponta pra /abrir, pronto pra imprimir e colar no balcão. A config salva
+ * aqui é a mesma linha 'branding' de fastbar_integrations que o hub genérico usava antes; ganhou
+ * tela própria porque upload de logo e QR code não cabem no card de texto genérico dos outros
+ * conectores.
  */
 function BrandingModule({
   row,
@@ -259,6 +263,7 @@ function BrandingModule({
   const config = (row?.config ?? {}) as Record<string, string>;
   const [brandName, setBrandName] = useState(config["brandName"] ?? "");
   const [logoUrl, setLogoUrl] = useState(config["logoUrl"] ?? "");
+  const [primaryColor, setPrimaryColor] = useState(config["primaryColor"] ?? "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -294,7 +299,7 @@ function BrandingModule({
   async function handleSave() {
     setSaving(true);
     try {
-      await onSave("branding", row?.enabled ?? true, { brandName, logoUrl });
+      await onSave("branding", row?.enabled ?? true, { brandName, logoUrl, primaryColor });
       setSavedMsg(true);
       setTimeout(() => setSavedMsg(false), 2000);
     } finally {
@@ -317,10 +322,10 @@ function BrandingModule({
           <Palette className="h-4 w-4" />
         </span>
         <div>
-          <p className="text-sm font-semibold">Página de abertura de comanda</p>
+          <p className="text-sm font-semibold">Interface do cliente</p>
           <p className="mt-0.5 text-xs text-muted-foreground">
-            Nome e logo exibidos em /abrir e na comanda ao vivo do cliente, mais o QR code pra
-            imprimir no balcão.
+            Nome, logo e cor de destaque exibidos em /abrir e na comanda ao vivo do cliente, mais
+            o QR code pra imprimir no balcão. Só o visual muda — o fluxo é o mesmo pra todo mundo.
           </p>
         </div>
       </div>
@@ -363,6 +368,34 @@ function BrandingModule({
               >
                 {uploading ? "Enviando..." : logoUrl ? "Trocar logo" : "Enviar logo"}
               </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Cor de destaque</label>
+            <div className="mt-1 flex items-center gap-2">
+              <input
+                type="color"
+                value={/^#[0-9a-fA-F]{6}$/.test(primaryColor) ? primaryColor : DEFAULT_PRIMARY_COLOR}
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                className="h-8 w-10 cursor-pointer rounded border border-border bg-background p-0.5"
+              />
+              <input
+                type="text"
+                value={primaryColor}
+                placeholder="#f97316 (padrão do Pop9Bar se deixar em branco)"
+                onChange={(e) => setPrimaryColor(e.target.value)}
+                className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+              />
+              {primaryColor && (
+                <button
+                  type="button"
+                  onClick={() => setPrimaryColor("")}
+                  className="shrink-0 text-xs font-medium text-muted-foreground hover:text-foreground"
+                >
+                  Limpar
+                </button>
+              )}
             </div>
           </div>
 
