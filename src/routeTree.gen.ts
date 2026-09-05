@@ -18,6 +18,7 @@ import { Route as CaixaIndexRouteImport } from './routes/caixa.index'
 import { Route as CaixaSessionIdRouteImport } from './routes/caixa.$sessionId'
 import { Route as CaixaAlertasRouteImport } from './routes/caixa.alertas'
 import { Route as CaixaCardapioRouteImport } from './routes/caixa.cardapio'
+import { Route as CaixaConexoesRouteImport } from './routes/caixa.conexoes'
 import { Route as CaixaCrmRouteImport } from './routes/caixa.crm'
 import { Route as CaixaEstoqueRouteImport } from './routes/caixa.estoque'
 import { Route as CaixaRelatoriosRouteImport } from './routes/caixa.relatorios'
@@ -71,6 +72,11 @@ const CaixaAlertasRoute = CaixaAlertasRouteImport.update({
 const CaixaCardapioRoute = CaixaCardapioRouteImport.update({
   id: '/cardapio',
   path: '/cardapio',
+  getParentRoute: () => CaixaRoute,
+} as any)
+const CaixaConexoesRoute = CaixaConexoesRouteImport.update({
+  id: '/conexoes',
+  path: '/conexoes',
   getParentRoute: () => CaixaRoute,
 } as any)
 const CaixaCrmRoute = CaixaCrmRouteImport.update({
@@ -129,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
+  '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
@@ -148,6 +155,7 @@ export interface FileRoutesByTo {
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
+  '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
@@ -168,6 +176,7 @@ export interface FileRoutesById {
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
+  '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
@@ -190,6 +199,7 @@ export interface FileRouteTypes {
     | '/caixa/$sessionId'
     | '/caixa/alertas'
     | '/caixa/cardapio'
+    | '/caixa/conexoes'
     | '/caixa/crm'
     | '/caixa/estoque'
     | '/caixa/relatorios'
@@ -209,6 +219,7 @@ export interface FileRouteTypes {
     | '/caixa/$sessionId'
     | '/caixa/alertas'
     | '/caixa/cardapio'
+    | '/caixa/conexoes'
     | '/caixa/estoque'
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
@@ -228,6 +239,7 @@ export interface FileRouteTypes {
     | '/caixa/$sessionId'
     | '/caixa/alertas'
     | '/caixa/cardapio'
+    | '/caixa/conexoes'
     | '/caixa/crm'
     | '/caixa/estoque'
     | '/caixa/relatorios'
@@ -313,6 +325,13 @@ declare module '@tanstack/react-router' {
       path: '/cardapio'
       fullPath: '/caixa/cardapio'
       preLoaderRoute: typeof CaixaCardapioRouteImport
+      parentRoute: typeof CaixaRoute
+    }
+    '/caixa/conexoes': {
+      id: '/caixa/conexoes'
+      path: '/conexoes'
+      fullPath: '/caixa/conexoes'
+      preLoaderRoute: typeof CaixaConexoesRouteImport
       parentRoute: typeof CaixaRoute
     }
     '/caixa/crm': {
@@ -403,6 +422,7 @@ interface CaixaRouteChildren {
   CaixaSessionIdRoute: typeof CaixaSessionIdRoute
   CaixaAlertasRoute: typeof CaixaAlertasRoute
   CaixaCardapioRoute: typeof CaixaCardapioRoute
+  CaixaConexoesRoute: typeof CaixaConexoesRoute
   CaixaCrmRoute: typeof CaixaCrmRouteWithChildren
   CaixaEstoqueRoute: typeof CaixaEstoqueRoute
   CaixaRelatoriosRoute: typeof CaixaRelatoriosRoute
@@ -413,6 +433,7 @@ const CaixaRouteChildren: CaixaRouteChildren = {
   CaixaSessionIdRoute: CaixaSessionIdRoute,
   CaixaAlertasRoute: CaixaAlertasRoute,
   CaixaCardapioRoute: CaixaCardapioRoute,
+  CaixaConexoesRoute: CaixaConexoesRoute,
   CaixaCrmRoute: CaixaCrmRouteWithChildren,
   CaixaEstoqueRoute: CaixaEstoqueRoute,
   CaixaRelatoriosRoute: CaixaRelatoriosRoute,

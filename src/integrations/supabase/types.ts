@@ -245,6 +245,27 @@ export type Database = {
         }
         Relationships: []
       }
+      fastbar_integrations: {
+        Row: {
+          config: Json
+          enabled: boolean
+          key: string
+          updated_at: string
+        }
+        Insert: {
+          config?: Json
+          enabled?: boolean
+          key: string
+          updated_at?: string
+        }
+        Update: {
+          config?: Json
+          enabled?: boolean
+          key?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       fastbar_customers: {
         Row: {
           administrative_region: string | null

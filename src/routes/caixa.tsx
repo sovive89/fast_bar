@@ -13,6 +13,7 @@ import {
   ClipboardList,
   LogOut,
   Package,
+  Plug,
   UtensilsCrossed,
   Users,
 } from "lucide-react";
@@ -49,6 +50,7 @@ const MODULES = [
   { key: "crm", label: "CRM", to: "/caixa/crm", icon: Users },
   { key: "relatorios", label: "Relatórios Vendas", to: "/caixa/relatorios", icon: BarChart3 },
   { key: "alertas", label: "Alertas", to: "/caixa/alertas", icon: AlertTriangle },
+  { key: "conexoes", label: "Conexões", to: "/caixa/conexoes", icon: Plug },
 ] as const;
 
 function useActiveModuleKey() {
