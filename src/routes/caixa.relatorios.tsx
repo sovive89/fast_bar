@@ -24,7 +24,7 @@ const SegmentDistributionChart = lazy(() =>
 export const Route = createFileRoute("/caixa/relatorios")({
   head: () => ({
     meta: [
-      { title: "Relatórios Vendas | FastBar" },
+      { title: "Relatórios Vendas | Pop9Bar" },
       {
         name: "description",
         content: "Faturamento, ticket médio, produtos mais vendidos e formas de pagamento.",

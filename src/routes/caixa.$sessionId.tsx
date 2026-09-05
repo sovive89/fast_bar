@@ -22,12 +22,12 @@ import type { BarProduct } from "@/types/fastbar";
 export const Route = createFileRoute("/caixa/$sessionId")({
   head: () => ({
     meta: [
-      { title: "Detalhe da comanda | Caixa FastBar" },
+      { title: "Detalhe da comanda | Caixa Pop9Bar" },
       {
         name: "description",
         content: "Lance bebidas, feche a comanda e registre o pagamento do cliente.",
       },
-      { property: "og:title", content: "Detalhe da comanda | Caixa FastBar" },
+      { property: "og:title", content: "Detalhe da comanda | Caixa Pop9Bar" },
       {
         property: "og:description",
         content: "Lançamento de bebidas, fechamento e pagamento da comanda.",

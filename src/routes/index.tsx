@@ -4,12 +4,12 @@ import { Lock } from "lucide-react";
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "FastBar | Home" },
+      { title: "Pop9Bar | Home" },
       {
         name: "description",
-        content: "FastBar — comanda digital. Abra sua comanda e acompanhe o consumo pelo celular.",
+        content: "Pop9Bar — comanda digital. Abra sua comanda e acompanhe o consumo pelo celular.",
       },
-      { property: "og:title", content: "FastBar | Home" },
+      { property: "og:title", content: "Pop9Bar | Home" },
     ],
   }),
   component: ClientHome,
@@ -25,7 +25,7 @@ function ClientHome() {
       >
         <Lock className="h-4 w-4" />
       </Link>
-      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">FastBar</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Pop9Bar</p>
       <h1 className="mt-2 text-4xl font-bold">Sua comanda digital</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Informe seus dados e acompanhe seu consumo pelo celular. O lançamento dos

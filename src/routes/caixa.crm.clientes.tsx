@@ -28,7 +28,7 @@ const SEGMENT_ORDER: LeadSegment[] = ["vip", "fiel", "recorrente", "novo", "risc
 export const Route = createFileRoute("/caixa/crm/clientes")({
   head: () => ({
     meta: [
-      { title: "Clientes (CRM) | FastBar" },
+      { title: "Clientes (CRM) | Pop9Bar" },
       {
         name: "description",
         content:

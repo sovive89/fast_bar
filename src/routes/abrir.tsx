@@ -7,7 +7,7 @@ import { getPublicBranding, type PublicBranding } from "@/lib/integrations.funct
 export const Route = createFileRoute("/abrir")({
   head: () => ({
     meta: [
-      { title: "Abrir comanda | FastBar" },
+      { title: "Abrir comanda | Pop9Bar" },
       {
         name: "description",
         content:
@@ -37,7 +37,7 @@ function AbrirPage() {
             className="h-16 w-16 rounded-2xl object-cover shadow-soft"
           />
         )}
-        <h1 className="text-xl font-bold">{branding?.brandName ?? "FastBar"}</h1>
+        <h1 className="text-xl font-bold">{branding?.brandName ?? "Pop9Bar"}</h1>
       </div>
       <OpenTabForm />
     </main>

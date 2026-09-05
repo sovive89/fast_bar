@@ -29,7 +29,7 @@ import {
 export const Route = createFileRoute("/caixa/estoque")({
   head: () => ({
     meta: [
-      { title: "Estoque | FastBar" },
+      { title: "Estoque | Pop9Bar" },
       {
         name: "description",
         content: "Bebidas base, ingredientes, fornecedores e fichas técnicas.",

@@ -27,7 +27,7 @@ import {
 export const Route = createFileRoute("/caixa/cardapio")({
   head: () => ({
     meta: [
-      { title: "Cardápio | FastBar" },
+      { title: "Cardápio | Pop9Bar" },
       {
         name: "description",
         content: "Produtos do cardápio: nome, preço, categoria, foto e disponibilidade.",

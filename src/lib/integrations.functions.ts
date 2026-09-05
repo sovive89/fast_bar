@@ -55,7 +55,7 @@ export type PublicBranding = { brandName: string; logoUrl: string | null };
  * Lê a identidade visual pra renderizar em rotas do CLIENTE (sem gate de senha, ex.: /abrir e
  * /c/{sessionId}) — por isso não passa por assertRegisterAccess. Só devolve nome/logo, nunca as
  * outras integrações (tokens/ids ficam só no card de admin). Sem config salva, cai pro nome
- * genérico "FastBar" — a tela nunca fica sem marca nenhuma.
+ * genérico "Pop9Bar" — a tela nunca fica sem marca nenhuma.
  */
 export const getPublicBranding = createServerFn({ method: "GET" }).handler(async (): Promise<PublicBranding> => {
   const { admin } = await import("./fastbar.server");
@@ -65,7 +65,7 @@ export const getPublicBranding = createServerFn({ method: "GET" }).handler(async
     .eq("key", "branding")
     .maybeSingle();
   const config = (data?.config ?? {}) as IntegrationConfig;
-  const brandName = config["brandName"]?.trim() || "FastBar";
+  const brandName = config["brandName"]?.trim() || "Pop9Bar";
   const logoUrl = config["logoUrl"]?.trim() || null;
   return { brandName, logoUrl };
 });

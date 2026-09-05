@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 /**
  * Interpretação de métricas já calculadas — nunca cálculo. A IA recebe um resumo de números que o
- * próprio FastBar já computou de forma determinística (faturamento, CMV, segmentos, desperdício,
+ * próprio Pop9Bar já computou de forma determinística (faturamento, CMV, segmentos, desperdício,
  * retenção...) e só produz uma explicação em texto. Ela nunca vê tabela crua, nunca soma nada,
  * nunca inventa um número que não veio no resumo — isso é regra do prompt de sistema, não sugestão.
  *
@@ -67,7 +67,7 @@ export const analyzeMetrics = createServerFn({ method: "POST" })
             {
               role: "system",
               content:
-                "Você é o analista de inteligência do FastBar. Analisa métricas de um bar que já foram " +
+                "Você é o analista de inteligência do Pop9Bar. Analisa métricas de um bar que já foram " +
                 "calculadas por código, nunca por você. Regras: (1) use só os números do campo " +
                 '"metrics" do JSON recebido, nunca invente ou recalcule nada; (2) se um dado ' +
                 "necessário não estiver no JSON, diga explicitamente que falta o dado em vez de " +

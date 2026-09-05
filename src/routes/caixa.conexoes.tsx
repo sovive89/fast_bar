@@ -23,7 +23,7 @@ import {
 
 export const Route = createFileRoute("/caixa/conexoes")({
   head: () => ({
-    meta: [{ title: "Conexões | FastBar" }],
+    meta: [{ title: "Conexões | Pop9Bar" }],
   }),
   component: ConnectionsPage,
 });

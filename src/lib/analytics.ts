@@ -1,5 +1,5 @@
 /**
- * Primitivas compartilhadas por toda análise do FastBar (CRM, Relatórios, Estoque) — bucketing de
+ * Primitivas compartilhadas por toda análise do Pop9Bar (CRM, Relatórios, Estoque) — bucketing de
  * mês, diferença entre meses, agrupamento e soma. Puro e sem dependência de servidor, do mesmo
  * jeito que crm.ts: a regra de "que mês é esse timestamp" precisa ser a mesma em toda tela, senão
  * duas análises que deveriam bater dão número diferente por causa de fuso horário.

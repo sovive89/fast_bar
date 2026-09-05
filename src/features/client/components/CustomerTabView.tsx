@@ -33,7 +33,7 @@ export function CustomerTabView({ loading, session, items, now }: CustomerTabVie
   if (session.status === "pending") {
     return (
       <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">FastBar</p>
+        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Pop9Bar</p>
         <h1 className="mt-2 text-3xl font-bold">Quase lá, {session.customer_name.split(" ")[0]}</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Mostre essa tela para a equipe no caixa confirmar sua comanda. É rapidinho.
@@ -50,7 +50,7 @@ export function CustomerTabView({ loading, session, items, now }: CustomerTabVie
     <main className="mx-auto w-full max-w-md px-5 py-8">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">FastBar</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">Pop9Bar</p>
           <h1 className="mt-1 truncate text-2xl font-bold">{session.customer_name}</h1>
           <p className="text-xs text-muted-foreground">{formatPhone(session.phone ?? "")}</p>
         </div>

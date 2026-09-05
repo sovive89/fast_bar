@@ -6,7 +6,7 @@ import { currentMonthKey, monthsBetween } from "@/lib/analytics";
 
 export const Route = createFileRoute("/caixa/crm/analises")({
   head: () => ({
-    meta: [{ title: "Análises | CRM | FastBar" }],
+    meta: [{ title: "Análises | CRM | Pop9Bar" }],
   }),
   component: AnalisesTab,
 });

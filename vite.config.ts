@@ -15,8 +15,8 @@ export default defineConfig({
         registerType: "autoUpdate",
         includeAssets: ["favicon.svg", "favicon.ico", "robots.txt"],
         manifest: {
-          name: "FastBar",
-          short_name: "FastBar",
+          name: "Pop9Bar",
+          short_name: "Pop9Bar",
           start_url: "/equipe",
           display: "standalone",
           theme_color: "#d4a017",
