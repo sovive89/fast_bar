@@ -1,14 +1,17 @@
 /** Formatos mínimos que o app usa da API do Mercado Pago (Point/Orders) — não é o schema completo
  * da API, só os campos que este módulo realmente lê ou envia. */
 
+// Valores reais devolvidos pela API (conferido direto na doc oficial e num pedido de verdade —
+// "processed"/"failed", não "finished"/"error" como estava aqui antes, o que fazia a reconciliação
+// nunca bater com um pagamento aprovado de verdade).
 export type PointOrderStatus =
   | "created"
-  | "processing"
   | "at_terminal"
-  | "finished"
-  | "error"
+  | "processed"
+  | "failed"
   | "canceled"
   | "refunded"
+  | "action_required"
   | (string & {});
 
 export interface PointPaymentMethod {

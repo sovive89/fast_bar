@@ -139,7 +139,7 @@ export async function reconcilePointOrder(orderId: string) {
   if (!session || session.pos_order_id !== orderId) return;
   if (session.status === "paid" || session.status === "cancelled") return;
 
-  if (order.status === "finished") {
+  if (order.status === "processed") {
     const payment = order.transactions?.payments?.[0];
     const method = mapChannel(payment?.payment_method?.type);
     const nowIso = new Date().toISOString();
@@ -160,7 +160,7 @@ export async function reconcilePointOrder(orderId: string) {
     return;
   }
 
-  if (order.status === "error" || order.status === "canceled") {
+  if (order.status === "failed" || order.status === "canceled") {
     // Pagamento não foi pra frente no terminal (recusado, cancelado, etc.) — libera a comanda pra
     // tentar de novo (maquininha ou manual), sem mexer no status dela.
     await admin()
@@ -169,7 +169,8 @@ export async function reconcilePointOrder(orderId: string) {
       .eq("id", sessionId)
       .eq("pos_order_id", orderId);
   }
-  // created/processing/at_terminal: cobrança ainda em andamento, nada a fazer ainda.
+  // created/at_terminal/action_required: cobrança ainda em andamento (ou esperando confirmação
+  // manual no próprio terminal), nada a fazer ainda por aqui.
 }
 
 /** Estorna o pagamento feito na maquininha pra uma comanda já paga. Não desfaz a comanda em si

@@ -86,8 +86,8 @@ export async function getPointOrder(accessToken: string, orderId: string): Promi
   }
 }
 
-/** Estorno total de um pedido já pago (status "finished" na nossa consulta / "processed" na API
- * crua do Mercado Pago). Só funciona dentro de 90 dias do pagamento (regra deles, não nossa). */
+/** Estorno total de um pedido já pago (status "processed" na API do Mercado Pago). Só funciona
+ * dentro de 90 dias do pagamento (regra deles, não nossa). */
 export async function refundPointOrder(
   accessToken: string,
   orderId: string,
