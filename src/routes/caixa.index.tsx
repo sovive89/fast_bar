@@ -198,7 +198,7 @@ function RegisterList() {
     const result = await openManual({
       data: {
         name: newName,
-        phone: useDocument ? "" : newPhone,
+        phone: newPhone,
         document: useDocument ? newDocument : "",
         documentType: useDocument ? newDocumentType : "",
         password,
@@ -294,26 +294,23 @@ function RegisterList() {
             maxLength={80}
             className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
           />
+          {/* Celular fica sempre visível — CPF/RG é um complemento opcional, não uma troca de tela.
+              Quem não tem celular deixa esse campo em branco e usa só o documento abaixo. */}
+          <input
+            value={newPhone}
+            onChange={(event) => setNewPhone(formatPhone(event.target.value))}
+            placeholder="(11) 91234-5678"
+            inputMode="tel"
+            className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
+          />
           {!useDocument ? (
-            <>
-              <input
-                value={newPhone}
-                onChange={(event) => setNewPhone(formatPhone(event.target.value))}
-                placeholder="(11) 91234-5678"
-                inputMode="tel"
-                className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  setUseDocument(true);
-                  setNewPhone("");
-                }}
-                className="text-xs font-medium text-primary underline-offset-2 hover:underline"
-              >
-                Cliente sem celular? Usar CPF ou RG
-              </button>
-            </>
+            <button
+              type="button"
+              onClick={() => setUseDocument(true)}
+              className="text-xs font-medium text-primary underline-offset-2 hover:underline"
+            >
+              Cliente sem celular? Usar CPF ou RG
+            </button>
           ) : (
             <div className="space-y-2">
               <div className="flex gap-2">
@@ -361,7 +358,7 @@ function RegisterList() {
                 }}
                 className="text-xs font-medium text-primary underline-offset-2 hover:underline"
               >
-                Cliente tem celular afinal? Usar celular
+                Não usar CPF/RG
               </button>
             </div>
           )}

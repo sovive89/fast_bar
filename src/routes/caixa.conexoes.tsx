@@ -1,10 +1,22 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { CheckCircle2, MessageCircle, Instagram, CreditCard, Phone, Printer, Palette } from "lucide-react";
+import QRCode from "qrcode";
+import {
+  CheckCircle2,
+  MessageCircle,
+  Instagram,
+  CreditCard,
+  Phone,
+  Printer,
+  Palette,
+  Download,
+  ExternalLink,
+} from "lucide-react";
 import {
   getIntegrations,
   updateIntegration,
+  uploadBrandLogo,
   type IntegrationKey,
   type IntegrationRow,
 } from "@/lib/integrations.functions";
@@ -85,16 +97,6 @@ const CARDS: CardDef[] = [
       { key: "ip", label: "IP / endereço", placeholder: "ex.: 192.168.0.50:9100" },
     ],
     comingSoon: true,
-  },
-  {
-    key: "branding",
-    name: "Identidade visual",
-    description: "Logo e nome exibidos na tela do cliente e no cupom impresso.",
-    icon: Palette,
-    fields: [
-      { key: "brandName", label: "Nome exibido", placeholder: "ex.: Golpe Baixo" },
-      { key: "logoUrl", label: "URL do logo", placeholder: "https://..." },
-    ],
   },
 ];
 
@@ -202,11 +204,211 @@ function ConnectionCard({
   );
 }
 
+/** Reduz o logo pro tamanho de upload — mesma lógica usada pra foto de produto (evita passar do
+ * limite de payload das server functions e deixa a imagem leve). */
+async function compressImageForUpload(
+  file: File,
+  maxDimension = 512,
+  quality = 0.9,
+): Promise<{ base64: string; contentType: string }> {
+  const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
+  const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+  const width = Math.round(bitmap.width * scale);
+  const height = Math.round(bitmap.height * scale);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas não suportado neste navegador.");
+  ctx.drawImage(bitmap, 0, 0, width, height);
+
+  const blob = await new Promise<Blob>((resolve, reject) => {
+    canvas.toBlob(
+      (result) => (result ? resolve(result) : reject(new Error("Falha ao comprimir a imagem."))),
+      "image/png",
+      quality,
+    );
+  });
+
+  const dataUrl = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+  const [, base64] = dataUrl.split(",");
+  if (!base64) throw new Error("Falha ao codificar a imagem.");
+  return { base64, contentType: "image/png" };
+}
+
+/**
+ * Módulo dedicado da página de abertura de comanda (/abrir): edita nome + logo exibidos nela (e
+ * na tela ao vivo do cliente), mostra uma prévia ao vivo e gera o QR code que aponta pra ela —
+ * pronto pra imprimir e colar no balcão. A config salva aqui é a mesma linha 'branding' de
+ * fastbar_integrations que o hub genérico usava antes; ganhou tela própria porque upload de logo
+ * e QR code não cabem no card de texto genérico dos outros conectores.
+ */
+function BrandingModule({
+  row,
+  onSave,
+}: {
+  row: IntegrationRow | undefined;
+  onSave: (key: IntegrationKey, enabled: boolean, config: Record<string, string>) => Promise<void>;
+}) {
+  const config = (row?.config ?? {}) as Record<string, string>;
+  const [brandName, setBrandName] = useState(config["brandName"] ?? "");
+  const [logoUrl, setLogoUrl] = useState(config["logoUrl"] ?? "");
+  const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
+  const [savedMsg, setSavedMsg] = useState(false);
+  const [abrirUrl, setAbrirUrl] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const uploadLogo = useServerFn(uploadBrandLogo);
+
+  useEffect(() => {
+    // A URL da página de abertura depende do domínio de produção (ainda pode mudar até o domínio
+    // próprio ser configurado) — pega sempre do navegador em vez de fixar no código.
+    setAbrirUrl(`${window.location.origin}/abrir`);
+  }, []);
+
+  useEffect(() => {
+    if (!abrirUrl || !canvasRef.current) return;
+    void QRCode.toCanvas(canvasRef.current, abrirUrl, { width: 220, margin: 1 });
+  }, [abrirUrl]);
+
+  async function handleLogoFile(file: File) {
+    setUploading(true);
+    try {
+      const compressed = await compressImageForUpload(file);
+      const result = await uploadLogo({
+        data: { fileName: file.name, base64: compressed.base64, contentType: compressed.contentType },
+      });
+      if (result.ok) setLogoUrl(result.url);
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function handleSave() {
+    setSaving(true);
+    try {
+      await onSave("branding", row?.enabled ?? true, { brandName, logoUrl });
+      setSavedMsg(true);
+      setTimeout(() => setSavedMsg(false), 2000);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function downloadQr() {
+    if (!canvasRef.current) return;
+    const link = document.createElement("a");
+    link.download = `qr-code-${(brandName || "fastbar").toLowerCase().replace(/\s+/g, "-")}.png`;
+    link.href = canvasRef.current.toDataURL("image/png");
+    link.click();
+  }
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-start gap-3">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+          <Palette className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="text-sm font-semibold">Página de abertura de comanda</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Nome e logo exibidos em /abrir e na comanda ao vivo do cliente, mais o QR code pra
+            imprimir no balcão.
+          </p>
+        </div>
+      </div>
+
+      <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto]">
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Nome exibido</label>
+            <input
+              type="text"
+              value={brandName}
+              placeholder="ex.: Golpe Baixo"
+              onChange={(e) => setBrandName(e.target.value)}
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-muted-foreground">Logo</label>
+            <div className="mt-1 flex items-center gap-3">
+              {logoUrl && (
+                <img src={logoUrl} alt="Logo" className="h-10 w-10 rounded-lg object-cover" />
+              )}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  if (file) void handleLogoFile(file);
+                  e.target.value = "";
+                }}
+              />
+              <button
+                type="button"
+                disabled={uploading}
+                onClick={() => fileInputRef.current?.click()}
+                className="rounded-lg border border-border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+              >
+                {uploading ? "Enviando..." : logoUrl ? "Trocar logo" : "Enviar logo"}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 pt-1">
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => void handleSave()}
+              className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+            >
+              {saving ? "Salvando..." : "Salvar"}
+            </button>
+            {savedMsg && <span className="text-xs text-emerald-500">Salvo.</span>}
+            {abrirUrl && (
+              <a
+                href="/abrir"
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1 text-xs font-medium text-primary underline underline-offset-4"
+              >
+                Ver página <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+          </div>
+        </div>
+
+        <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-border p-3">
+          <canvas ref={canvasRef} className="h-[140px] w-[140px]" />
+          <button
+            type="button"
+            onClick={downloadQr}
+            className="flex items-center gap-1 text-xs font-medium text-primary underline underline-offset-4"
+          >
+            <Download className="h-3 w-3" /> Baixar QR code
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Hub de integrações externas: cada card guarda config (chaves/tokens) e um toggle ativo/inativo em
  * fastbar_integrations. Por enquanto é só configuração/status — nenhuma integração dispara chamada
- * de verdade ainda (marcado "Em breve"), exceto Identidade Visual que já é usada pela tela do
- * cliente e pelo cupom impresso.
+ * de verdade ainda (marcado "Em breve"). A página de abertura (identidade + QR code) tem seu
+ * próprio módulo em destaque no topo, já em uso de verdade.
  */
 function ConnectionsPage() {
   const [rows, setRows] = useState<IntegrationRow[] | null>(null);
@@ -242,6 +444,7 @@ function ConnectionsPage() {
         <p className="mt-6 text-sm text-muted-foreground">Carregando...</p>
       ) : (
         <div className="mt-6 space-y-3">
+          <BrandingModule row={rows.find((r) => r.key === "branding")} onSave={handleSave} />
           {CARDS.map((card) => (
             <ConnectionCard
               key={card.key}
