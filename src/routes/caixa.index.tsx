@@ -451,7 +451,16 @@ function RegisterList() {
 
             return (
               <li key={session.id} className={isExpanded ? "col-span-3 sm:col-span-4" : ""}>
-                <div className="rounded-2xl border border-border bg-card">
+                <div className="relative rounded-2xl border border-border bg-card">
+                  {session.pos_order_id && (
+                    <span
+                      title="Aguardando pagamento na maquininha"
+                      className="absolute right-1.5 top-1.5 z-10 flex items-center gap-1 rounded-full bg-primary px-1.5 py-0.5 text-[9px] font-semibold text-primary-foreground shadow-soft"
+                    >
+                      <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary-foreground" />
+                      Maq.
+                    </span>
+                  )}
                   {isExpanded ? (
                     <div className="flex items-start gap-1 p-4">
                       <button
@@ -472,10 +481,17 @@ function RegisterList() {
                             {session.started_at ? ` · abertura ${hhmm(session.started_at)}` : ""} ·{" "}
                             {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
                           </p>
-                          {session.payment_method && (
-                            <p className="mt-0.5 text-xs text-muted-foreground">
-                              Pagamento: {session.payment_method}
+                          {session.pos_order_id ? (
+                            <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-primary">
+                              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
+                              Aguardando maquininha ({brl(session.pos_amount ?? 0)})
                             </p>
+                          ) : (
+                            session.payment_method && (
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                Pagamento: {session.payment_method}
+                              </p>
+                            )
                           )}
                         </div>
                         <div className="flex shrink-0 flex-col items-end gap-1">
