@@ -1,11 +1,22 @@
 import { createServerFn } from "@tanstack/react-start";
 
+/**
+ * Abre a comanda a partir do QR — mas antes de virar "pending" (fila da equipe), passa por
+ * "unverified": manda um código por WhatsApp via Twilio Verify (serviço gerenciado — o código em
+ * si nunca é gerado nem guardado por este app) e só sobe pra "pending" quando o cliente digita o
+ * código certo em /c/{sessionId}/verificar. Existe pra confirmar que o celular informado é real,
+ * não pra confirmar identidade — a equipe continua confirmando a comanda em pessoa no caixa
+ * depois disso, sem mudança nesse passo.
+ *
+ * Cliente que já verificou o celular numa visita anterior (fastbar_customers.phone_verified) pula
+ * a etapa de OTP de novo — verificar o mesmo número toda vez que a pessoa volta ao bar não
+ * protegeria nada a mais, só atrito repetido.
+ */
 export const openClientSession = createServerFn({ method: "POST" })
   .inputValidator((data: { name: string; phone: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, sanitizeName, sanitizePhone, upsertCustomer } = await import(
-      "./fastbar.server"
-    );
+    const { admin, sanitizeName, sanitizePhone, upsertCustomer } = await import("./fastbar.server");
+    const { requestPhoneVerification } = await import("./verification/service.server");
 
     const name = sanitizeName(data.name);
     const phone = sanitizePhone(data.phone);
@@ -14,40 +25,176 @@ export const openClientSession = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Informe nome completo e celular com DDD." };
     }
 
-    // Mesmo celular já tem comanda em andamento: manda para ela em vez de criar outra.
+    // Mesmo celular já tem comanda em andamento (verificada ou não): reaproveita em vez de criar
+    // outra — evita disparar um código novo a cada toque em "Abrir comanda".
     const { data: existing } = await admin()
       .from("fastbar_sessions")
-      .select("id, customer_id")
+      .select("id, customer_id, status")
       .eq("phone", phone)
-      .in("status", ["pending", "open"])
+      .in("status", ["unverified", "pending", "open"])
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
 
-    if (existing) {
+    if (existing && existing.status !== "unverified") {
       const profileCompleted = await isProfileCompleted(existing.customer_id);
-      return { ok: true as const, sessionId: existing.id, profileCompleted };
+      return {
+        ok: true as const,
+        sessionId: existing.id,
+        needsVerification: false as const,
+        profileCompleted,
+      };
     }
 
+    const { data: existingCustomer } = await admin()
+      .from("fastbar_customers")
+      .select("phone_verified")
+      .eq("phone", phone)
+      .maybeSingle();
+    const alreadyVerified = existingCustomer?.phone_verified === true;
+
     const customerId = await upsertCustomer(name, { phone });
+
+    if (existing) {
+      // Comanda "unverified" de uma tentativa anterior: reaproveita a linha em vez de criar outra.
+      if (alreadyVerified) {
+        const { error } = await admin()
+          .from("fastbar_sessions")
+          .update({ status: "pending" })
+          .eq("id", existing.id)
+          .eq("status", "unverified");
+        if (error) return { ok: false as const, message: "Não foi possível abrir a comanda." };
+        const profileCompleted = await isProfileCompleted(customerId);
+        return {
+          ok: true as const,
+          sessionId: existing.id,
+          needsVerification: false as const,
+          profileCompleted,
+        };
+      }
+
+      const sendResult = await requestPhoneVerification(phone);
+      if (!sendResult.ok) return { ok: false as const, message: sendResult.message };
+      return {
+        ok: true as const,
+        sessionId: existing.id,
+        needsVerification: true as const,
+        profileCompleted: false,
+      };
+    }
 
     const { data: inserted, error } = await admin()
       .from("fastbar_sessions")
       .insert({
         customer_name: name,
         phone,
-        status: "pending",
+        status: alreadyVerified ? "pending" : "unverified",
         customer_id: customerId,
       })
       .select("id")
       .single();
-
     if (error || !inserted) {
       return { ok: false as const, message: "Não foi possível abrir a comanda." };
     }
 
-    const profileCompleted = await isProfileCompleted(customerId);
-    return { ok: true as const, sessionId: inserted.id, profileCompleted };
+    if (alreadyVerified) {
+      const profileCompleted = await isProfileCompleted(customerId);
+      return {
+        ok: true as const,
+        sessionId: inserted.id,
+        needsVerification: false as const,
+        profileCompleted,
+      };
+    }
+
+    const sendResult = await requestPhoneVerification(phone);
+    if (!sendResult.ok) {
+      return { ok: false as const, message: sendResult.message };
+    }
+
+    return {
+      ok: true as const,
+      sessionId: inserted.id,
+      needsVerification: true as const,
+      profileCompleted: false,
+    };
+  });
+
+/** Confere o código digitado em /c/{sessionId}/verificar contra o Twilio Verify — quem guarda o
+ * código, controla expiração e limita tentativas erradas é o próprio Twilio, não este app. Só sobe
+ * a comanda pra "pending" (fila da equipe) quando o Twilio confirma. */
+export const verifyClientCode = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string; code: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin } = await import("./fastbar.server");
+    const { checkPhoneVerification } = await import("./verification/service.server");
+
+    const code = data.code.replace(/\D/g, "");
+    if (code.length < 4) {
+      return { ok: false as const, message: "Digite o código recebido." };
+    }
+
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("status, phone, customer_id")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+
+    if (!session || session.status !== "unverified" || !session.phone) {
+      return { ok: false as const, message: "Comanda não encontrada ou já verificada." };
+    }
+
+    const checkResult = await checkPhoneVerification(session.phone, code);
+    if (!checkResult.ok) {
+      return { ok: false as const, message: checkResult.message };
+    }
+    if (!checkResult.verified) {
+      return { ok: false as const, message: "Código incorreto ou expirado." };
+    }
+
+    const { error } = await admin()
+      .from("fastbar_sessions")
+      .update({ status: "pending" })
+      .eq("id", data.sessionId)
+      .eq("status", "unverified");
+    if (error) return { ok: false as const, message: "Não foi possível confirmar." };
+
+    if (session.customer_id) {
+      // phoneVerified é sobre o número ser real, não sobre identidade nem sobre aceite de
+      // campanhas (marketing_opt_in é campo separado, decidido só na tela de perfil) — os três
+      // nunca se misturam.
+      await admin()
+        .from("fastbar_customers")
+        .update({ phone_verified: true, phone_verified_at: new Date().toISOString() })
+        .eq("id", session.customer_id);
+    }
+
+    const profileCompleted = await isProfileCompleted(session.customer_id);
+    return { ok: true as const, profileCompleted };
+  });
+
+/** Pede um código novo pro Twilio Verify pra mesma comanda ainda não verificada — usado pelo link
+ * "Reenviar código" quando o código expirou, não chegou ou o cliente errou demais. */
+export const resendVerificationCode = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin } = await import("./fastbar.server");
+    const { requestPhoneVerification } = await import("./verification/service.server");
+
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("status, phone")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+
+    if (!session || session.status !== "unverified" || !session.phone) {
+      return { ok: false as const, message: "Comanda não encontrada ou já verificada." };
+    }
+
+    const sendResult = await requestPhoneVerification(session.phone);
+    if (!sendResult.ok) return { ok: false as const, message: sendResult.message };
+
+    return { ok: true as const };
   });
 
 async function isProfileCompleted(customerId: string | null) {

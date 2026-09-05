@@ -52,3 +52,17 @@ export const updateIntegration = createServerFn({ method: "POST" })
 // getPublicBranding e uploadBrandLogo (identidade visual: nome, logo, cor) saíram daqui — agora
 // moram em "@/lib/branding", módulo próprio que não mistura com o resto das integrações
 // (WhatsApp/Instagram/Mercado Pago/etc.) guardadas nesta tabela.
+
+/**
+ * Status da verificação de celular por WhatsApp (Twilio Verify) — só diz se as credenciais estão
+ * configuradas, nunca os valores. Diferente do resto de Conexões, essa integração não guarda
+ * config em fastbar_integrations: as credenciais Twilio vivem só em variável de ambiente do
+ * deploy (exigência de segurança específica pra essa integração, por lidar com verificação de
+ * identidade). Por isso o card em Conexões é só um indicador, sem campos de formulário.
+ */
+export const getVerificationStatus = createServerFn({ method: "POST" }).handler(async () => {
+  const { assertRegisterAccess } = await import("./fastbar.server");
+  await assertRegisterAccess();
+  const { isVerificationConfigured } = await import("./verification/service.server");
+  return { configured: isVerificationConfigured() };
+});

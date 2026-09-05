@@ -29,6 +29,11 @@ export function OpenTabForm() {
       return;
     }
 
+    if (result.needsVerification) {
+      await navigate({ to: "/c/$sessionId/verificar", params: { sessionId: result.sessionId } });
+      return;
+    }
+
     // Cliente que já preencheu o perfil antes (reabrindo comanda pelo mesmo celular) não passa
     // pela segunda tela de novo — ela é pra coletar uma vez, não repetir a cada visita.
     await navigate(

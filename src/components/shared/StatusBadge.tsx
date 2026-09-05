@@ -1,6 +1,7 @@
 import { STATUS_LABEL, type SessionStatus } from "@/types/fastbar";
 
 const TONE: Record<SessionStatus, string> = {
+  unverified: "bg-secondary text-secondary-foreground",
   pending: "bg-secondary text-secondary-foreground",
   open: "bg-primary/15 text-primary",
   closed: "bg-accent/20 text-accent-foreground",

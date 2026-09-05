@@ -2,9 +2,8 @@ import { supabaseAdmin } from "@/integrations/supabase/client.server";
 import { useSession } from "@tanstack/react-start/server";
 import { sessionConfig, type GateSession } from "./bar-gate.server";
 
-export const CODE_TTL_MINUTES = 10;
-
-export const generateCode = () => String(Math.floor(100000 + Math.random() * 900000));
+// Geração/expiração/tentativas do código de verificação de celular saíram daqui — o Twilio Verify
+// (src/lib/verification/) cuida disso do lado dele agora; este app nunca vê o código em si.
 
 export const admin = () => supabaseAdmin;
 

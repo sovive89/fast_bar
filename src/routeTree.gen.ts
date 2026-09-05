@@ -25,6 +25,7 @@ import { Route as CaixaEstoqueRouteImport } from './routes/caixa.estoque'
 import { Route as CaixaRelatoriosRouteImport } from './routes/caixa.relatorios'
 import { Route as ComandaSessionIdRouteImport } from './routes/comanda.$sessionId'
 import { Route as CSessionIdPerfilRouteImport } from './routes/c.$sessionId_.perfil'
+import { Route as CSessionIdVerificarRouteImport } from './routes/c.$sessionId_.verificar'
 import { Route as CaixaCrmIndexRouteImport } from './routes/caixa.crm.index'
 import { Route as CaixaCrmAnalisesRouteImport } from './routes/caixa.crm.analises'
 import { Route as CaixaCrmClientesRouteImport } from './routes/caixa.crm.clientes'
@@ -110,6 +111,11 @@ const CSessionIdPerfilRoute = CSessionIdPerfilRouteImport.update({
   path: '/c/$sessionId/perfil',
   getParentRoute: () => rootRouteImport,
 } as any)
+const CSessionIdVerificarRoute = CSessionIdVerificarRouteImport.update({
+  id: '/c/$sessionId_/verificar',
+  path: '/c/$sessionId/verificar',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CaixaCrmIndexRoute = CaixaCrmIndexRouteImport.update({
   id: '/',
   path: '/',
@@ -149,6 +155,7 @@ export interface FileRoutesByFullPath {
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa/': typeof CaixaIndexRoute
   '/c/$sessionId/perfil': typeof CSessionIdPerfilRoute
+  '/c/$sessionId/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
   '/caixa/crm/': typeof CaixaCrmIndexRoute
@@ -169,6 +176,7 @@ export interface FileRoutesByTo {
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa': typeof CaixaIndexRoute
   '/c/$sessionId/perfil': typeof CSessionIdPerfilRoute
+  '/c/$sessionId/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
   '/caixa/crm': typeof CaixaCrmIndexRoute
@@ -192,6 +200,7 @@ export interface FileRoutesById {
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa/': typeof CaixaIndexRoute
   '/c/$sessionId_/perfil': typeof CSessionIdPerfilRoute
+  '/c/$sessionId_/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
   '/caixa/crm/': typeof CaixaCrmIndexRoute
@@ -216,6 +225,7 @@ export interface FileRouteTypes {
     | '/comanda/$sessionId'
     | '/caixa/'
     | '/c/$sessionId/perfil'
+    | '/c/$sessionId/verificar'
     | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
     | '/caixa/crm/'
@@ -236,6 +246,7 @@ export interface FileRouteTypes {
     | '/comanda/$sessionId'
     | '/caixa'
     | '/c/$sessionId/perfil'
+    | '/c/$sessionId/verificar'
     | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
     | '/caixa/crm'
@@ -258,6 +269,7 @@ export interface FileRouteTypes {
     | '/comanda/$sessionId'
     | '/caixa/'
     | '/c/$sessionId_/perfil'
+    | '/c/$sessionId_/verificar'
     | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
     | '/caixa/crm/'
@@ -273,6 +285,7 @@ export interface RootRouteChildren {
   CSessionIdRoute: typeof CSessionIdRoute
   ComandaSessionIdRoute: typeof ComandaSessionIdRoute
   CSessionIdPerfilRoute: typeof CSessionIdPerfilRoute
+  CSessionIdVerificarRoute: typeof CSessionIdVerificarRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -389,6 +402,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CSessionIdPerfilRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/c/$sessionId_/verificar': {
+      id: '/c/$sessionId_/verificar'
+      path: '/c/$sessionId/verificar'
+      fullPath: '/c/$sessionId/verificar'
+      preLoaderRoute: typeof CSessionIdVerificarRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/caixa/crm/': {
       id: '/caixa/crm/'
       path: '/'
@@ -471,6 +491,7 @@ const rootRouteChildren: RootRouteChildren = {
   CSessionIdRoute: CSessionIdRoute,
   ComandaSessionIdRoute: ComandaSessionIdRoute,
   CSessionIdPerfilRoute: CSessionIdPerfilRoute,
+  CSessionIdVerificarRoute: CSessionIdVerificarRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

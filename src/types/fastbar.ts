@@ -1,4 +1,4 @@
-export type SessionStatus = "pending" | "open" | "closed" | "paid" | "cancelled";
+export type SessionStatus = "unverified" | "pending" | "open" | "closed" | "paid" | "cancelled";
 
 /** Public (client-safe) shape of a bar_sessions row — never includes verification_code. */
 export type BarSession = {
@@ -40,6 +40,7 @@ export const SESSION_PUBLIC_COLUMNS =
   "id, customer_name, phone, status, started_at, closed_at, paid_at";
 
 export const STATUS_LABEL: Record<SessionStatus, string> = {
+  unverified: "Aguardando verificação do celular",
   pending: "Aguardando confirmação",
   open: "Aberta",
   closed: "Fechada",

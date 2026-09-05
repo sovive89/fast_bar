@@ -16,6 +16,7 @@ import {
 import {
   getIntegrations,
   updateIntegration,
+  getVerificationStatus,
   type IntegrationKey,
   type IntegrationRow,
 } from "@/lib/integrations.functions";
@@ -77,18 +78,6 @@ const CARDS: CardDef[] = [
     fields: [
       { key: "accessToken", label: "Access Token", placeholder: "token de produção da conta MP", secret: true },
       { key: "deviceId", label: "Device ID da maquininha", placeholder: "ex.: PAX_A910__SMARTPOS..." },
-    ],
-    comingSoon: true,
-  },
-  {
-    key: "twilio",
-    name: "Twilio",
-    description: "SMS/voz como canal alternativo (backup do WhatsApp para avisos e campanhas).",
-    icon: Phone,
-    fields: [
-      { key: "accountSid", label: "Account SID", placeholder: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" },
-      { key: "authToken", label: "Auth Token", placeholder: "token da conta Twilio", secret: true },
-      { key: "fromNumber", label: "Número remetente", placeholder: "+55..." },
     ],
     comingSoon: true,
   },
@@ -478,10 +467,59 @@ function BrandingModule({
 }
 
 /**
+ * Card só de status pro Twilio Verify (verificação de celular por WhatsApp no /abrir). Diferente
+ * dos outros cards de Conexões, não tem campos de formulário: as credenciais Twilio vivem só em
+ * variável de ambiente do deploy, nunca no banco — então aqui só mostra se estão configuradas ou
+ * não, pra equipe/dono saberem sem precisar olhar o Vercel.
+ */
+function VerificationStatusCard() {
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const load = useServerFn(getVerificationStatus);
+
+  useEffect(() => {
+    void load().then((res) => setConfigured(res.configured));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <Phone className="h-4 w-4" />
+          </span>
+          <div>
+            <div className="flex items-center gap-2">
+              <p className="text-sm font-semibold">Verificação por WhatsApp (Twilio Verify)</p>
+              {configured === true && (
+                <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">
+                  <CheckCircle2 className="h-3 w-3" /> Configurado
+                </span>
+              )}
+              {configured === false && (
+                <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                  Não configurado
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Confirma o celular do cliente antes de abrir a comanda pelo QR code. Por segurança,
+              as credenciais Twilio são configuradas direto no ambiente do servidor (variáveis de
+              ambiente), não aqui — fale com quem cuida do deploy para configurar ou trocar.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
  * Hub de integrações externas: cada card guarda config (chaves/tokens) e um toggle ativo/inativo em
  * fastbar_integrations. Por enquanto é só configuração/status — nenhuma integração dispara chamada
- * de verdade ainda (marcado "Em breve"). A página de abertura (identidade + QR code) tem seu
- * próprio módulo em destaque no topo, já em uso de verdade.
+ * de verdade ainda (marcado "Em breve"), exceto a verificação por WhatsApp (Twilio Verify), que já
+ * está em uso real no fluxo de abertura de comanda. A página de abertura (identidade + QR code) tem
+ * seu próprio módulo em destaque no topo, já em uso de verdade.
  */
 function ConnectionsPage() {
   const [rows, setRows] = useState<IntegrationRow[] | null>(null);
@@ -518,6 +556,7 @@ function ConnectionsPage() {
       ) : (
         <div className="mt-6 space-y-3">
           <BrandingModule row={rows.find((r) => r.key === "branding")} onSave={handleSave} />
+          <VerificationStatusCard />
           {CARDS.map((card) => (
             <ConnectionCard
               key={card.key}
