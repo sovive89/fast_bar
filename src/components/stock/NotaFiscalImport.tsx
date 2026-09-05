@@ -12,7 +12,7 @@ import {
 
 type ComponentOption = { id: string; name: string; kind: "base_drink" | "ingredient" };
 
-type Alias = { rawTextNormalized: string; kind: "base_drink" | "ingredient"; componentId: string };
+type Alias = { rawTextNormalized: string | null; kind: "base_drink" | "ingredient"; componentId: string };
 
 type ItemLido = {
   descricao: string;

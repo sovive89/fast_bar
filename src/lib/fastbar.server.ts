@@ -8,6 +8,22 @@ export const generateCode = () => String(Math.floor(100000 + Math.random() * 900
 
 export const admin = () => supabaseAdmin;
 
+// Multi-tenant (fundação): toda tabela de dados agora tem tenant_id (migration
+// multi_tenant_foundation), NOT NULL. Por enquanto o app inteiro roda com um único tenant fixo —
+// as queries de leitura ainda não filtram por tenant dinamicamente (isolamento real entre bares
+// diferentes ainda não existe na prática), mas todo INSERT precisa preencher tenant_id ou vai
+// falhar. Este helper é o único lugar que resolve "qual tenant é esse request": trocar aqui por
+// resolução via subdomínio/login é o próximo passo — só esta função muda, nada mais.
+let _defaultTenantId: string | undefined;
+export async function getDefaultTenantId(): Promise<string> {
+  if (_defaultTenantId) return _defaultTenantId;
+  const slug = process.env["FASTBAR_TENANT_SLUG"] || "golpe-baixo";
+  const { data, error } = await supabaseAdmin.from("fastbar_tenants").select("id").eq("slug", slug).single();
+  if (error || !data) throw new Error(`Tenant "${slug}" não encontrado (fastbar_tenants).`);
+  _defaultTenantId = data.id;
+  return _defaultTenantId;
+}
+
 export async function assertRegisterAccess() {
   const session = await useSession<GateSession>(sessionConfig());
   if (session.data.unlocked !== true) throw new Error("Acesso do caixa não autorizado.");
@@ -94,6 +110,7 @@ export async function upsertCustomer(name: string, identifier: CustomerIdentifie
       total_visits: 1,
       first_seen_at: nowIso,
       last_seen_at: nowIso,
+      tenant_id: await getDefaultTenantId(),
     })
     .select("id")
     .single();
