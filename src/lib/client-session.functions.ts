@@ -98,6 +98,8 @@ export const openClientSession = createServerFn({ method: "POST" })
       };
     }
 
+    const { operationalFieldsForNewSession } = await import("./operations.server");
+    const operationalFields = await operationalFieldsForNewSession();
     const { data: inserted, error } = await admin()
       .from("fastbar_sessions")
       .insert({
@@ -106,6 +108,7 @@ export const openClientSession = createServerFn({ method: "POST" })
         status: alreadyVerified ? "pending" : "unverified",
         customer_id: customerId,
         channel: "qr",
+        ...operationalFields,
       })
       .select("id")
       .single();

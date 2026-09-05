@@ -7,6 +7,7 @@ import {
   useRouterState,
 } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
+import { useEffect, useState } from "react";
 import {
   AlertTriangle,
   BarChart3,
@@ -19,6 +20,8 @@ import {
   Users,
 } from "lucide-react";
 import { checkBarAccess, lockBarPanel } from "@/lib/bar-gate.functions";
+import { getOperationStatus, openOperation, closeOperation } from "@/lib/operations.functions";
+import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import {
   Sidebar,
   SidebarContent,
@@ -91,6 +94,144 @@ function ModulesMenu({ active }: { active: string }) {
   );
 }
 
+type OperationStatus = Awaited<ReturnType<typeof getOperationStatus>>;
+
+/** HH:mm no fuso do tenant, a partir de um ISO — usado tanto pro relógio civil quanto pro horário
+ * de abertura da operação exibidos na barra. */
+function formatLocalTime(iso: string, timezone: string) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: timezone,
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(iso));
+}
+
+function formatDataOperacional(dataOperacional: string) {
+  const [year, month, day] = dataOperacional.split("-");
+  return `${day}/${month}/${year}`;
+}
+
+/**
+ * Data/hora civil atual + a operação (turno comercial) em andamento, com os botões pra abrir e
+ * encerrar — o conceito descrito em PROMPT_DATA_OPERACIONAL_ABERTURA_FECHAMENTO. Fica no cabeçalho
+ * fixo do caixa porque toda venda depende de existir uma operação aberta pra ser vinculada a ela.
+ *
+ * "ENCERRAR OPERAÇÃO" reaproveita o PasswordConfirm (mesmo componente das outras ações
+ * destrutivas do caixa) como a confirmação explícita que o prompt pede — digitar a senha de novo
+ * e clicar "Confirmar" já é o passo deliberado, não um único toque acidental.
+ */
+function OperationBar() {
+  const [status, setStatus] = useState<OperationStatus | null>(null);
+  const [now, setNow] = useState(() => new Date());
+  const [confirmingClose, setConfirmingClose] = useState(false);
+  const [confirmingOpen, setConfirmingOpen] = useState(false);
+
+  const loadStatus = useServerFn(getOperationStatus);
+  const doOpen = useServerFn(openOperation);
+  const doClose = useServerFn(closeOperation);
+
+  async function refresh() {
+    setStatus(await loadStatus());
+  }
+
+  useEffect(() => {
+    void refresh();
+    // Relógio civil no cabeçalho + reconferência periódica da operação: sem isso, a virada do
+    // expediente (ex.: 04:00) só apareceria pra equipe depois de um F5 manual na tela.
+    const clock = setInterval(() => setNow(new Date()), 30_000);
+    const poll = setInterval(() => void refresh(), 60_000);
+    return () => {
+      clearInterval(clock);
+      clearInterval(poll);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (!status) return null;
+
+  const { operation, dataOperacionalAgora, config } = status;
+  const timezone = config.timezone;
+  const civilLabel = new Intl.DateTimeFormat("pt-BR", {
+    timeZone: timezone,
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(now);
+
+  async function handleOpen(password: string) {
+    const result = await doOpen({ data: { password } });
+    if (result.ok) {
+      setConfirmingOpen(false);
+      await refresh();
+    }
+    return result;
+  }
+
+  async function handleClose(password: string) {
+    const result = await doClose({ data: { password } });
+    if (result.ok) {
+      setConfirmingClose(false);
+      await refresh();
+    }
+    return result;
+  }
+
+  return (
+    <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
+      <div className="flex flex-col text-xs leading-tight">
+        <span className="text-muted-foreground">{civilLabel}</span>
+        {operation ? (
+          <span className="font-medium text-foreground">
+            Operação {formatDataOperacional(operation.data_operacional)} — aberta às{" "}
+            {formatLocalTime(operation.aberto_em, timezone)}
+          </span>
+        ) : (
+          <span className="font-medium text-muted-foreground">
+            Nenhuma operação aberta (data operacional {formatDataOperacional(dataOperacionalAgora)})
+          </span>
+        )}
+      </div>
+
+      {operation ? (
+        confirmingClose ? (
+          <div className="w-full max-w-xs sm:w-auto">
+            <PasswordConfirm
+              message="Confirme a senha da equipe para encerrar a operação. Depois disso não dá mais para lançar vendas nela."
+              confirmLabel="Encerrar operação"
+              onCancel={() => setConfirmingClose(false)}
+              onConfirm={handleClose}
+            />
+          </div>
+        ) : (
+          <button
+            onClick={() => setConfirmingClose(true)}
+            className="rounded-full border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-destructive"
+          >
+            Encerrar operação
+          </button>
+        )
+      ) : confirmingOpen ? (
+        <div className="w-full max-w-xs sm:w-auto">
+          <PasswordConfirm
+            message="Confirme a senha da equipe para abrir a operação."
+            confirmLabel="Abrir operação"
+            onCancel={() => setConfirmingOpen(false)}
+            onConfirm={handleOpen}
+          />
+        </div>
+      ) : (
+        <button
+          onClick={() => setConfirmingOpen(true)}
+          className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
+        >
+          Abrir operação
+        </button>
+      )}
+    </div>
+  );
+}
+
 function RegisterLayout() {
   const navigate = useNavigate();
   const lock = useServerFn(lockBarPanel);
@@ -136,6 +277,7 @@ function RegisterLayout() {
       <SidebarInset>
         <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background/95 px-3 py-2 backdrop-blur">
           <SidebarTrigger />
+          <OperationBar />
         </div>
         <Outlet />
       </SidebarInset>

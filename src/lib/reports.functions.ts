@@ -22,7 +22,7 @@ export const getReportsOverview = createServerFn({ method: "POST" })
     const { data: sessions } = await admin()
       .from("fastbar_sessions")
       .select(
-        "id, customer_name, paid_at, payment_method, customer_id, discount_percent, channel, pos_paid_order_id",
+        "id, customer_name, paid_at, payment_method, customer_id, discount_percent, channel, pos_paid_order_id, data_operacional",
       )
       .eq("status", "paid")
       .gte("paid_at", data.from)
@@ -129,10 +129,14 @@ export const getReportsOverview = createServerFn({ method: "POST" })
     const marginPercent = totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0;
 
     // ---- Séries ----------------------------------------------------------
+    // Agrupa pela data OPERACIONAL, não por DATE(paid_at): uma comanda fechada de madrugada
+    // (antes da virada do expediente) ainda pertence ao dia anterior, não ao civil. Comandas
+    // antigas, de antes dessa coluna existir, caem de volta em paid_at.slice(0,10) — sem isso
+    // ficariam de fora do relatório por não terem data_operacional preenchida.
     const byDay = new Map<string, number>();
     for (const session of sessions ?? []) {
       if (!session.paid_at) continue;
-      const day = session.paid_at.slice(0, 10);
+      const day = session.data_operacional ?? session.paid_at.slice(0, 10);
       byDay.set(day, (byDay.get(day) ?? 0) + (revenueBySession.get(session.id) ?? 0));
     }
     const revenueByDay = Array.from(byDay.entries())

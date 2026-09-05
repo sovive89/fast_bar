@@ -167,6 +167,8 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
     const customerId = phone
       ? await upsertCustomer(name, { phone })
       : await upsertCustomer(name, { document: document!, documentType: data.documentType as "cpf" | "rg" });
+    const { operationalFieldsForNewSession } = await import("./operations.server");
+    const operationalFields = await operationalFieldsForNewSession();
     const { data: inserted, error } = await admin()
       .from("fastbar_sessions")
       .insert({
@@ -178,6 +180,7 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
         started_at: new Date().toISOString(),
         customer_id: customerId,
         channel: "staff",
+        ...operationalFields,
       })
       .select("id")
       .single();
@@ -213,23 +216,22 @@ export const openWalkInSession = createServerFn({ method: "POST" })
     }
 
     const now = new Date();
-    // O dia é o do bar (America/Sao_Paulo), não o UTC do servidor: sem isso, entre 21h e a
-    // meia-noite o servidor já estaria no dia seguinte e abriria uma segunda comanda no meio do
-    // movimento — justo no horário de pico.
-    const localDate = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Sao_Paulo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit",
-    }).format(now); // YYYY-MM-DD
-    const dayStartIso = new Date(`${localDate}T00:00:00-03:00`).toISOString();
+    // O "dia" da comanda de balcão é a data operacional (mesma regra do resto do app, virada
+    // configurável — não mais meia-noite fixa), não o UTC do servidor nem o calendário civil: sem
+    // isso, uma comanda aberta às 2h da manhã seria tratada como "dia seguinte" mesmo ainda sendo
+    // a madrugada do movimento de ontem.
+    const { operationalFieldsForNewSession, loadOperationConfig, computeDataOperacional } =
+      await import("./operations.server");
+    const config = await loadOperationConfig();
+    const dataOperacional = computeDataOperacional(now, config);
+    const operationalFields = await operationalFieldsForNewSession();
 
     const { data: existing } = await admin()
       .from("fastbar_sessions")
       .select("id")
       .eq("phone", "")
       .eq("status", "open")
-      .gte("created_at", dayStartIso)
+      .eq("data_operacional", dataOperacional)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -239,7 +241,7 @@ export const openWalkInSession = createServerFn({ method: "POST" })
 
     // A data no nome deixa as comandas de balcão distinguíveis na lista de arquivadas — sem ela,
     // seriam dezenas de linhas idênticas sem como saber de que dia é cada uma.
-    const [year, month, day] = localDate.split("-");
+    const [year, month, day] = dataOperacional.split("-");
     const { data: inserted, error } = await admin()
       .from("fastbar_sessions")
       .insert({
@@ -249,6 +251,7 @@ export const openWalkInSession = createServerFn({ method: "POST" })
         started_at: now.toISOString(),
         customer_id: null,
         channel: "balcao",
+        ...operationalFields,
       })
       .select("id")
       .single();

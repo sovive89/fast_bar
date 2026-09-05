@@ -560,6 +560,48 @@ export type Database = {
           },
         ]
       }
+      fastbar_operations: {
+        Row: {
+          aberto_em: string
+          aberto_por: string
+          created_at: string
+          data_operacional: string
+          fechado_em: string | null
+          fechado_por: string | null
+          fim_operacional: string | null
+          id: string
+          inicio_operacional: string
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          aberto_em?: string
+          aberto_por?: string
+          created_at?: string
+          data_operacional: string
+          fechado_em?: string | null
+          fechado_por?: string | null
+          fim_operacional?: string | null
+          id?: string
+          inicio_operacional: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Update: {
+          aberto_em?: string
+          aberto_por?: string
+          created_at?: string
+          data_operacional?: string
+          fechado_em?: string | null
+          fechado_por?: string | null
+          fim_operacional?: string | null
+          id?: string
+          inicio_operacional?: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       fastbar_product_categories: {
         Row: {
           created_at: string
@@ -724,10 +766,12 @@ export type Database = {
           created_at: string
           customer_id: string | null
           customer_name: string
+          data_operacional: string | null
           discount_percent: number
           document: string | null
           document_type: string | null
           id: string
+          operacao_id: string | null
           paid_at: string | null
           payment_method: string | null
           phone: string | null
@@ -748,10 +792,12 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           customer_name: string
+          data_operacional?: string | null
           discount_percent?: number
           document?: string | null
           document_type?: string | null
           id?: string
+          operacao_id?: string | null
           paid_at?: string | null
           payment_method?: string | null
           phone?: string | null
@@ -772,10 +818,12 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           customer_name?: string
+          data_operacional?: string | null
           discount_percent?: number
           document?: string | null
           document_type?: string | null
           id?: string
+          operacao_id?: string | null
           paid_at?: string | null
           payment_method?: string | null
           phone?: string | null
@@ -795,6 +843,13 @@ export type Database = {
             columns: ["customer_id"]
             isOneToOne: false
             referencedRelation: "fastbar_customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fastbar_sessions_operacao_id_fkey"
+            columns: ["operacao_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_operations"
             referencedColumns: ["id"]
           },
           {
