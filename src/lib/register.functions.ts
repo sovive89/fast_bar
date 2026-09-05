@@ -444,6 +444,70 @@ export const registerPayment = createServerFn({ method: "POST" })
   });
 
 /**
+ * Envia o valor da comanda pra maquininha (Mercado Pago Point) — o valor é recalculado aqui a
+ * partir dos itens de verdade, nunca aceito do cliente, pra não confiar num total que o navegador
+ * mandou. A confirmação de pagamento não acontece nesta chamada: ela só entrega a cobrança pro
+ * terminal e volta na hora; quem credita o pagamento e fecha a comanda é o webhook (ou o botão
+ * "Verificar agora") quando o Mercado Pago avisar que terminou.
+ */
+export const startMachineCharge = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("id, status, discount_percent")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+    if (!session || !["open", "closed"].includes(session.status)) {
+      return { ok: false as const, message: "Comanda inválida para cobrança." };
+    }
+
+    const { data: items } = await admin()
+      .from("fastbar_tab_items")
+      .select("unit_price, quantity")
+      .eq("session_id", data.sessionId);
+    const subtotal = (items ?? []).reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
+    const discountPercent = Number(session.discount_percent ?? 0);
+    const amount = discountPercent > 0 ? subtotal * (1 - discountPercent / 100) : subtotal;
+    if (amount <= 0) return { ok: false as const, message: "Comanda sem valor a cobrar." };
+
+    const { startPointCharge } = await import("./mercadopago/service.server");
+    return startPointCharge(data.sessionId, amount);
+  });
+
+/** Cancela a cobrança em andamento na maquininha — terminal travado, valor errado, ou a equipe
+ * decidiu voltar pro pagamento manual. */
+export const cancelMachineCharge = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const { assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { cancelPointCharge } = await import("./mercadopago/service.server");
+    return cancelPointCharge(data.sessionId);
+  });
+
+/** Botão "Verificar agora" — consulta o Mercado Pago na hora em vez de esperar o webhook, pra
+ * equipe não ficar travada se a notificação atrasar ou não chegar (rede, configuração). */
+export const checkMachineChargeStatus = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("pos_order_id")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+    if (!session?.pos_order_id) return { ok: true as const };
+    const { reconcilePointOrder } = await import("./mercadopago/service.server");
+    await reconcilePointOrder(session.pos_order_id);
+    return { ok: true as const };
+  });
+
+/**
  * Limpa a tela arquivando de uma vez todas as comandas já fechadas/pagas. Nada é apagado: os
  * valores continuam no faturamento e nos relatórios. Comanda aberta nunca é tocada.
  */

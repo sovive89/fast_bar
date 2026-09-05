@@ -6,7 +6,7 @@ const PUBLIC_SESSION_COLUMNS =
 
 /** Caixa-only shape — internal identifiers ok since it's behind assertRegisterAccess. CPF/RG fica
  * de fora do PUBLIC_SESSION_COLUMNS (link do cliente) porque é dado sensível — só a equipe vê. */
-const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at, payment_method, document, document_type`;
+const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at, payment_method, document, document_type, pos_order_id, pos_amount`;
 
 /** Customer view: readable only with the unguessable comanda link, never sensitive columns. */
 export const getCustomerTab = createServerFn({ method: "POST" })

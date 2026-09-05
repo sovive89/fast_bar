@@ -24,6 +24,7 @@ import { Route as CaixaCrmRouteImport } from './routes/caixa.crm'
 import { Route as CaixaEstoqueRouteImport } from './routes/caixa.estoque'
 import { Route as CaixaRelatoriosRouteImport } from './routes/caixa.relatorios'
 import { Route as ComandaSessionIdRouteImport } from './routes/comanda.$sessionId'
+import { Route as ApiMercadopagoWebhookRouteImport } from './routes/api.mercadopago.webhook'
 import { Route as CSessionIdPerfilRouteImport } from './routes/c.$sessionId_.perfil'
 import { Route as CSessionIdVerificarRouteImport } from './routes/c.$sessionId_.verificar'
 import { Route as CaixaCrmIndexRouteImport } from './routes/caixa.crm.index'
@@ -106,6 +107,11 @@ const ComandaSessionIdRoute = ComandaSessionIdRouteImport.update({
   path: '/comanda/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiMercadopagoWebhookRoute = ApiMercadopagoWebhookRouteImport.update({
+  id: '/api/mercadopago/webhook',
+  path: '/api/mercadopago/webhook',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const CSessionIdPerfilRoute = CSessionIdPerfilRouteImport.update({
   id: '/c/$sessionId_/perfil',
   path: '/c/$sessionId/perfil',
@@ -154,6 +160,7 @@ export interface FileRoutesByFullPath {
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa/': typeof CaixaIndexRoute
+  '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
   '/c/$sessionId/perfil': typeof CSessionIdPerfilRoute
   '/c/$sessionId/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
@@ -175,6 +182,7 @@ export interface FileRoutesByTo {
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa': typeof CaixaIndexRoute
+  '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
   '/c/$sessionId/perfil': typeof CSessionIdPerfilRoute
   '/c/$sessionId/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
@@ -199,6 +207,7 @@ export interface FileRoutesById {
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
   '/caixa/': typeof CaixaIndexRoute
+  '/api/mercadopago/webhook': typeof ApiMercadopagoWebhookRoute
   '/c/$sessionId_/perfil': typeof CSessionIdPerfilRoute
   '/c/$sessionId_/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
@@ -224,6 +233,7 @@ export interface FileRouteTypes {
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
     | '/caixa/'
+    | '/api/mercadopago/webhook'
     | '/c/$sessionId/perfil'
     | '/c/$sessionId/verificar'
     | '/caixa/crm/analises'
@@ -245,6 +255,7 @@ export interface FileRouteTypes {
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
     | '/caixa'
+    | '/api/mercadopago/webhook'
     | '/c/$sessionId/perfil'
     | '/c/$sessionId/verificar'
     | '/caixa/crm/analises'
@@ -268,6 +279,7 @@ export interface FileRouteTypes {
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
     | '/caixa/'
+    | '/api/mercadopago/webhook'
     | '/c/$sessionId_/perfil'
     | '/c/$sessionId_/verificar'
     | '/caixa/crm/analises'
@@ -284,6 +296,7 @@ export interface RootRouteChildren {
   PoliticaPrivacidadeRoute: typeof PoliticaPrivacidadeRoute
   CSessionIdRoute: typeof CSessionIdRoute
   ComandaSessionIdRoute: typeof ComandaSessionIdRoute
+  ApiMercadopagoWebhookRoute: typeof ApiMercadopagoWebhookRoute
   CSessionIdPerfilRoute: typeof CSessionIdPerfilRoute
   CSessionIdVerificarRoute: typeof CSessionIdVerificarRoute
 }
@@ -395,6 +408,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ComandaSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/mercadopago/webhook': {
+      id: '/api/mercadopago/webhook'
+      path: '/api/mercadopago/webhook'
+      fullPath: '/api/mercadopago/webhook'
+      preLoaderRoute: typeof ApiMercadopagoWebhookRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/c/$sessionId_/perfil': {
       id: '/c/$sessionId_/perfil'
       path: '/c/$sessionId/perfil'
@@ -490,6 +510,7 @@ const rootRouteChildren: RootRouteChildren = {
   PoliticaPrivacidadeRoute: PoliticaPrivacidadeRoute,
   CSessionIdRoute: CSessionIdRoute,
   ComandaSessionIdRoute: ComandaSessionIdRoute,
+  ApiMercadopagoWebhookRoute: ApiMercadopagoWebhookRoute,
   CSessionIdPerfilRoute: CSessionIdPerfilRoute,
   CSessionIdVerificarRoute: CSessionIdVerificarRoute,
 }

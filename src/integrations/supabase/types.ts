@@ -727,6 +727,9 @@ export type Database = {
           paid_at: string | null
           payment_method: string | null
           phone: string | null
+          pos_amount: number | null
+          pos_order_id: string | null
+          pos_requested_at: string | null
           started_at: string | null
           status: string
           tenant_id: string
@@ -745,6 +748,9 @@ export type Database = {
           paid_at?: string | null
           payment_method?: string | null
           phone?: string | null
+          pos_amount?: number | null
+          pos_order_id?: string | null
+          pos_requested_at?: string | null
           started_at?: string | null
           status?: string
           tenant_id?: string
@@ -763,6 +769,9 @@ export type Database = {
           paid_at?: string | null
           payment_method?: string | null
           phone?: string | null
+          pos_amount?: number | null
+          pos_order_id?: string | null
+          pos_requested_at?: string | null
           started_at?: string | null
           status?: string
           tenant_id?: string

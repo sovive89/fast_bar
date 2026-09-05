@@ -15,6 +15,10 @@ export type BarSession = {
   customer_id?: string | null;
   archived_at?: string | null;
   discount_percent?: number;
+  // Cobrança em andamento na maquininha (Mercado Pago Point) — pos_order_id não-nulo é o sinal de
+  // "aguardando o terminal"; some sozinho quando o pagamento é confirmado (ou cancelado).
+  pos_order_id?: string | null;
+  pos_amount?: number | null;
 };
 
 export type BarTabItem = {

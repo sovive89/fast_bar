@@ -66,3 +66,33 @@ export const getVerificationStatus = createServerFn({ method: "POST" }).handler(
   const { isVerificationConfigured } = await import("./verification/service.server");
   return { configured: isVerificationConfigured() };
 });
+
+/** Diz se a maquininha (Mercado Pago Point) está pronta pra cobrar — habilitada, com token e
+ * terminal escolhido. Usado pra mostrar ou esconder a opção "Cobrar na maquininha" na tela da
+ * comanda, sem expor nada da config em si. */
+export const getMachinePaymentStatus = createServerFn({ method: "POST" }).handler(async () => {
+  const { assertRegisterAccess } = await import("./fastbar.server");
+  await assertRegisterAccess();
+  const { isPointConfigured } = await import("./mercadopago/service.server");
+  return { configured: await isPointConfigured() };
+});
+
+/**
+ * Busca os terminais Point pareados com a conta do Access Token informado — usado pelo card de
+ * Mercado Pago em Conexões pra equipe escolher o terminal certo em vez de digitar o ID na mão.
+ * Recebe o token direto (não o salvo no banco) pra funcionar mesmo antes de "Salvar", enquanto a
+ * equipe ainda está testando qual token cola.
+ */
+export const listMercadoPagoTerminals = createServerFn({ method: "POST" })
+  .inputValidator((data: { accessToken: string }) => data)
+  .handler(async ({ data }) => {
+    const { assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    if (!data.accessToken.trim()) {
+      return { ok: false as const, message: "Informe o Access Token primeiro." };
+    }
+    const { listTerminalsForToken } = await import("./mercadopago/service.server");
+    const result = await listTerminalsForToken(data.accessToken.trim());
+    if (!result.ok) return { ok: false as const, message: result.message };
+    return { ok: true as const, terminals: result.terminals };
+  });

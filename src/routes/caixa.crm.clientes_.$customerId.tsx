@@ -50,6 +50,8 @@ const PAYMENT_LABEL: Record<string, string> = {
   dinheiro: "Dinheiro",
   cartao: "Cartão",
   pix: "Pix",
+  credito: "Crédito (maquininha)",
+  debito: "Débito (maquininha)",
 };
 
 function formatDate(value: string) {
@@ -334,13 +336,7 @@ function CustomerDetail() {
                   {visit.started_at ? `${formatDate(visit.started_at)} · ${hhmm(visit.started_at)}` : "—"}
                 </p>
                 <p className="text-xs text-muted-foreground">
-                  {visit.payment_method === "dinheiro"
-                    ? "Dinheiro"
-                    : visit.payment_method === "cartao"
-                      ? "Cartão"
-                      : visit.payment_method === "pix"
-                        ? "Pix"
-                        : "—"}
+                  {visit.payment_method ? (PAYMENT_LABEL[visit.payment_method] ?? visit.payment_method) : "—"}
                 </p>
               </div>
               <div className="flex flex-col items-end gap-1">

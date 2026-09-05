@@ -79,6 +79,8 @@ const PAYMENT_LABEL: Record<string, string> = {
   dinheiro: "Dinheiro",
   cartao: "Cartão",
   pix: "Pix",
+  credito: "Crédito (maquininha)",
+  debito: "Débito (maquininha)",
 };
 
 function formatDayLabel(date: string) {

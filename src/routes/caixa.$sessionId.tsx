@@ -1,18 +1,22 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TabItemList } from "@/components/shared/TabItemList";
 import { ProductPicker } from "@/features/register/components/ProductPicker";
 import { useLiveTab } from "@/hooks/use-live-tab";
 import { brl, elapsed, formatIdentifier, hhmm } from "@/lib/format";
+import { getMachinePaymentStatus } from "@/lib/integrations.functions";
 import {
   addTabItem,
+  cancelMachineCharge,
+  checkMachineChargeStatus,
   closeSession,
   confirmSession,
   registerPayment,
   removeTabItem,
   reopenSession,
+  startMachineCharge,
   type PaymentMethod,
 } from "@/lib/register.functions";
 import { fetchProducts } from "@/services/supabase/products";
@@ -45,6 +49,8 @@ function RegisterTabDetail() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
+  const [paymentMode, setPaymentMode] = useState<"manual" | "maquina">("manual");
+  const [machineConfigured, setMachineConfigured] = useState(false);
 
   const add = useServerFn(addTabItem);
   const remove = useServerFn(removeTabItem);
@@ -52,6 +58,10 @@ function RegisterTabDetail() {
   const pay = useServerFn(registerPayment);
   const reopen = useServerFn(reopenSession);
   const confirm = useServerFn(confirmSession);
+  const startCharge = useServerFn(startMachineCharge);
+  const cancelCharge = useServerFn(cancelMachineCharge);
+  const checkCharge = useServerFn(checkMachineChargeStatus);
+  const machineStatus = useServerFn(getMachinePaymentStatus);
 
   useEffect(() => {
     void fetchProducts().then(setProducts);
@@ -60,6 +70,27 @@ function RegisterTabDetail() {
     const poll = setInterval(() => void fetchProducts().then(setProducts), 15000);
     return () => clearInterval(poll);
   }, []);
+
+  useEffect(() => {
+    void machineStatus().then((res) => {
+      setMachineConfigured(res.configured);
+      if (res.configured) setPaymentMode("maquina");
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cobrança na maquininha é assíncrona: quem confirma o pagamento é o webhook (ou "Verificar
+  // agora"), não este clique. Detecta quando uma cobrança que estava em andamento (pos_order_id
+  // preenchido) terminou aprovada (status virou "paid") pra sair da tela sozinho, do mesmo jeito
+  // que o pagamento manual já fazia.
+  const wasWaitingForMachineRef = useRef(false);
+  useEffect(() => {
+    const waitingNow = Boolean(session?.pos_order_id);
+    if (wasWaitingForMachineRef.current && !waitingNow && session?.status === "paid") {
+      void navigate({ to: "/caixa" });
+    }
+    wasWaitingForMachineRef.current = waitingNow;
+  }, [session?.pos_order_id, session?.status, navigate]);
 
   async function run(action: () => Promise<{ ok: boolean; message?: string }>) {
     if (busy) return false;
@@ -89,6 +120,9 @@ function RegisterTabDetail() {
 
   const isOpen = session.status === "open";
   const isPending = session.status === "pending";
+  const totalValue = session.discount_percent
+    ? tabTotalWithDiscount(items, session.discount_percent)
+    : tabTotal(items);
 
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
@@ -183,40 +217,108 @@ function RegisterTabDetail() {
 
         {!isPending && session.status !== "paid" && (
           <>
-            <div className="flex gap-2">
-              {(
-                [
-                  ["dinheiro", "Dinheiro"],
-                  ["cartao", "Cartão"],
-                  ["pix", "Pix"],
-                ] as const
-              ).map(([value, label]) => (
-                <button
-                  key={value}
-                  onClick={() => setPaymentMethod(value)}
-                  disabled={busy}
-                  className={`h-10 flex-1 rounded-xl text-sm font-medium disabled:opacity-60 ${
-                    paymentMethod === value
-                      ? "bg-primary text-primary-foreground"
-                      : "border border-border text-muted-foreground"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
-            <button
-              onClick={async () => {
-                const ok = await run(() =>
-                  pay({ data: { sessionId: session.id, method: paymentMethod } }),
-                );
-                if (ok) await navigate({ to: "/caixa" });
-              }}
-              disabled={busy}
-              className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
-            >
-              Registrar pagamento
-            </button>
+            {session.pos_order_id ? (
+              <div className="space-y-3 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
+                <div className="flex items-center gap-2 text-sm font-medium">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
+                  Aguardando pagamento na maquininha...
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Valor enviado: {brl(session.pos_amount ?? 0)}. A comanda fecha sozinha assim que
+                  o pagamento for aprovado no terminal.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => void run(() => checkCharge({ data: { sessionId: session.id } }))}
+                    disabled={busy}
+                    className="h-10 flex-1 rounded-xl border border-border text-sm font-medium disabled:opacity-60"
+                  >
+                    Verificar agora
+                  </button>
+                  <button
+                    onClick={() => void run(() => cancelCharge({ data: { sessionId: session.id } }))}
+                    disabled={busy}
+                    className="h-10 flex-1 rounded-xl border border-destructive/40 text-sm font-medium text-destructive disabled:opacity-60"
+                  >
+                    Cancelar cobrança
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                {machineConfigured && (
+                  <div className="flex gap-1 rounded-xl border border-border p-1 text-xs font-medium">
+                    <button
+                      onClick={() => setPaymentMode("manual")}
+                      className={`h-8 flex-1 rounded-lg ${
+                        paymentMode === "manual"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      Manual
+                    </button>
+                    <button
+                      onClick={() => setPaymentMode("maquina")}
+                      className={`h-8 flex-1 rounded-lg ${
+                        paymentMode === "maquina"
+                          ? "bg-primary text-primary-foreground"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      Maquininha
+                    </button>
+                  </div>
+                )}
+
+                {paymentMode === "maquina" && machineConfigured ? (
+                  <button
+                    onClick={() => void run(() => startCharge({ data: { sessionId: session.id } }))}
+                    disabled={busy}
+                    className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
+                  >
+                    {busy ? "Enviando pra maquininha..." : `Cobrar ${brl(totalValue)} na maquininha`}
+                  </button>
+                ) : (
+                  <>
+                    <div className="flex gap-2">
+                      {(
+                        [
+                          ["dinheiro", "Dinheiro"],
+                          ["cartao", "Cartão"],
+                          ["pix", "Pix"],
+                        ] as const
+                      ).map(([value, label]) => (
+                        <button
+                          key={value}
+                          onClick={() => setPaymentMethod(value)}
+                          disabled={busy}
+                          className={`h-10 flex-1 rounded-xl text-sm font-medium disabled:opacity-60 ${
+                            paymentMethod === value
+                              ? "bg-primary text-primary-foreground"
+                              : "border border-border text-muted-foreground"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    <button
+                      onClick={async () => {
+                        const ok = await run(() =>
+                          pay({ data: { sessionId: session.id, method: paymentMethod } }),
+                        );
+                        if (ok) await navigate({ to: "/caixa" });
+                      }}
+                      disabled={busy}
+                      className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
+                    >
+                      Registrar pagamento
+                    </button>
+                  </>
+                )}
+              </>
+            )}
           </>
         )}
 
