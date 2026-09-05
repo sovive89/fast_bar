@@ -178,6 +178,36 @@ export const getReportsOverview = createServerFn({ method: "POST" })
       .map(([paymentChannel, row]) => ({ paymentChannel, ...row }))
       .sort((a, b) => b.revenue - a.revenue);
 
+    // Refinamento do canal de venda: dentro de cada canal (QR, balcão, equipe), como o dinheiro
+    // entrou de fato — maquininha ou manual, e com qual forma específica (pix/dinheiro/cartão).
+    // "Por canal de venda" sozinho não diz se o QR Code está sendo pago na maquininha ou não, por
+    // exemplo — isso cruza as duas perguntas.
+    const byChannelDetail = new Map<string, Map<string, { revenue: number; count: number }>>();
+    for (const session of sessions ?? []) {
+      const channel = session.channel ?? "não_informado";
+      const paymentChannel = session.pos_paid_order_id ? "maquininha" : "manual";
+      const method = session.payment_method ?? "não_informado";
+      const key = `${paymentChannel}|${method}`;
+      const methodMap = byChannelDetail.get(channel) ?? new Map();
+      const current = methodMap.get(key) ?? { revenue: 0, count: 0 };
+      current.revenue += revenueBySession.get(session.id) ?? 0;
+      current.count += 1;
+      methodMap.set(key, current);
+      byChannelDetail.set(channel, methodMap);
+    }
+    const channelBreakdown = Array.from(byChannelDetail.entries())
+      .map(([channel, methodMap]) => ({
+        channel,
+        revenue: revenueByChannel.find((c) => c.channel === channel)?.revenue ?? 0,
+        methods: Array.from(methodMap.entries())
+          .map(([key, row]) => {
+            const [paymentChannel, method] = key.split("|");
+            return { paymentChannel, method, ...row };
+          })
+          .sort((a, b) => b.revenue - a.revenue),
+      }))
+      .sort((a, b) => b.revenue - a.revenue);
+
     // Lista detalhada, com data/hora exatas de cada pagamento (não só agregado por dia/hora) — pra
     // conferir uma venda específica sem precisar ir comanda por comanda.
     const transactions = (sessions ?? [])
@@ -326,6 +356,7 @@ export const getReportsOverview = createServerFn({ method: "POST" })
       revenueByMethod,
       revenueByChannel,
       revenueByPaymentChannel,
+      channelBreakdown,
       transactions,
       revenueByCategory,
       revenueByHour,

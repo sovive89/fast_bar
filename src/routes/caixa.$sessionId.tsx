@@ -209,7 +209,11 @@ function RegisterTabDetail() {
 
         {isOpen && (
           <button
-            onClick={() => void run(() => close({ data: { sessionId: session.id } }))}
+            onClick={() => {
+              if (!window.confirm("Fechar essa comanda? Ela para de receber novos lançamentos."))
+                return;
+              void run(() => close({ data: { sessionId: session.id } }));
+            }}
             disabled={busy}
             className="h-12 w-full rounded-xl border border-border text-base font-semibold disabled:opacity-60"
           >

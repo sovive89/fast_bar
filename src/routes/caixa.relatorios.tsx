@@ -50,6 +50,11 @@ type Overview = {
   revenueByMethod: { method: string; revenue: number }[];
   revenueByChannel: { channel: string; revenue: number; count: number }[];
   revenueByPaymentChannel: { paymentChannel: string; revenue: number; count: number }[];
+  channelBreakdown: {
+    channel: string;
+    revenue: number;
+    methods: { paymentChannel: string; method: string; revenue: number; count: number }[];
+  }[];
   transactions: {
     id: string;
     customerName: string;
@@ -412,47 +417,59 @@ function Reports() {
           {/* Canal da venda (como a comanda foi aberta) x canal do pagamento (maquininha ou
               manual) — duas perguntas diferentes: uma é "quem trouxe o cliente pro sistema", a
               outra é "como o dinheiro entrou". */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-2xl border border-border bg-card p-4">
-              <p className="text-sm font-semibold">Por canal de venda</p>
-              {overview.revenueByChannel.length === 0 ? (
-                <p className="mt-3 text-sm text-muted-foreground">Sem dados.</p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {overview.revenueByChannel.map((row) => (
-                    <li key={row.channel} className="flex items-center justify-between gap-2 text-sm">
-                      <span className="min-w-0 truncate">
-                        {CHANNEL_LABEL[row.channel] ?? row.channel}{" "}
-                        <span className="text-muted-foreground">· {row.count}</span>
-                      </span>
+          {/* Canal de venda com a forma de pagamento aberta por dentro — responde "esse QR Code
+              tá sendo pago na maquininha mesmo, ou o cliente paga manual depois?" sem precisar
+              cruzar duas tabelas na cabeça. */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <p className="text-sm font-semibold">Por canal de venda</p>
+            {overview.channelBreakdown.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">Sem dados.</p>
+            ) : (
+              <ul className="mt-3 space-y-3">
+                {overview.channelBreakdown.map((row) => (
+                  <li key={row.channel}>
+                    <div className="flex items-center justify-between gap-2 text-sm font-medium">
+                      <span className="min-w-0 truncate">{CHANNEL_LABEL[row.channel] ?? row.channel}</span>
                       <span className="shrink-0 font-semibold">{brl(row.revenue)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+                    </div>
+                    <ul className="mt-1 space-y-1 border-l border-border pl-3">
+                      {row.methods.map((m) => (
+                        <li
+                          key={`${m.paymentChannel}-${m.method}`}
+                          className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
+                        >
+                          <span className="min-w-0 truncate">
+                            {PAYMENT_CHANNEL_LABEL[m.paymentChannel] ?? m.paymentChannel} ·{" "}
+                            {PAYMENT_LABEL[m.method] ?? m.method}{" "}
+                            <span>· {m.count}</span>
+                          </span>
+                          <span className="shrink-0">{brl(m.revenue)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-            <div className="rounded-2xl border border-border bg-card p-4">
-              <p className="text-sm font-semibold">Por canal de pagamento</p>
-              {overview.revenueByPaymentChannel.length === 0 ? (
-                <p className="mt-3 text-sm text-muted-foreground">Sem dados.</p>
-              ) : (
-                <ul className="mt-3 space-y-2">
-                  {overview.revenueByPaymentChannel.map((row) => (
-                    <li
-                      key={row.paymentChannel}
-                      className="flex items-center justify-between gap-2 text-sm"
-                    >
-                      <span className="min-w-0 truncate">
-                        {PAYMENT_CHANNEL_LABEL[row.paymentChannel] ?? row.paymentChannel}{" "}
-                        <span className="text-muted-foreground">· {row.count}</span>
-                      </span>
-                      <span className="shrink-0 font-semibold">{brl(row.revenue)}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <p className="text-sm font-semibold">Por canal de pagamento</p>
+            {overview.revenueByPaymentChannel.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">Sem dados.</p>
+            ) : (
+              <ul className="mt-3 space-y-2">
+                {overview.revenueByPaymentChannel.map((row) => (
+                  <li key={row.paymentChannel} className="flex items-center justify-between gap-2 text-sm">
+                    <span className="min-w-0 truncate">
+                      {PAYMENT_CHANNEL_LABEL[row.paymentChannel] ?? row.paymentChannel}{" "}
+                      <span className="text-muted-foreground">· {row.count}</span>
+                    </span>
+                    <span className="shrink-0 font-semibold">{brl(row.revenue)}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
 
           {/* Horário de pico: onde concentrar equipe, e em que faixa vale anunciar promoção. */}
