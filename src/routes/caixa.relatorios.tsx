@@ -40,6 +40,8 @@ type Overview = {
   averageTicket: number;
   crmDiscountTotal: number;
   crmDiscountSessions: number;
+  serviceFeeTotal: number;
+  serviceFeeSessions: number;
   totalCost: number;
   grossProfit: number;
   cmvPercent: number;
@@ -248,6 +250,15 @@ function Reports() {
                 {overview.crmDiscountSessions === 1 ? "comanda" : "comandas"} — já saiu do dinheiro
                 que entrou no caixa, mas não mexe no CMV/margem acima (é custo de aquisição de
                 cliente, não do produto).
+              </p>
+            )}
+            {overview.serviceFeeTotal > 0 && (
+              <p className="mt-3 rounded-lg border border-dashed border-border bg-muted/40 p-2.5 text-xs text-muted-foreground">
+                🧾 {brl(overview.serviceFeeTotal)} em taxa de serviço, em{" "}
+                {overview.serviceFeeSessions}{" "}
+                {overview.serviceFeeSessions === 1 ? "comanda" : "comandas"} — cobrado a mais do
+                cliente, mas fora do faturamento e da margem acima: é gorjeta da equipe, não receita
+                de produto.
               </p>
             )}
           </div>

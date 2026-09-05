@@ -2,7 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 
 /** Public (client-safe) shape — never includes customer_id or other internal/CRM identifiers. */
 const PUBLIC_SESSION_COLUMNS =
-  "id, customer_name, phone, status, started_at, closed_at, paid_at, discount_percent";
+  "id, customer_name, phone, status, started_at, closed_at, paid_at, discount_percent, service_fee_percent";
 
 /** Caixa-only shape — internal identifiers ok since it's behind assertRegisterAccess. CPF/RG fica
  * de fora do PUBLIC_SESSION_COLUMNS (link do cliente) porque é dado sensível — só a equipe vê. */

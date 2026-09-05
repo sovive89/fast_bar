@@ -390,12 +390,52 @@ export const closeSession = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
+
+    // A taxa é carimbada aqui, no fechamento, e não lida da config na hora de cobrar: o percentual
+    // pode mudar (ou ser desligado) semanas depois, e isso não pode reescrever o que já foi cobrado
+    // de um cliente que pagou ontem. A equipe ainda pode tirar a taxa desta comanda antes de
+    // receber, com setSessionServiceFee.
+    const { loadServiceFeeConfig } = await import("./service-fee.server");
+    const fee = await loadServiceFeeConfig();
+
     const { error } = await admin()
       .from("fastbar_sessions")
-      .update({ status: "closed", closed_at: new Date().toISOString() })
+      .update({
+        status: "closed",
+        closed_at: new Date().toISOString(),
+        service_fee_percent: fee.onByDefault ? fee.percent : 0,
+      })
       .eq("id", data.sessionId)
       .eq("status", "open");
     if (error) return { ok: false as const, message: "Não foi possível fechar a comanda." };
+    return { ok: true as const };
+  });
+
+/**
+ * Liga ou tira a taxa de serviço desta comanda. A taxa é opcional pro cliente — ele pode recusar,
+ * e recusar não pode significar chamar alguém pra mexer no banco. Só antes de pagar: depois de
+ * paga, mudar o valor cobrado deixaria comanda, faturamento e o gasto somado no CRM discordando
+ * entre si sobre quanto dinheiro entrou.
+ */
+export const setSessionServiceFee = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string; apply: boolean }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+
+    const { loadServiceFeeConfig } = await import("./service-fee.server");
+    const fee = await loadServiceFeeConfig();
+
+    const { data: updated, error } = await admin()
+      .from("fastbar_sessions")
+      .update({ service_fee_percent: data.apply ? fee.percent : 0 })
+      .eq("id", data.sessionId)
+      .in("status", ["open", "closed"])
+      .select("id");
+    if (error) return { ok: false as const, message: "Não foi possível mudar a taxa." };
+    if (!updated || updated.length === 0) {
+      return { ok: false as const, message: "Comanda já paga — a taxa não pode mais mudar." };
+    }
     return { ok: true as const };
   });
 
@@ -463,7 +503,7 @@ export const startMachineCharge = createServerFn({ method: "POST" })
 
     const { data: session } = await admin()
       .from("fastbar_sessions")
-      .select("id, status, discount_percent")
+      .select("id, status, discount_percent, service_fee_percent")
       .eq("id", data.sessionId)
       .maybeSingle();
     if (!session || !["open", "closed"].includes(session.status)) {
@@ -474,9 +514,14 @@ export const startMachineCharge = createServerFn({ method: "POST" })
       .from("fastbar_tab_items")
       .select("unit_price, quantity")
       .eq("session_id", data.sessionId);
-    const subtotal = (items ?? []).reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
-    const discountPercent = Number(session.discount_percent ?? 0);
-    const amount = discountPercent > 0 ? subtotal * (1 - discountPercent / 100) : subtotal;
+    // Mesma conta da tela e do pagamento manual (desconto primeiro, taxa sobre o que sobrou) — o
+    // valor que vai pra maquininha tem que ser exatamente o que o cliente acabou de ver.
+    const { tabTotals } = await import("@/services/supabase/tabItems");
+    const { total: amount } = tabTotals(
+      items ?? [],
+      session.discount_percent,
+      session.service_fee_percent,
+    );
     if (amount <= 0) return { ok: false as const, message: "Comanda sem valor a cobrar." };
 
     const { startPointCharge } = await import("./mercadopago/service.server");

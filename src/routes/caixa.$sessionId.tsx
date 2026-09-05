@@ -17,11 +17,12 @@ import {
   registerPayment,
   removeTabItem,
   reopenSession,
+  setSessionServiceFee,
   startMachineCharge,
   type PaymentMethod,
 } from "@/lib/register.functions";
 import { fetchProducts } from "@/services/supabase/products";
-import { tabTotal, tabTotalWithDiscount } from "@/services/supabase/tabItems";
+import { tabTotals } from "@/services/supabase/tabItems";
 import type { BarProduct } from "@/types/fastbar";
 
 export const Route = createFileRoute("/caixa/$sessionId")({
@@ -64,6 +65,7 @@ function RegisterTabDetail() {
   const checkCharge = useServerFn(checkMachineChargeStatus);
   const refundCharge = useServerFn(refundMachineCharge);
   const machineStatus = useServerFn(getMachinePaymentStatus);
+  const setServiceFee = useServerFn(setSessionServiceFee);
 
   useEffect(() => {
     void fetchProducts().then(setProducts);
@@ -122,9 +124,12 @@ function RegisterTabDetail() {
 
   const isOpen = session.status === "open";
   const isPending = session.status === "pending";
-  const totalValue = session.discount_percent
-    ? tabTotalWithDiscount(items, session.discount_percent)
-    : tabTotal(items);
+  const totals = tabTotals(items, session.discount_percent, session.service_fee_percent);
+  const totalValue = totals.total;
+  const hasServiceFee = totals.serviceFee > 0;
+  // A taxa só pode mudar enquanto a comanda não foi paga — depois, mexer no valor cobrado
+  // desalinharia comanda, faturamento e o gasto já somado no CRM.
+  const canChangeServiceFee = isOpen || session.status === "closed";
 
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
@@ -146,18 +151,54 @@ function RegisterTabDetail() {
 
       <div className="mt-5 rounded-2xl border border-border bg-card p-5">
         <p className="text-xs uppercase tracking-widest text-muted-foreground">Total da comanda</p>
-        {session.discount_percent ? (
+
+        {/* Composição só aparece quando há algo a compor (desconto ou taxa) — numa comanda simples,
+            uma linha "subtotal" idêntica ao total só seria ruído no meio do movimento. */}
+        {totals.discount > 0 || hasServiceFee ? (
           <>
-            <p className="mt-1 text-sm text-muted-foreground line-through">{brl(tabTotal(items))}</p>
-            <p className="text-3xl font-bold">
-              {brl(tabTotalWithDiscount(items, session.discount_percent))}
-            </p>
-            <p className="mt-1 text-xs font-medium text-success">
-              {session.discount_percent}% de desconto de boas-vindas (cliente novo, cadastro completo)
-            </p>
+            <div className="mt-2 space-y-1 text-sm">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Consumo</span>
+                <span>{brl(totals.subtotal)}</span>
+              </div>
+              {totals.discount > 0 && (
+                <div className="flex justify-between text-success">
+                  <span>Desconto de boas-vindas ({session.discount_percent}%)</span>
+                  <span>−{brl(totals.discount)}</span>
+                </div>
+              )}
+              {hasServiceFee && (
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Taxa de serviço ({session.service_fee_percent}%)</span>
+                  <span>{brl(totals.serviceFee)}</span>
+                </div>
+              )}
+            </div>
+            <p className="mt-2 border-t border-border pt-2 text-3xl font-bold">{brl(totals.total)}</p>
           </>
         ) : (
-          <p className="mt-1 text-3xl font-bold">{brl(tabTotal(items))}</p>
+          <p className="mt-1 text-3xl font-bold">{brl(totals.total)}</p>
+        )}
+
+        {totals.discount > 0 && (
+          <p className="mt-1 text-xs font-medium text-success">
+            Cliente novo com cadastro completo.
+          </p>
+        )}
+
+        {canChangeServiceFee && (
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() =>
+              void run(() =>
+                setServiceFee({ data: { sessionId: session.id, apply: !hasServiceFee } }),
+              )
+            }
+            className="mt-3 text-xs font-medium text-primary underline underline-offset-4 disabled:opacity-50"
+          >
+            {hasServiceFee ? "Tirar taxa de serviço" : "Aplicar taxa de serviço"}
+          </button>
         )}
       </div>
 

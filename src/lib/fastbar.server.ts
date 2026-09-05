@@ -148,6 +148,11 @@ export async function registerCustomerSpend(sessionId: string) {
   const subtotal = (items ?? []).reduce((sum, item) => sum + item.unit_price * item.quantity, 0);
   // Credita o que foi de fato cobrado, não o preço de tabela — senão o CRM e o faturamento
   // ficariam maiores do que o dinheiro que realmente entrou no caixa.
+  //
+  // A taxa de serviço fica FORA de propósito: ela é gorjeta da equipe, não consumo do cliente.
+  // Somá-la aqui inflaria o histórico de gasto e empurraria gente pro topo do CRM (e pro corte de
+  // VIP) por causa de dinheiro que nem foi pro bar — e, pior, quem recusasse a taxa apareceria
+  // gastando menos que alguém que consumiu o mesmo tanto.
   const discountPercent = Number(session.discount_percent ?? 0);
   const total = discountPercent > 0 ? subtotal * (1 - discountPercent / 100) : subtotal;
   if (total <= 0) return;

@@ -15,6 +15,10 @@ export type BarSession = {
   customer_id?: string | null;
   archived_at?: string | null;
   discount_percent?: number;
+  /** Taxa de serviço carimbada nesta comanda no fechamento. 0 = sem taxa (cliente recusou, ou o
+   * bar não cobra). Fica gravada na comanda, e não lida da config na hora de cobrar, pra que mudar
+   * o percentual depois não reescreva o que já foi cobrado de quem pagou antes. */
+  service_fee_percent?: number;
   // Cobrança em andamento na maquininha (Mercado Pago Point) — pos_order_id não-nulo é o sinal de
   // "aguardando o terminal"; some sozinho quando o pagamento é confirmado (ou cancelado).
   pos_order_id?: string | null;

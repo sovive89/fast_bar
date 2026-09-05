@@ -780,6 +780,7 @@ export type Database = {
           pos_paid_order_id: string | null
           pos_refunded_at: string | null
           pos_requested_at: string | null
+          service_fee_percent: number
           started_at: string | null
           status: string
           tenant_id: string
@@ -806,6 +807,7 @@ export type Database = {
           pos_paid_order_id?: string | null
           pos_refunded_at?: string | null
           pos_requested_at?: string | null
+          service_fee_percent?: number
           started_at?: string | null
           status?: string
           tenant_id?: string
@@ -832,6 +834,7 @@ export type Database = {
           pos_paid_order_id?: string | null
           pos_refunded_at?: string | null
           pos_requested_at?: string | null
+          service_fee_percent?: number
           started_at?: string | null
           status?: string
           tenant_id?: string

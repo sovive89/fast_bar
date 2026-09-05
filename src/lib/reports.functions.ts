@@ -22,7 +22,7 @@ export const getReportsOverview = createServerFn({ method: "POST" })
     const { data: sessions } = await admin()
       .from("fastbar_sessions")
       .select(
-        "id, customer_name, paid_at, payment_method, customer_id, discount_percent, channel, pos_paid_order_id, data_operacional",
+        "id, customer_name, paid_at, payment_method, customer_id, discount_percent, channel, pos_paid_order_id, data_operacional, service_fee_percent",
       )
       .eq("status", "paid")
       .gte("paid_at", data.from)
@@ -101,12 +101,25 @@ export const getReportsOverview = createServerFn({ method: "POST" })
     // de fato no caixa que fica menor, não o que os produtos "valem".
     let crmDiscountTotal = 0;
     let crmDiscountSessions = 0;
+    // Taxa de serviço também fica em linha própria, e fora do CMV/margem: é gorjeta da equipe, não
+    // receita de produto. Somá-la ao faturamento inflaria a margem de itens que não têm nada a ver
+    // com ela — e faria o bar parecer mais lucrativo por causa de dinheiro que é dos garçons.
+    let serviceFeeTotal = 0;
+    let serviceFeeSessions = 0;
     for (const session of sessions ?? []) {
-      const percent = Number(session.discount_percent ?? 0);
-      if (percent <= 0) continue;
       const sessionRevenue = revenueBySession.get(session.id) ?? 0;
-      crmDiscountTotal += sessionRevenue * (percent / 100);
-      crmDiscountSessions += 1;
+      const percent = Number(session.discount_percent ?? 0);
+      const discounted = percent > 0 ? sessionRevenue * (percent / 100) : 0;
+      if (percent > 0) {
+        crmDiscountTotal += discounted;
+        crmDiscountSessions += 1;
+      }
+      const feePercent = Number(session.service_fee_percent ?? 0);
+      if (feePercent > 0) {
+        // Mesma base da cobrança: a taxa incide sobre o consumo já com o desconto abatido.
+        serviceFeeTotal += (sessionRevenue - discounted) * (feePercent / 100);
+        serviceFeeSessions += 1;
+      }
     }
 
     // ---- CMV -------------------------------------------------------------
@@ -350,6 +363,8 @@ export const getReportsOverview = createServerFn({ method: "POST" })
       averageTicket,
       crmDiscountTotal,
       crmDiscountSessions,
+      serviceFeeTotal,
+      serviceFeeSessions,
       totalCost,
       grossProfit,
       cmvPercent,

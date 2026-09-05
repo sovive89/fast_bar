@@ -45,13 +45,22 @@ export async function loadTeamPasswordHash(): Promise<string | null> {
   return hash.length === 64 ? hash : null;
 }
 
-/** Grava a senha da equipe deste tenant (só o hash). */
+/** Grava a senha da equipe deste tenant (só o hash). Upsert, não update: o tenant que nunca trocou
+ * a senha não tem linha "acesso" nenhuma, e um update solto ali não gravaria nada — e ainda
+ * responderia "sucesso", deixando a pessoa achando que trocou a senha quando não trocou. */
 export async function saveTeamPassword(password: string): Promise<boolean> {
   const { admin } = await import("./fastbar.server");
   const { error } = await admin()
     .from("fastbar_integrations")
-    .update({ config: { passwordHash: sha256Hex(password) }, updated_at: new Date().toISOString() })
-    .eq("key", "acesso");
+    .upsert(
+      {
+        key: "acesso",
+        enabled: true,
+        config: { passwordHash: sha256Hex(password) },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "key" },
+    );
   return !error;
 }
 

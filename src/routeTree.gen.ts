@@ -20,6 +20,7 @@ import { Route as CaixaSessionIdRouteImport } from './routes/caixa.$sessionId'
 import { Route as CaixaAlertasRouteImport } from './routes/caixa.alertas'
 import { Route as CaixaCardapioRouteImport } from './routes/caixa.cardapio'
 import { Route as CaixaConexoesRouteImport } from './routes/caixa.conexoes'
+import { Route as CaixaConfiguracoesRouteImport } from './routes/caixa.configuracoes'
 import { Route as CaixaCrmRouteImport } from './routes/caixa.crm'
 import { Route as CaixaEstoqueRouteImport } from './routes/caixa.estoque'
 import { Route as CaixaMarcaRouteImport } from './routes/caixa.marca'
@@ -86,6 +87,11 @@ const CaixaCardapioRoute = CaixaCardapioRouteImport.update({
 const CaixaConexoesRoute = CaixaConexoesRouteImport.update({
   id: '/conexoes',
   path: '/conexoes',
+  getParentRoute: () => CaixaRoute,
+} as any)
+const CaixaConfiguracoesRoute = CaixaConfiguracoesRouteImport.update({
+  id: '/configuracoes',
+  path: '/configuracoes',
   getParentRoute: () => CaixaRoute,
 } as any)
 const CaixaCrmRoute = CaixaCrmRouteImport.update({
@@ -161,6 +167,7 @@ export interface FileRoutesByFullPath {
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
   '/caixa/conexoes': typeof CaixaConexoesRoute
+  '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/marca': typeof CaixaMarcaRoute
@@ -185,6 +192,7 @@ export interface FileRoutesByTo {
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
   '/caixa/conexoes': typeof CaixaConexoesRoute
+  '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
@@ -210,6 +218,7 @@ export interface FileRoutesById {
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
   '/caixa/conexoes': typeof CaixaConexoesRoute
+  '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/marca': typeof CaixaMarcaRoute
@@ -237,6 +246,7 @@ export interface FileRouteTypes {
     | '/caixa/alertas'
     | '/caixa/cardapio'
     | '/caixa/conexoes'
+    | '/caixa/configuracoes'
     | '/caixa/crm'
     | '/caixa/estoque'
     | '/caixa/marca'
@@ -261,6 +271,7 @@ export interface FileRouteTypes {
     | '/caixa/alertas'
     | '/caixa/cardapio'
     | '/caixa/conexoes'
+    | '/caixa/configuracoes'
     | '/caixa/estoque'
     | '/caixa/marca'
     | '/caixa/relatorios'
@@ -285,6 +296,7 @@ export interface FileRouteTypes {
     | '/caixa/alertas'
     | '/caixa/cardapio'
     | '/caixa/conexoes'
+    | '/caixa/configuracoes'
     | '/caixa/crm'
     | '/caixa/estoque'
     | '/caixa/marca'
@@ -390,6 +402,13 @@ declare module '@tanstack/react-router' {
       path: '/conexoes'
       fullPath: '/caixa/conexoes'
       preLoaderRoute: typeof CaixaConexoesRouteImport
+      parentRoute: typeof CaixaRoute
+    }
+    '/caixa/configuracoes': {
+      id: '/caixa/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/caixa/configuracoes'
+      preLoaderRoute: typeof CaixaConfiguracoesRouteImport
       parentRoute: typeof CaixaRoute
     }
     '/caixa/crm': {
@@ -502,6 +521,7 @@ interface CaixaRouteChildren {
   CaixaAlertasRoute: typeof CaixaAlertasRoute
   CaixaCardapioRoute: typeof CaixaCardapioRoute
   CaixaConexoesRoute: typeof CaixaConexoesRoute
+  CaixaConfiguracoesRoute: typeof CaixaConfiguracoesRoute
   CaixaCrmRoute: typeof CaixaCrmRouteWithChildren
   CaixaEstoqueRoute: typeof CaixaEstoqueRoute
   CaixaMarcaRoute: typeof CaixaMarcaRoute
@@ -514,6 +534,7 @@ const CaixaRouteChildren: CaixaRouteChildren = {
   CaixaAlertasRoute: CaixaAlertasRoute,
   CaixaCardapioRoute: CaixaCardapioRoute,
   CaixaConexoesRoute: CaixaConexoesRoute,
+  CaixaConfiguracoesRoute: CaixaConfiguracoesRoute,
   CaixaCrmRoute: CaixaCrmRouteWithChildren,
   CaixaEstoqueRoute: CaixaEstoqueRoute,
   CaixaMarcaRoute: CaixaMarcaRoute,
