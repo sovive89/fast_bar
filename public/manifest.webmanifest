@@ -1,6 +1,6 @@
 {
   "name": "Pop9Bar — Equipe",
-  "short_name": "Pop9Bar Equipe",
+  "short_name": "PØP9 BAR",
   "description": "PWA da equipe do Pop9Bar para caixa, comandas, estoque e operação.",
   "start_url": "/equipe",
   "scope": "/",

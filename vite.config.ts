@@ -16,7 +16,7 @@ export default defineConfig({
         includeAssets: ["favicon.svg", "favicon.ico", "robots.txt"],
         manifest: {
           name: "Pop9Bar",
-          short_name: "Pop9Bar",
+          short_name: "PØP9 BAR",
           start_url: "/equipe",
           display: "standalone",
           theme_color: "#f97316",
