@@ -6,6 +6,7 @@ import { PrimaryButton, SectionCard, TextField } from "@/components/stock/Shared
 import { brl } from "@/lib/format";
 import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
 import { deactivateProduct, deleteProduct as deleteProductFn } from "@/lib/register.functions";
+import { categoryIcon } from "@/lib/category-icon";
 import {
   createBaseDrink,
   createIngredient,
@@ -1080,7 +1081,14 @@ function CardapioPage() {
                       key={cat.id}
                       className="inline-flex items-center gap-1.5 rounded-full bg-secondary py-1 pl-3 pr-1.5 text-xs font-medium text-secondary-foreground"
                     >
-                      <button onClick={() => openEditCategory(cat)} className="hover:underline">
+                      <button
+                        onClick={() => openEditCategory(cat)}
+                        className="inline-flex items-center gap-1.5 hover:underline"
+                      >
+                        {(() => {
+                          const Icon = categoryIcon(cat.name);
+                          return <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />;
+                        })()}
                         {cat.name}
                       </button>
                       <button
@@ -1369,9 +1377,12 @@ function CardapioPage() {
             </p>
           ) : (
             <div className="space-y-6">
-              {grouped.map(([categoryName, categoryProducts]) => (
+              {grouped.map(([categoryName, categoryProducts]) => {
+                const CategoryIcon = categoryIcon(categoryName);
+                return (
                 <div key={categoryName}>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                  <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                    <CategoryIcon className="h-3.5 w-3.5 shrink-0" />
                     {categoryName}
                   </p>
                   <ul className="space-y-3">
@@ -1402,7 +1413,9 @@ function CardapioPage() {
                                   className="h-10 w-10 shrink-0 rounded-lg object-cover"
                                 />
                               ) : (
-                                <div className="h-10 w-10 shrink-0 rounded-lg bg-muted" />
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                                  <CategoryIcon className="h-5 w-5 text-muted-foreground" />
+                                </div>
                               )}
                               <div className="min-w-0">
                                 <p className="truncate font-semibold">{product.name}</p>
@@ -1651,7 +1664,8 @@ function CardapioPage() {
                     })}
                   </ul>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
