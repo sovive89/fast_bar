@@ -19,7 +19,7 @@ export default defineConfig({
           short_name: "Pop9Bar",
           start_url: "/equipe",
           display: "standalone",
-          theme_color: "#d4a017",
+          theme_color: "#f97316",
           background_color: "#0a0a0a",
           scope: "/",
           icons: [
