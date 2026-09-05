@@ -280,7 +280,7 @@ export const deleteBaseDrink = createServerFn({ method: "POST" })
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-    if (!teamPasswordMatches(data.password)) {
+    if (!(await teamPasswordMatches(data.password))) {
       return { ok: false as const, message: "Senha incorreta." };
     }
     const { data: result, error } = await admin().rpc("fastbar_delete_base_drink", {
@@ -528,7 +528,7 @@ export const deleteIngredient = createServerFn({ method: "POST" })
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-    if (!teamPasswordMatches(data.password)) {
+    if (!(await teamPasswordMatches(data.password))) {
       return { ok: false as const, message: "Senha incorreta." };
     }
     const { data: result, error } = await admin().rpc("fastbar_delete_ingredient", {
@@ -753,7 +753,7 @@ export const deleteProductCategory = createServerFn({ method: "POST" })
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-    if (!teamPasswordMatches(data.password)) {
+    if (!(await teamPasswordMatches(data.password))) {
       return { ok: false as const, message: "Senha incorreta." };
     }
     const { data: result, error } = await admin().rpc("fastbar_delete_product_category", {

@@ -1,6 +1,14 @@
 import { useState } from "react";
 
-/** Inline password re-entry for a destructive action — same login senha as the team, no separate admin tier. */
+/**
+ * Inline password re-entry for a destructive action — same login senha as the team, no separate
+ * admin tier.
+ *
+ * Sem inputMode="numeric" de propósito: no celular aquilo abre só o teclado numérico, e a senha da
+ * equipe não é obrigatoriamente numérica — quem tem senha com letra simplesmente não conseguia
+ * digitá-la aqui, mesmo sendo a mesma senha que o login do caixa (esse sim sempre aceitou o teclado
+ * inteiro) tinha acabado de aceitar.
+ */
 export function PasswordConfirm(props: {
   message: string;
   confirmLabel: string;
@@ -33,7 +41,6 @@ export function PasswordConfirm(props: {
       <p className="text-xs text-foreground">{props.message}</p>
       <input
         type="password"
-        inputMode="numeric"
         value={password}
         onChange={(event) => setPassword(event.target.value)}
         onKeyDown={(event) => event.key === "Enter" && void submit()}

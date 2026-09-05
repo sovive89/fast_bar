@@ -1,6 +1,17 @@
 import { createServerFn } from "@tanstack/react-start";
 
-export type IntegrationKey = "whatsapp" | "instagram" | "mercado_pago" | "twilio" | "printer" | "branding";
+// "acesso" (hash da senha da equipe) e "operacao" (início/virada/timezone do expediente) moram na
+// mesma tabela por serem config por tenant, mas não são integrações com serviços de fora e por isso
+// não aparecem como card no módulo Conexões.
+export type IntegrationKey =
+  | "whatsapp"
+  | "instagram"
+  | "mercado_pago"
+  | "twilio"
+  | "printer"
+  | "branding"
+  | "acesso"
+  | "operacao";
 
 // Toda config salva é string→string (campos de formulário: tokens, ids, urls) — mantém o tipo
 // simples o bastante pra passar pela validação de serialização do createServerFn.
@@ -26,6 +37,11 @@ export const getIntegrations = createServerFn({ method: "POST" }).handler(async 
   const { data } = await admin()
     .from("fastbar_integrations")
     .select("key, enabled, config, updated_at")
+    // "acesso" fica de fora: o config dele é o hash da senha da equipe, e esta resposta vai inteira
+    // pro navegador. Hash de senha curta se quebra em segundos numa tabela rainbow — devolver isso
+    // pra tela seria entregar a senha do caixa a quem abrir o DevTools. Ninguém precisa dele aqui:
+    // a página de Conexões só lê as chaves de integração, uma a uma, pelo nome.
+    .neq("key", "acesso")
     .order("key");
   return { integrations: (data ?? []) as IntegrationRow[] };
 });

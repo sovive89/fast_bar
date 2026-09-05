@@ -20,10 +20,11 @@ export const checkBarAccess = createServerFn({ method: "GET" }).handler(async ()
 export const unlockBarPanel = createServerFn({ method: "POST" })
   .inputValidator((data: { password: string }) => data)
   .handler(async ({ data }) => {
-    const { sessionConfig, passwordMatches } = await import("./bar-gate.server");
-    const expected = process.env["BAR_PANEL_PASSWORD"];
-    if (!expected) throw new Error("BAR_PANEL_PASSWORD is not set");
-    if (typeof data.password !== "string" || !passwordMatches(data.password, expected)) {
+    // Mesma checagem das ações destrutivas (senha do tenant no banco, com a variável de ambiente
+    // só como fallback) — antes o login lia BAR_PANEL_PASSWORD direto, o que faria a senha nova do
+    // bar valer nos botões do caixa mas não na tela de entrada.
+    const { sessionConfig, teamPasswordMatches } = await import("./bar-gate.server");
+    if (!(await teamPasswordMatches(data.password))) {
       return { ok: false as const };
     }
     const session = await useSession<GateSession>(sessionConfig());

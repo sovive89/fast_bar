@@ -31,7 +31,7 @@ export const openOperation = createServerFn({ method: "POST" })
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-    if (!teamPasswordMatches(data.password)) {
+    if (!(await teamPasswordMatches(data.password))) {
       return { ok: false as const, message: "Senha incorreta." };
     }
 
@@ -76,7 +76,7 @@ export const closeOperation = createServerFn({ method: "POST" })
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
-    if (!teamPasswordMatches(data.password)) {
+    if (!(await teamPasswordMatches(data.password))) {
       return { ok: false as const, message: "Senha incorreta." };
     }
 
