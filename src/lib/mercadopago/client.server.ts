@@ -54,8 +54,17 @@ export async function createPointOrder(params: {
     });
     const json = await res.json().catch(() => null);
     if (!res.ok) {
+      // Loga o corpo inteiro do erro — a mensagem que vira texto pra equipe é só um resumo, mas
+      // aqui fica o "cause" detalhado que o Mercado Pago manda (ex.: terminal offline, formato de
+      // terminal_id errado), essencial pra diagnosticar sem precisar adivinhar.
+      console.error("Mercado Pago recusou a criação do pedido:", res.status, JSON.stringify(json));
+      const causeDescription =
+        Array.isArray(json?.cause) && typeof json.cause[0]?.description === "string"
+          ? json.cause[0].description
+          : null;
       const message =
-        typeof json?.message === "string" ? json.message : `Mercado Pago recusou a cobrança (HTTP ${res.status}).`;
+        causeDescription ??
+        (typeof json?.message === "string" ? json.message : `Mercado Pago recusou a cobrança (HTTP ${res.status}).`);
       return { ok: false, message };
     }
     return { ok: true, order: json as PointOrder };
