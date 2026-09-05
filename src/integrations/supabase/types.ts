@@ -609,6 +609,7 @@ export type Database = {
           tenant_id: string
           unit: string
           units_per_pack: number
+          unlimited_stock: boolean
           updated_at: string
         }
         Insert: {
@@ -627,6 +628,7 @@ export type Database = {
           tenant_id?: string
           unit?: string
           units_per_pack?: number
+          unlimited_stock?: boolean
           updated_at?: string
         }
         Update: {
@@ -645,6 +647,7 @@ export type Database = {
           tenant_id?: string
           unit?: string
           units_per_pack?: number
+          unlimited_stock?: boolean
           updated_at?: string
         }
         Relationships: [

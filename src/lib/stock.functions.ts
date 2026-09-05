@@ -7,7 +7,7 @@ export const getStockOverview = createServerFn({ method: "POST" }).handler(async
     admin()
       .from("fastbar_products")
       .select(
-        "id, name, category, price, unit, package_type, is_active, stock_quantity, image_url, purchase_unit, units_per_pack, content_amount, average_cost",
+        "id, name, category, price, unit, package_type, is_active, stock_quantity, image_url, purchase_unit, units_per_pack, content_amount, average_cost, unlimited_stock",
       )
       .order("category")
       .order("name"),

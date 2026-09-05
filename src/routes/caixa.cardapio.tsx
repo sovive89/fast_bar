@@ -18,6 +18,7 @@ import {
   getRecipeItems,
   listProductCategories,
   setRecipeItems,
+  setProductUnlimitedStock,
   updateProduct as updateProductFn,
   updateProductCategory,
   uploadProductPhoto,
@@ -52,6 +53,7 @@ type Product = {
   units_per_pack: number;
   content_amount: number;
   average_cost: number;
+  unlimited_stock: boolean;
 };
 
 const LOW_STOCK_THRESHOLD = 20;
@@ -437,6 +439,14 @@ function CardapioPage() {
   const update = useServerFn(updateProductFn);
   const saveRecipe = useServerFn(setRecipeItems);
   const loadRecipeItems = useServerFn(getRecipeItems);
+  const toggleUnlimited = useServerFn(setProductUnlimitedStock);
+
+  async function handleToggleUnlimited(product: Product) {
+    setBusyId(product.id);
+    await toggleUnlimited({ data: { productId: product.id, unlimited: !product.unlimited_stock } });
+    setBusyId(null);
+    await load();
+  }
 
   async function load() {
     const [result, stock, categoriesResult] = await Promise.all([
@@ -1391,8 +1401,11 @@ function CardapioPage() {
                       // dos componentes. Mostrar "0 un" em vermelho e oferecer "+ Repor" aqui
                       // sugeriria um problema que não existe e um botão que não resolve nada.
                       const hasRecipe = recipeProductIds.has(product.id);
-                      const isPending = pendingProductIds.has(product.id);
-                      const low = !hasRecipe && product.stock_quantity < LOW_STOCK_THRESHOLD;
+                      // Ilimitado (ficha de sinuca, taxa de serviço...) nunca fica pendente e nunca
+                      // aparece com saldo baixo — ele não passa por checagem de estoque nenhuma.
+                      const isPending = !product.unlimited_stock && pendingProductIds.has(product.id);
+                      const low =
+                        !hasRecipe && !product.unlimited_stock && product.stock_quantity < LOW_STOCK_THRESHOLD;
                       const isOpen = openRestockId === product.id;
                       const isDeleting = deletingId === product.id;
                       const isEditing = editingProductId === product.id;
@@ -1423,17 +1436,23 @@ function CardapioPage() {
                                   {brl(product.price)}
                                   {product.package_type ? ` · ${product.package_type}` : ""}
                                   {product.unit ? ` (${product.unit})` : ""}
-                                  {!hasRecipe && product.average_cost > 0
+                                  {!hasRecipe && !product.unlimited_stock && product.average_cost > 0
                                     ? ` · custo ${brl(product.average_cost)}`
                                     : ""}
                                 </p>
                               </div>
                             </div>
                             <div className="flex items-center gap-3">
-                              <span className={`text-sm font-bold ${low ? "text-destructive" : ""}`}>
-                                {hasRecipe ? "ficha técnica" : `${product.stock_quantity} un`}
+                              <span
+                                className={`text-sm font-bold ${low ? "text-destructive" : ""} ${product.unlimited_stock ? "text-primary" : ""}`}
+                              >
+                                {product.unlimited_stock
+                                  ? "∞ ilimitado"
+                                  : hasRecipe
+                                    ? "ficha técnica"
+                                    : `${product.stock_quantity} un`}
                               </span>
-                              {!hasRecipe && (
+                              {!hasRecipe && !product.unlimited_stock && (
                                 <button
                                   onClick={() => {
                                     setOpenRestockId(isOpen ? null : product.id);
@@ -1453,6 +1472,18 @@ function CardapioPage() {
                                   {isOpen ? "Cancelar" : "+ Entrada"}
                                 </button>
                               )}
+                              <button
+                                onClick={() => void handleToggleUnlimited(product)}
+                                disabled={busyId !== null && busyId !== product.id}
+                                title="Item que nunca esgota (ex.: ficha de sinuca, taxa de serviço) — pula estoque e ficha técnica."
+                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
+                                  product.unlimited_stock
+                                    ? "border-primary/50 text-primary hover:bg-primary/5"
+                                    : "border-border text-muted-foreground hover:text-foreground"
+                                }`}
+                              >
+                                {product.unlimited_stock ? "∞ Ilimitado" : "Tornar ilimitado"}
+                              </button>
                               <button
                                 onClick={() => (isEditing ? setEditingProductId(null) : openEditProduct(product))}
                                 className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"

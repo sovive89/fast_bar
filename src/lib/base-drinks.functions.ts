@@ -959,6 +959,25 @@ export const updateProduct = createServerFn({ method: "POST" })
     return { ok: true as const };
   });
 
+/**
+ * Marca/desmarca um produto como "nunca esgota" — ficha de sinuca, taxa de serviço, e afins: coisas
+ * que não são um item físico de estoque de verdade. Enquanto marcado, o lançamento na comanda pula
+ * a checagem de ficha técnica/saldo e nunca sofre baixa (nem devolve saldo se o lançamento for
+ * desfeito) — ver fastbar_add_tab_item e fastbar_revert_item_stock no banco.
+ */
+export const setProductUnlimitedStock = createServerFn({ method: "POST" })
+  .inputValidator((data: { productId: string; unlimited: boolean }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { error } = await admin()
+      .from("fastbar_products")
+      .update({ unlimited_stock: data.unlimited })
+      .eq("id", data.productId);
+    if (error) return { ok: false as const, message: "Não foi possível salvar." };
+    return { ok: true as const };
+  });
+
 /** Recebe uma imagem em base64 (data URL) e sobe pro Storage, devolvendo a URL pública. */
 export const uploadProductPhoto = createServerFn({ method: "POST" })
   .inputValidator((data: { fileName: string; base64: string; contentType: string }) => data)
