@@ -32,6 +32,7 @@ import {
   SidebarMenuItem,
   SidebarProvider,
   SidebarTrigger,
+  useSidebar,
 } from "@/components/ui/sidebar";
 
 export const Route = createFileRoute("/caixa")({
@@ -64,6 +65,32 @@ function useActiveModuleKey() {
   return match?.key ?? "comandas";
 }
 
+/**
+ * Menu de módulos — em componente à parte (em vez de direto em RegisterLayout) só pra poder chamar
+ * useSidebar, que exige estar dentro do SidebarProvider. No celular a sidebar abre como um overlay
+ * por cima do conteúdo (Sheet); sem fechar sozinha depois do toque, a pessoa tinha que fechar na
+ * mão toda vez que trocava de módulo — um passo a mais que não existe no desktop, onde a sidebar
+ * fica fixa do lado. No desktop (isMobile false) o clique não mexe em nada, só navega.
+ */
+function ModulesMenu({ active }: { active: string }) {
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  return (
+    <SidebarMenu>
+      {MODULES.map((module) => (
+        <SidebarMenuItem key={module.key}>
+          <SidebarMenuButton asChild isActive={active === module.key} tooltip={module.label}>
+            <Link to={module.to} onClick={() => isMobile && setOpenMobile(false)}>
+              <module.icon />
+              <span>{module.label}</span>
+            </Link>
+          </SidebarMenuButton>
+        </SidebarMenuItem>
+      ))}
+    </SidebarMenu>
+  );
+}
+
 function RegisterLayout() {
   const navigate = useNavigate();
   const lock = useServerFn(lockBarPanel);
@@ -85,22 +112,7 @@ function RegisterLayout() {
         <SidebarContent>
           <SidebarGroup>
             <SidebarGroupContent>
-              <SidebarMenu>
-                {MODULES.map((module) => (
-                  <SidebarMenuItem key={module.key}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={active === module.key}
-                      tooltip={module.label}
-                    >
-                      <Link to={module.to}>
-                        <module.icon />
-                        <span>{module.label}</span>
-                      </Link>
-                    </SidebarMenuButton>
-                  </SidebarMenuItem>
-                ))}
-              </SidebarMenu>
+              <ModulesMenu active={active} />
             </SidebarGroupContent>
           </SidebarGroup>
         </SidebarContent>

@@ -512,7 +512,10 @@ function RegisterList() {
                         </button>
                       )}
                     </div>
-                  ) : (
+                  ) : isClosed ? (
+                    // Comanda fechada: primeiro clique só expande o resumo (com o botão explícito
+                    // "Abrir comanda" abaixo) — reabrir uma comanda já fechada é uma ação mais
+                    // deliberada, não algo pra disparar sem querer com um toque só.
                     <button
                       onClick={() => setExpandedId(session.id)}
                       className="flex aspect-square w-full flex-col items-center justify-center gap-1 p-2 text-center"
@@ -526,6 +529,23 @@ function RegisterList() {
                       <p className="text-xs font-bold">{brl(totals.get(session.id) ?? 0)}</p>
                       <StatusBadge status={session.status} />
                     </button>
+                  ) : (
+                    // Qualquer outro status: um clique já leva direto pra comanda — sem passar
+                    // pelo resumo intermediário nem precisar do botão "Abrir comanda".
+                    <Link
+                      to="/caixa/$sessionId"
+                      params={{ sessionId: session.id }}
+                      className="flex aspect-square w-full flex-col items-center justify-center gap-1 p-2 text-center"
+                    >
+                      <p className="w-full truncate text-xs font-semibold">
+                        {shortName(session.customer_name)}
+                      </p>
+                      {code && (
+                        <p className="font-mono text-[10px] text-muted-foreground">#{code}</p>
+                      )}
+                      <p className="text-xs font-bold">{brl(totals.get(session.id) ?? 0)}</p>
+                      <StatusBadge status={session.status} />
+                    </Link>
                   )}
 
                   {isExpanded && (
