@@ -1,19 +1,19 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { Field } from "@/components/shared/Field";
+import { getPublicBranding, type PublicBranding } from "@/lib/integrations.functions";
+import { brandColorStyle } from "@/lib/brand-color";
 import {
   ADMINISTRATIVE_REGIONS,
-  AGE_RANGE_OPTIONS,
   HOW_FOUND_OUT_OPTIONS,
-  MUSIC_GENRE_OPTIONS,
   submitCustomerProfile,
 } from "@/lib/client-session.functions";
 
 export const Route = createFileRoute("/c/$sessionId_/perfil")({
   head: () => ({
     meta: [
-      { title: "Só mais um pouquinho" },
+      { title: "Complete seu cadastro" },
       {
         name: "description",
         content: "Conte um pouco mais sobre você — tudo opcional, exceto uma pergunta.",
@@ -47,18 +47,22 @@ function CustomerProfilePage() {
   const { sessionId } = Route.useParams();
   const navigate = useNavigate();
   const submit = useServerFn(submitCustomerProfile);
+  const loadBranding = useServerFn(getPublicBranding);
 
+  const [branding, setBranding] = useState<PublicBranding | null>(null);
   const [fullName, setFullName] = useState("");
   const [birthdayDay, setBirthdayDay] = useState("");
   const [birthdayMonth, setBirthdayMonth] = useState("");
   const [administrativeRegion, setAdministrativeRegion] = useState("");
   const [howFoundOut, setHowFoundOut] = useState("");
-  const [ageRange, setAgeRange] = useState("");
-  const [profession, setProfession] = useState("");
-  const [favoriteMusicGenre, setFavoriteMusicGenre] = useState("");
-  const [marketingOptIn, setMarketingOptIn] = useState<boolean | null>(null);
+  const [marketingOptIn, setMarketingOptIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    void loadBranding().then(setBranding);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function goToTab() {
     await navigate({ to: "/c/$sessionId", params: { sessionId } });
@@ -67,11 +71,6 @@ function CustomerProfilePage() {
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (busy) return;
-    // Único campo obrigatório da tela: a regra é escolher sim ou não, nunca deixar em branco.
-    if (marketingOptIn === null) {
-      setError("Escolha sim ou não pra continuar.");
-      return;
-    }
     setError(null);
     setBusy(true);
     const result = await submit({
@@ -83,9 +82,6 @@ function CustomerProfilePage() {
         ...(birthdayMonth ? { birthdayMonth: Number(birthdayMonth) } : {}),
         ...(administrativeRegion ? { administrativeRegion } : {}),
         ...(howFoundOut ? { howFoundOut } : {}),
-        ...(ageRange ? { ageRange } : {}),
-        ...(profession ? { profession } : {}),
-        ...(favoriteMusicGenre ? { favoriteMusicGenre } : {}),
       },
     });
     if (!result.ok) {
@@ -97,148 +93,130 @@ function CustomerProfilePage() {
   }
 
   return (
-    <main className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10">
+    <main
+      className="mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10"
+      style={brandColorStyle(branding?.primaryColor)}
+    >
       <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
-          Só mais um pouquinho
-        </p>
-        <h1 className="mt-1 text-2xl font-bold">Quer contar mais sobre você?</h1>
+        <h1 className="text-2xl font-bold">Complete seu cadastro</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          Tudo aqui é opcional, menos a última pergunta. Ajuda a gente a te conhecer melhor.
-        </p>
-        <p className="mt-3 rounded-xl border border-primary/30 bg-primary/5 p-3 text-sm text-primary">
-          🎁 Preencha tudo e aceite receber novidades pra ganhar <strong>10% de desconto</strong> na
-          comanda de hoje.
+          Ganhe um brinde da casa e receba ofertas e novidades{" "}
+          {branding?.brandName ? `do ${branding.brandName}` : "do estabelecimento"}.
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-        <Field id="fullName" label="Nome completo" value={fullName} onChange={setFullName} />
+      <form onSubmit={handleSubmit} className="mt-6 space-y-5">
+        <div className="space-y-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+            Seus dados
+          </p>
 
-        <div>
-          <span className="text-sm font-medium">Aniversário (dia e mês, sem o ano)</span>
-          <div className="mt-1.5 grid grid-cols-2 gap-3">
+          <Field id="fullName" label="Nome completo" value={fullName} onChange={setFullName} />
+
+          {/* Só dia e mês — sem o ano de propósito, pra não dar pra inferir idade exata. */}
+          <div>
+            <span className="text-sm font-medium">Data de nascimento (dia e mês)</span>
+            <div className="mt-1.5 grid grid-cols-2 gap-3">
+              <select
+                value={birthdayDay}
+                onChange={(event) => setBirthdayDay(event.target.value)}
+                className={selectClass()}
+              >
+                <option value="">Dia</option>
+                {DAYS.map((day) => (
+                  <option key={day} value={day}>
+                    {day}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={birthdayMonth}
+                onChange={(event) => setBirthdayMonth(event.target.value)}
+                className={selectClass()}
+              >
+                <option value="">Mês</option>
+                {MONTHS.map((month, index) => (
+                  <option key={month} value={index + 1}>
+                    {month}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <label className="block">
+            <span className="text-sm font-medium">Bairro / RA</span>
             <select
-              value={birthdayDay}
-              onChange={(event) => setBirthdayDay(event.target.value)}
+              value={administrativeRegion}
+              onChange={(event) => setAdministrativeRegion(event.target.value)}
               className={selectClass()}
             >
-              <option value="">Dia</option>
-              {DAYS.map((day) => (
-                <option key={day} value={day}>
-                  {day}
+              <option value="">Selecione sua região</option>
+              {ADMINISTRATIVE_REGIONS.map((region) => (
+                <option key={region} value={region}>
+                  {region}
                 </option>
               ))}
             </select>
-            <select
-              value={birthdayMonth}
-              onChange={(event) => setBirthdayMonth(event.target.value)}
-              className={selectClass()}
-            >
-              <option value="">Mês</option>
-              {MONTHS.map((month, index) => (
-                <option key={month} value={index + 1}>
-                  {month}
-                </option>
+          </label>
+
+          <div>
+            <span className="text-sm font-medium">Como conheceu a gente?</span>
+            <div className="mt-1.5 flex flex-wrap gap-2">
+              {HOW_FOUND_OUT_OPTIONS.map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setHowFoundOut(howFoundOut === option ? "" : option)}
+                  className={`rounded-full px-3.5 py-1.5 text-xs font-medium transition-colors ${
+                    howFoundOut === option
+                      ? "bg-primary text-primary-foreground"
+                      : "border border-border text-muted-foreground"
+                  }`}
+                >
+                  {option}
+                </button>
               ))}
-            </select>
+            </div>
           </div>
         </div>
 
-        <label className="block">
-          <span className="text-sm font-medium">Bairro / Região Administrativa</span>
-          <select
-            value={administrativeRegion}
-            onChange={(event) => setAdministrativeRegion(event.target.value)}
-            className={selectClass()}
-          >
-            <option value="">Prefiro não dizer</option>
-            {ADMINISTRATIVE_REGIONS.map((region) => (
-              <option key={region} value={region}>
-                {region}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="text-sm font-medium">Como conheceu o bar?</span>
-          <select
-            value={howFoundOut}
-            onChange={(event) => setHowFoundOut(event.target.value)}
-            className={selectClass()}
-          >
-            <option value="">Prefiro não dizer</option>
-            {HOW_FOUND_OUT_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="block">
-          <span className="text-sm font-medium">Faixa etária</span>
-          <select
-            value={ageRange}
-            onChange={(event) => setAgeRange(event.target.value)}
-            className={selectClass()}
-          >
-            <option value="">Prefiro não dizer</option>
-            {AGE_RANGE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <Field id="profession" label="Profissão (opcional)" value={profession} onChange={setProfession} />
-
-        <label className="block">
-          <span className="text-sm font-medium">Gênero musical preferido</span>
-          <select
-            value={favoriteMusicGenre}
-            onChange={(event) => setFavoriteMusicGenre(event.target.value)}
-            className={selectClass()}
-          >
-            <option value="">Prefiro não dizer</option>
-            {MUSIC_GENRE_OPTIONS.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
-
-        <div className="rounded-2xl border border-border bg-card p-4">
-          <p className="text-sm font-medium">
-            Podemos te enviar promoções e novidades pelo WhatsApp e Instagram?
+        <div className="space-y-3 rounded-2xl border border-border bg-card p-4">
+          <p className="text-sm font-semibold">Quer receber nossas ofertas?</p>
+          <label className="flex items-start gap-3">
+            <input
+              type="checkbox"
+              checked={marketingOptIn}
+              onChange={(event) => setMarketingOptIn(event.target.checked)}
+              className="mt-0.5 h-5 w-5 shrink-0 rounded border-border accent-primary"
+            />
+            <span className="text-sm">
+              Sim, quero receber ofertas, novidades, eventos e benefícios
+              {branding?.brandName ? ` do ${branding.brandName}` : " do estabelecimento"} pelo
+              WhatsApp e/ou e-mail.
+            </span>
+          </label>
+          <p className="text-xs text-muted-foreground">
+            Você poderá cancelar o recebimento das comunicações promocionais a qualquer momento.
           </p>
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setMarketingOptIn(true)}
-              className={`h-11 flex-1 rounded-xl text-sm font-semibold ${
-                marketingOptIn === true
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-border text-muted-foreground"
-              }`}
-            >
-              Sim
-            </button>
-            <button
-              type="button"
-              onClick={() => setMarketingOptIn(false)}
-              className={`h-11 flex-1 rounded-xl text-sm font-semibold ${
-                marketingOptIn === false
-                  ? "bg-primary text-primary-foreground"
-                  : "border border-border text-muted-foreground"
-              }`}
-            >
-              Não
-            </button>
-          </div>
+        </div>
+
+        <div className="space-y-2 text-xs text-muted-foreground">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em]">Privacidade</p>
+          <p>
+            Seus dados serão utilizados para identificação do cliente, prestação dos serviços
+            solicitados e, caso você autorize, para o envio de comunicações promocionais e
+            benefícios.
+          </p>
+          <p>
+            Os dados serão tratados e protegidos de acordo com a Lei nº 13.709/2018 — Lei Geral de
+            Proteção de Dados (LGPD), respeitando os princípios de finalidade, necessidade,
+            segurança e transparência.
+          </p>
+          <p>
+            O consentimento para receber comunicações promocionais é opcional e não condiciona a
+            abertura ou utilização da comanda.
+          </p>
         </div>
 
         {error && <p className="text-sm text-destructive">{error}</p>}
@@ -248,8 +226,17 @@ function CustomerProfilePage() {
           disabled={busy}
           className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
         >
-          {busy ? "Salvando..." : "Continuar"}
+          {busy ? "Salvando..." : "Concluir cadastro e receber meu brinde"}
         </button>
+
+        <a
+          href="/politica-privacidade"
+          target="_blank"
+          rel="noreferrer"
+          className="block text-center text-xs text-muted-foreground underline underline-offset-2"
+        >
+          Política de Privacidade
+        </a>
       </form>
     </main>
   );

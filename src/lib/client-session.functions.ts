@@ -96,12 +96,10 @@ export const ADMINISTRATIVE_REGIONS = [
 ] as const;
 
 export const HOW_FOUND_OUT_OPTIONS = [
-  "Indicação de amigo",
   "Instagram",
-  "Facebook",
-  "Passando na rua",
-  "Evento",
+  "Indicação de amigos",
   "Google",
+  "Passando em frente",
   "Outro",
 ] as const;
 
@@ -144,8 +142,10 @@ export const submitCustomerProfile = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { admin, sanitizeName } = await import("./fastbar.server");
 
+    // marketingOptIn vem sempre de um checkbox (marcado/desmarcado), então já chega como boolean —
+    // esse guard é só defesa contra chamada malformada, não uma regra que o cliente precisa cumprir.
     if (typeof data.marketingOptIn !== "boolean") {
-      return { ok: false as const, message: "Escolha sim ou não para continuar." };
+      return { ok: false as const, message: "Não foi possível salvar — tente de novo." };
     }
     // Aniversário é tudo ou nada: dia sem mês (ou vice-versa) não serve pra campanha nenhuma e
     // quebraria o CHECK do banco — melhor recusar aqui com mensagem clara do que estourar erro.
@@ -179,14 +179,25 @@ export const submitCustomerProfile = createServerFn({ method: "POST" })
       birthday_month: data.birthdayMonth ?? null,
       administrative_region: data.administrativeRegion?.trim() || null,
       how_found_out: data.howFoundOut?.trim() || null,
+      // Faixa etária, profissão e gênero musical saíram da tela atual (a v2 do formulário pediu
+      // um formulário mais enxuto) — os campos continuam existindo no banco por se tratar de
+      // colunas já usadas antes, mas não entram mais na conta de "preencheu tudo" abaixo.
       age_range: data.ageRange?.trim() || null,
       profession: data.profession?.trim() || null,
       favorite_music_genre: data.favoriteMusicGenre?.trim() || null,
     };
 
-    // O desconto sai por cadastro completo E aceite de promoções — é a troca anunciada na tela.
-    // Checa o objeto já normalizado (trim + null), senão um campo só com espaços passaria.
-    const filledEverything = Object.values(profile).every((value) => value !== null);
+    // O brinde de boas-vindas (hoje aplicado como desconto na comanda) sai por cadastro completo
+    // E aceite de promoções — é a troca anunciada na tela. Só os campos que a tela atual realmente
+    // pede entram nessa conta.
+    const requiredFields = [
+      profile.full_name,
+      profile.birthday_day,
+      profile.birthday_month,
+      profile.administrative_region,
+      profile.how_found_out,
+    ];
+    const filledEverything = requiredFields.every((value) => value !== null);
     const earnsDiscount = filledEverything && data.marketingOptIn;
 
     const { data: customer } = await admin()

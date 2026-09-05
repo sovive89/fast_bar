@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as AbrirRouteImport } from './routes/abrir'
 import { Route as CaixaRouteImport } from './routes/caixa'
 import { Route as EquipeRouteImport } from './routes/equipe'
+import { Route as PoliticaPrivacidadeRouteImport } from './routes/politica-privacidade'
 import { Route as CSessionIdRouteImport } from './routes/c.$sessionId'
 import { Route as CaixaIndexRouteImport } from './routes/caixa.index'
 import { Route as CaixaSessionIdRouteImport } from './routes/caixa.$sessionId'
@@ -47,6 +48,11 @@ const CaixaRoute = CaixaRouteImport.update({
 const EquipeRoute = EquipeRouteImport.update({
   id: '/equipe',
   path: '/equipe',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PoliticaPrivacidadeRoute = PoliticaPrivacidadeRouteImport.update({
+  id: '/politica-privacidade',
+  path: '/politica-privacidade',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CSessionIdRoute = CSessionIdRouteImport.update({
@@ -131,6 +137,7 @@ export interface FileRoutesByFullPath {
   '/abrir': typeof AbrirRoute
   '/caixa': typeof CaixaRouteWithChildren
   '/equipe': typeof EquipeRoute
+  '/politica-privacidade': typeof PoliticaPrivacidadeRoute
   '/c/$sessionId': typeof CSessionIdRoute
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
@@ -151,6 +158,7 @@ export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/abrir': typeof AbrirRoute
   '/equipe': typeof EquipeRoute
+  '/politica-privacidade': typeof PoliticaPrivacidadeRoute
   '/c/$sessionId': typeof CSessionIdRoute
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
@@ -172,6 +180,7 @@ export interface FileRoutesById {
   '/abrir': typeof AbrirRoute
   '/caixa': typeof CaixaRouteWithChildren
   '/equipe': typeof EquipeRoute
+  '/politica-privacidade': typeof PoliticaPrivacidadeRoute
   '/c/$sessionId': typeof CSessionIdRoute
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
@@ -195,6 +204,7 @@ export interface FileRouteTypes {
     | '/abrir'
     | '/caixa'
     | '/equipe'
+    | '/politica-privacidade'
     | '/c/$sessionId'
     | '/caixa/$sessionId'
     | '/caixa/alertas'
@@ -215,6 +225,7 @@ export interface FileRouteTypes {
     | '/'
     | '/abrir'
     | '/equipe'
+    | '/politica-privacidade'
     | '/c/$sessionId'
     | '/caixa/$sessionId'
     | '/caixa/alertas'
@@ -235,6 +246,7 @@ export interface FileRouteTypes {
     | '/abrir'
     | '/caixa'
     | '/equipe'
+    | '/politica-privacidade'
     | '/c/$sessionId'
     | '/caixa/$sessionId'
     | '/caixa/alertas'
@@ -257,6 +269,7 @@ export interface RootRouteChildren {
   AbrirRoute: typeof AbrirRoute
   CaixaRoute: typeof CaixaRouteWithChildren
   EquipeRoute: typeof EquipeRoute
+  PoliticaPrivacidadeRoute: typeof PoliticaPrivacidadeRoute
   CSessionIdRoute: typeof CSessionIdRoute
   ComandaSessionIdRoute: typeof ComandaSessionIdRoute
   CSessionIdPerfilRoute: typeof CSessionIdPerfilRoute
@@ -290,6 +303,13 @@ declare module '@tanstack/react-router' {
       path: '/equipe'
       fullPath: '/equipe'
       preLoaderRoute: typeof EquipeRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/politica-privacidade': {
+      id: '/politica-privacidade'
+      path: '/politica-privacidade'
+      fullPath: '/politica-privacidade'
+      preLoaderRoute: typeof PoliticaPrivacidadeRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/c/$sessionId': {
@@ -447,6 +467,7 @@ const rootRouteChildren: RootRouteChildren = {
   AbrirRoute: AbrirRoute,
   CaixaRoute: CaixaRouteWithChildren,
   EquipeRoute: EquipeRoute,
+  PoliticaPrivacidadeRoute: PoliticaPrivacidadeRoute,
   CSessionIdRoute: CSessionIdRoute,
   ComandaSessionIdRoute: ComandaSessionIdRoute,
   CSessionIdPerfilRoute: CSessionIdPerfilRoute,
