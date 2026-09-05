@@ -74,23 +74,28 @@ function CustomerProfileContent() {
     if (busy) return;
     setError(null);
     setBusy(true);
-    const result = await submit({
-      data: {
-        sessionId,
-        marketingOptIn,
-        ...(fullName ? { fullName } : {}),
-        ...(birthdayDay ? { birthdayDay: Number(birthdayDay) } : {}),
-        ...(birthdayMonth ? { birthdayMonth: Number(birthdayMonth) } : {}),
-        ...(administrativeRegion ? { administrativeRegion } : {}),
-        ...(howFoundOut ? { howFoundOut } : {}),
-      },
-    });
-    if (!result.ok) {
-      setError(result.message);
+    try {
+      const result = await submit({
+        data: {
+          sessionId,
+          marketingOptIn,
+          ...(fullName ? { fullName } : {}),
+          ...(birthdayDay ? { birthdayDay: Number(birthdayDay) } : {}),
+          ...(birthdayMonth ? { birthdayMonth: Number(birthdayMonth) } : {}),
+          ...(administrativeRegion ? { administrativeRegion } : {}),
+          ...(howFoundOut ? { howFoundOut } : {}),
+        },
+      });
+      if (!result.ok) {
+        setError(result.message);
+        setBusy(false);
+        return;
+      }
+      await goToTab();
+    } catch {
+      setError("Não foi possível salvar. Atualize a página e tente de novo.");
       setBusy(false);
-      return;
     }
-    await goToTab();
   }
 
   return (

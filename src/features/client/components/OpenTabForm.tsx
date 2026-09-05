@@ -21,26 +21,37 @@ export function OpenTabForm() {
     setBusy(true);
     setError(null);
 
-    const result = await openSession({ data: { name, phone } });
+    // Sem try/catch aqui, uma falha de rede (ou um bundle desatualizado depois de um deploy —
+    // service worker/PWA guardam a página em cache) deixava o botão preso em "Abrindo comanda..."
+    // pra sempre, sem mensagem nenhuma: a pessoa só descobria recarregando a página por conta
+    // própria. Agora qualquer falha mostra um erro e libera o botão de novo.
+    try {
+      const result = await openSession({ data: { name, phone } });
 
-    if (!result.ok) {
-      setError(result.message);
+      if (!result.ok) {
+        setError(result.message);
+        setBusy(false);
+        return;
+      }
+
+      if (result.needsVerification) {
+        await navigate({ to: "/c/$sessionId/verificar", params: { sessionId: result.sessionId } });
+        return;
+      }
+
+      // Cliente que já preencheu o perfil antes (reabrindo comanda pelo mesmo celular) não passa
+      // pela segunda tela de novo — ela é pra coletar uma vez, não repetir a cada visita.
+      await navigate(
+        result.profileCompleted
+          ? { to: "/c/$sessionId", params: { sessionId: result.sessionId } }
+          : { to: "/c/$sessionId/perfil", params: { sessionId: result.sessionId } },
+      );
+    } catch {
+      setError(
+        "Não foi possível abrir a comanda. Atualize a página (puxe pra baixo ou recarregue) e tente de novo.",
+      );
       setBusy(false);
-      return;
     }
-
-    if (result.needsVerification) {
-      await navigate({ to: "/c/$sessionId/verificar", params: { sessionId: result.sessionId } });
-      return;
-    }
-
-    // Cliente que já preencheu o perfil antes (reabrindo comanda pelo mesmo celular) não passa
-    // pela segunda tela de novo — ela é pra coletar uma vez, não repetir a cada visita.
-    await navigate(
-      result.profileCompleted
-        ? { to: "/c/$sessionId", params: { sessionId: result.sessionId } }
-        : { to: "/c/$sessionId/perfil", params: { sessionId: result.sessionId } },
-    );
   }
 
   return (

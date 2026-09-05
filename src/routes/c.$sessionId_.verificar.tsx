@@ -46,27 +46,39 @@ function VerifyCodeContent() {
     if (busy || code.length !== 4) return;
     setBusy(true);
     setError(null);
-    const result = await verify({ data: { sessionId, code } });
-    if (!result.ok) {
-      setError(result.message);
+    try {
+      const result = await verify({ data: { sessionId, code } });
+      if (!result.ok) {
+        setError(result.message);
+        setBusy(false);
+        return;
+      }
+      await navigate(
+        result.profileCompleted
+          ? { to: "/c/$sessionId", params: { sessionId } }
+          : { to: "/c/$sessionId/perfil", params: { sessionId } },
+      );
+    } catch {
+      setError("Não foi possível confirmar o código. Atualize a página e tente de novo.");
       setBusy(false);
-      return;
     }
-    await navigate(
-      result.profileCompleted
-        ? { to: "/c/$sessionId", params: { sessionId } }
-        : { to: "/c/$sessionId/perfil", params: { sessionId } },
-    );
   }
 
   async function handleResend() {
     if (resending || cooldown > 0) return;
     setResending(true);
     setError(null);
-    const result = await resend({ data: { sessionId } });
+    let result: { ok: boolean; message?: string };
+    try {
+      result = await resend({ data: { sessionId } });
+    } catch {
+      setResending(false);
+      setError("Não foi possível reenviar o código. Atualize a página e tente de novo.");
+      return;
+    }
     setResending(false);
     if (!result.ok) {
-      setError(result.message);
+      setError(result.message ?? "Não foi possível reenviar o código.");
       return;
     }
     setCode("");
