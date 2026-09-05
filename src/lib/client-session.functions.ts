@@ -90,6 +90,7 @@ export const openClientSession = createServerFn({ method: "POST" })
         phone,
         status: alreadyVerified ? "pending" : "unverified",
         customer_id: customerId,
+        channel: "qr",
       })
       .select("id")
       .single();

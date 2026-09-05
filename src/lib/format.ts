@@ -4,6 +4,17 @@ export const brl = (value: number) =>
 export const hhmm = (iso: string) =>
   new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 
+/** Data + hora completas, no fuso do bar — usado em listas onde precisa saber exatamente quando
+ * (não só "hoje" ou "às 14h", como o resto da tela costuma mostrar). */
+export const dateTime = (iso: string) =>
+  new Date(iso).toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    day: "2-digit",
+    month: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
 export const digits = (value: string) => value.replace(/\D/g, "");
 
 /**

@@ -177,6 +177,7 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
         status: "open",
         started_at: new Date().toISOString(),
         customer_id: customerId,
+        channel: "staff",
       })
       .select("id")
       .single();
@@ -247,6 +248,7 @@ export const openWalkInSession = createServerFn({ method: "POST" })
         status: "open",
         started_at: now.toISOString(),
         customer_id: null,
+        channel: "balcao",
       })
       .select("id")
       .single();

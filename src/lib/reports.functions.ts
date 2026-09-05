@@ -21,7 +21,9 @@ export const getReportsOverview = createServerFn({ method: "POST" })
 
     const { data: sessions } = await admin()
       .from("fastbar_sessions")
-      .select("id, paid_at, payment_method, customer_id, discount_percent")
+      .select(
+        "id, customer_name, paid_at, payment_method, customer_id, discount_percent, channel, pos_paid_order_id",
+      )
       .eq("status", "paid")
       .gte("paid_at", data.from)
       .lte("paid_at", data.to);
@@ -146,6 +148,50 @@ export const getReportsOverview = createServerFn({ method: "POST" })
       method,
       revenue,
     }));
+
+    // Canal da venda: como a comanda foi aberta (QR pelo próprio cliente, balcão sem cadastro, ou
+    // a equipe abrindo manualmente pra um cliente nomeado). Comandas antigas, de antes desse campo
+    // existir, caem em "não informado" — não tem como reconstruir isso depois do fato.
+    const byChannel = new Map<string, { revenue: number; count: number }>();
+    for (const session of sessions ?? []) {
+      const channel = session.channel ?? "não_informado";
+      const current = byChannel.get(channel) ?? { revenue: 0, count: 0 };
+      current.revenue += revenueBySession.get(session.id) ?? 0;
+      current.count += 1;
+      byChannel.set(channel, current);
+    }
+    const revenueByChannel = Array.from(byChannel.entries())
+      .map(([channel, row]) => ({ channel, ...row }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    // Canal do pagamento: maquininha (Mercado Pago Point, confirmado pelo pos_paid_order_id) vs
+    // manual (equipe escolheu a forma na hora — dinheiro/cartão/pix apontados à mão).
+    const byPaymentChannel = new Map<string, { revenue: number; count: number }>();
+    for (const session of sessions ?? []) {
+      const paymentChannel = session.pos_paid_order_id ? "maquininha" : "manual";
+      const current = byPaymentChannel.get(paymentChannel) ?? { revenue: 0, count: 0 };
+      current.revenue += revenueBySession.get(session.id) ?? 0;
+      current.count += 1;
+      byPaymentChannel.set(paymentChannel, current);
+    }
+    const revenueByPaymentChannel = Array.from(byPaymentChannel.entries())
+      .map(([paymentChannel, row]) => ({ paymentChannel, ...row }))
+      .sort((a, b) => b.revenue - a.revenue);
+
+    // Lista detalhada, com data/hora exatas de cada pagamento (não só agregado por dia/hora) — pra
+    // conferir uma venda específica sem precisar ir comanda por comanda.
+    const transactions = (sessions ?? [])
+      .filter((session) => session.paid_at)
+      .map((session) => ({
+        id: session.id,
+        customerName: session.customer_name,
+        paidAt: session.paid_at as string,
+        channel: session.channel ?? "não_informado",
+        paymentChannel: session.pos_paid_order_id ? "maquininha" : "manual",
+        paymentMethod: session.payment_method ?? "não_informado",
+        revenue: revenueBySession.get(session.id) ?? 0,
+      }))
+      .sort((a, b) => b.paidAt.localeCompare(a.paidAt));
 
     const byProduct = new Map<
       string,
@@ -278,6 +324,9 @@ export const getReportsOverview = createServerFn({ method: "POST" })
       missingCostProducts: Array.from(missingCostNames).slice(0, 10),
       revenueByDay,
       revenueByMethod,
+      revenueByChannel,
+      revenueByPaymentChannel,
+      transactions,
       revenueByCategory,
       revenueByHour,
       topProducts,

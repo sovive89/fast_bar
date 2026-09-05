@@ -10,7 +10,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { brl } from "@/lib/format";
+import { brl, dateTime } from "@/lib/format";
 import { getReportsOverview } from "@/lib/reports.functions";
 
 // Ver o comentário em caixa.crm.clientes.tsx: import estático desse componente nas duas rotas
@@ -48,6 +48,17 @@ type Overview = {
   missingCostProducts: string[];
   revenueByDay: { date: string; revenue: number }[];
   revenueByMethod: { method: string; revenue: number }[];
+  revenueByChannel: { channel: string; revenue: number; count: number }[];
+  revenueByPaymentChannel: { paymentChannel: string; revenue: number; count: number }[];
+  transactions: {
+    id: string;
+    customerName: string;
+    paidAt: string;
+    channel: string;
+    paymentChannel: string;
+    paymentMethod: string;
+    revenue: number;
+  }[];
   revenueByCategory: { category: string; revenue: number; cost: number; profit: number }[];
   revenueByHour: { hour: number; revenue: number }[];
   topProducts: {
@@ -81,6 +92,19 @@ const PAYMENT_LABEL: Record<string, string> = {
   pix: "Pix",
   credito: "Crédito (maquininha)",
   debito: "Débito (maquininha)",
+  não_informado: "Não informado",
+};
+
+const CHANNEL_LABEL: Record<string, string> = {
+  qr: "QR Code (cliente)",
+  balcao: "Balcão",
+  staff: "Equipe (manual)",
+  não_informado: "Não informado",
+};
+
+const PAYMENT_CHANNEL_LABEL: Record<string, string> = {
+  maquininha: "Maquininha",
+  manual: "Manual",
 };
 
 function formatDayLabel(date: string) {
@@ -385,6 +409,52 @@ function Reports() {
             </div>
           </div>
 
+          {/* Canal da venda (como a comanda foi aberta) x canal do pagamento (maquininha ou
+              manual) — duas perguntas diferentes: uma é "quem trouxe o cliente pro sistema", a
+              outra é "como o dinheiro entrou". */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-sm font-semibold">Por canal de venda</p>
+              {overview.revenueByChannel.length === 0 ? (
+                <p className="mt-3 text-sm text-muted-foreground">Sem dados.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {overview.revenueByChannel.map((row) => (
+                    <li key={row.channel} className="flex items-center justify-between gap-2 text-sm">
+                      <span className="min-w-0 truncate">
+                        {CHANNEL_LABEL[row.channel] ?? row.channel}{" "}
+                        <span className="text-muted-foreground">· {row.count}</span>
+                      </span>
+                      <span className="shrink-0 font-semibold">{brl(row.revenue)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="rounded-2xl border border-border bg-card p-4">
+              <p className="text-sm font-semibold">Por canal de pagamento</p>
+              {overview.revenueByPaymentChannel.length === 0 ? (
+                <p className="mt-3 text-sm text-muted-foreground">Sem dados.</p>
+              ) : (
+                <ul className="mt-3 space-y-2">
+                  {overview.revenueByPaymentChannel.map((row) => (
+                    <li
+                      key={row.paymentChannel}
+                      className="flex items-center justify-between gap-2 text-sm"
+                    >
+                      <span className="min-w-0 truncate">
+                        {PAYMENT_CHANNEL_LABEL[row.paymentChannel] ?? row.paymentChannel}{" "}
+                        <span className="text-muted-foreground">· {row.count}</span>
+                      </span>
+                      <span className="shrink-0 font-semibold">{brl(row.revenue)}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+
           {/* Horário de pico: onde concentrar equipe, e em que faixa vale anunciar promoção. */}
           {overview.revenueByHour.length > 0 && (
             <div className="rounded-2xl border border-border bg-card p-4">
@@ -415,6 +485,45 @@ function Reports() {
               </div>
             </div>
           )}
+
+          {/* Lista de cada venda com data e hora exatas — pra conferir um pagamento específico
+              sem precisar abrir comanda por comanda. Mais recente primeiro. */}
+          <div className="rounded-2xl border border-border bg-card p-4">
+            <p className="text-sm font-semibold">Vendas do período</p>
+            {overview.transactions.length === 0 ? (
+              <p className="mt-3 text-sm text-muted-foreground">Sem vendas nesse período.</p>
+            ) : (
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full min-w-[560px] text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-muted-foreground">
+                      <th className="pb-2 font-medium">Data/hora</th>
+                      <th className="pb-2 font-medium">Cliente</th>
+                      <th className="pb-2 font-medium">Canal</th>
+                      <th className="pb-2 font-medium">Pagamento</th>
+                      <th className="pb-2 text-right font-medium">Valor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {overview.transactions.map((tx) => (
+                      <tr key={tx.id} className="border-t border-border">
+                        <td className="py-2 pr-2 text-muted-foreground">{dateTime(tx.paidAt)}</td>
+                        <td className="max-w-[140px] truncate py-2 pr-2">{tx.customerName}</td>
+                        <td className="py-2 pr-2 text-muted-foreground">
+                          {CHANNEL_LABEL[tx.channel] ?? tx.channel}
+                        </td>
+                        <td className="py-2 pr-2 text-muted-foreground">
+                          {PAYMENT_CHANNEL_LABEL[tx.paymentChannel] ?? tx.paymentChannel} ·{" "}
+                          {PAYMENT_LABEL[tx.paymentMethod] ?? tx.paymentMethod}
+                        </td>
+                        <td className="py-2 text-right font-semibold">{brl(tx.revenue)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </main>
