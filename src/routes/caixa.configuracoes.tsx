@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
-import { Building2, Clock, KeyRound, Moon, Percent, Sun } from "lucide-react";
+import { Building2, Clock, KeyRound, MessageSquare, Moon, Percent, Sun } from "lucide-react";
 import {
   getSettings,
   saveEstablishment,
@@ -26,11 +26,11 @@ const TABS = [
   { key: "aparencia", label: "Aparência" },
   { key: "operacao", label: "Operação" },
   { key: "taxa", label: "Taxa de serviço" },
+  { key: "sugestoes", label: "Sugestões" },
 ] as const;
 
 type TabKey = (typeof TABS)[number]["key"];
 
-/** Cartão padrão das seções — mesma moldura usada em Conexões e Marca. */
 function Section(props: {
   icon: React.ReactNode;
   title: string;
@@ -90,7 +90,6 @@ function SaveRow(props: { saving: boolean; saved: boolean; error: string | null;
   );
 }
 
-/** Estado compartilhado de salvar (ocupado / salvo / erro), que toda seção repete igual. */
 function useSaveState() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -119,13 +118,6 @@ function useSaveState() {
   return { saving, saved, error, run };
 }
 
-/**
- * Módulo Configurações — o que é do sistema, não do movimento do dia: perfil do estabelecimento,
- * senha da equipe, tema, horário do expediente e taxa de serviço.
- *
- * A Marca virou a metade visual da aba Perfil em vez de módulo próprio: identidade visual e dados
- * cadastrais são a mesma pergunta ("quem é esse bar?") e estavam em dois lugares diferentes.
- */
 function SettingsPage() {
   const [tab, setTab] = useState<TabKey>("perfil");
   const [settings, setSettings] = useState<Settings | null>(null);
@@ -148,7 +140,7 @@ function SettingsPage() {
       <h1 className="mt-1 text-3xl font-bold">Configurações</h1>
       <p className="mt-2 text-sm text-muted-foreground">
         Ajustes do sistema: identidade e dados do estabelecimento, senha da equipe, tema, horário do
-        expediente e taxa de serviço.
+        expediente, taxa de serviço e sugestões.
       </p>
 
       <div className="mt-6 flex flex-wrap gap-2 border-b border-border pb-2">
@@ -179,6 +171,7 @@ function SettingsPage() {
           {tab === "aparencia" && <AppearanceTab />}
           {tab === "operacao" && <OperationTab settings={settings} />}
           {tab === "taxa" && <ServiceFeeTab settings={settings} />}
+          {tab === "sugestoes" && <SuggestionsTab />}
         </div>
       )}
     </main>
@@ -186,8 +179,6 @@ function SettingsPage() {
 }
 
 function ProfileTab({ settings }: { settings: Settings }) {
-  // A linha vem do banco com key: string; aqui já sabemos que é a "branding" (foi assim que ela
-  // foi buscada), então o cast só recoloca o tipo estreito que a consulta perdeu.
   const [row, setRow] = useState<IntegrationRow | undefined>(
     (settings.branding as IntegrationRow | null) ?? undefined,
   );
@@ -204,49 +195,14 @@ function ProfileTab({ settings }: { settings: Settings }) {
         description="Cadastro do negócio. Fica só no painel — nada disso aparece nas telas do cliente."
       >
         <div className="grid gap-3 sm:grid-cols-2">
-          <TextField
-            label="Razão social"
-            value={form.legalName}
-            placeholder="ex.: Golpe Baixo Bar Ltda"
-            onChange={(legalName) => setForm({ ...form, legalName })}
-          />
-          <TextField
-            label="Nome fantasia"
-            value={form.tradeName}
-            placeholder="ex.: Golpe Baixo"
-            onChange={(tradeName) => setForm({ ...form, tradeName })}
-          />
-          <TextField
-            label="CNPJ"
-            value={form.document}
-            placeholder="00.000.000/0000-00"
-            onChange={(document) => setForm({ ...form, document })}
-          />
-          <TextField
-            label="Telefone"
-            value={form.phone}
-            placeholder="(61) 99999-9999"
-            onChange={(phone) => setForm({ ...form, phone })}
-          />
-          <TextField
-            label="Responsável"
-            value={form.managerName}
-            placeholder="Quem responde pelo bar"
-            onChange={(managerName) => setForm({ ...form, managerName })}
-          />
-          <TextField
-            label="Endereço"
-            value={form.address}
-            placeholder="Rua, número, bairro, cidade"
-            onChange={(address) => setForm({ ...form, address })}
-          />
+          <TextField label="Razão social" value={form.legalName} placeholder="ex.: Golpe Baixo Bar Ltda" onChange={(legalName) => setForm({ ...form, legalName })} />
+          <TextField label="Nome fantasia" value={form.tradeName} placeholder="ex.: Golpe Baixo" onChange={(tradeName) => setForm({ ...form, tradeName })} />
+          <TextField label="CNPJ" value={form.document} placeholder="00.000.000/0000-00" onChange={(document) => setForm({ ...form, document })} />
+          <TextField label="Telefone" value={form.phone} placeholder="(61) 99999-9999" onChange={(phone) => setForm({ ...form, phone })} />
+          <TextField label="Responsável" value={form.managerName} placeholder="Quem responde pelo bar" onChange={(managerName) => setForm({ ...form, managerName })} />
+          <TextField label="Endereço" value={form.address} placeholder="Rua, número, bairro, cidade" onChange={(address) => setForm({ ...form, address })} />
         </div>
-        <SaveRow
-          saving={state.saving}
-          saved={state.saved}
-          error={state.error}
-          onSave={() => void state.run(() => saveDados({ data: form }))}
-        />
+        <SaveRow saving={state.saving} saved={state.saved} error={state.error} onSave={() => void state.run(() => saveDados({ data: form }))} />
       </Section>
 
       <BrandingModule
@@ -280,9 +236,7 @@ function PasswordTab() {
       setLocalError("A confirmação não bate com a nova senha.");
       return;
     }
-    const result = await state.run(() =>
-      change({ data: { currentPassword: current, newPassword: next } }),
-    );
+    const result = await state.run(() => change({ data: { currentPassword: current, newPassword: next } }));
     if (result.ok) {
       setCurrent("");
       setNext("");
@@ -294,84 +248,36 @@ function PasswordTab() {
     <Section
       icon={<KeyRound className="h-4 w-4" />}
       title="Senha da equipe"
-      description="A mesma senha do login do caixa e das confirmações (cancelar comanda, remover item, abrir e encerrar operação). Vale no clique seguinte, sem esperar deploy."
+      description="A mesma senha do login do caixa e das confirmações (cancelar comanda, remover item, abrir e encerrar operação)."
     >
       <div className="grid gap-3 sm:max-w-sm">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Senha atual</label>
-          <input
-            type="password"
-            value={current}
-            onChange={(event) => setCurrent(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Nova senha</label>
-          <input
-            type="password"
-            value={next}
-            onChange={(event) => setNext(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Repita a nova senha</label>
-          <input
-            type="password"
-            value={confirm}
-            onChange={(event) => setConfirm(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
+        <div><label className="text-xs font-medium text-muted-foreground">Senha atual</label><input type="password" value={current} onChange={(event) => setCurrent(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" /></div>
+        <div><label className="text-xs font-medium text-muted-foreground">Nova senha</label><input type="password" value={next} onChange={(event) => setNext(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" /></div>
+        <div><label className="text-xs font-medium text-muted-foreground">Repita a nova senha</label><input type="password" value={confirm} onChange={(event) => setConfirm(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" /></div>
       </div>
-      <p className="mt-3 text-xs text-muted-foreground">
-        Todo mundo do balcão usa a mesma senha — ao trocar, avise a equipe, senão o próximo turno
-        fica trancado do lado de fora.
-      </p>
-      <SaveRow
-        saving={state.saving}
-        saved={state.saved}
-        error={localError ?? state.error}
-        onSave={() => void handleSave()}
-      />
+      <p className="mt-3 text-xs text-muted-foreground">Todo mundo do balcão usa a mesma senha. Ao trocar, avise a equipe.</p>
+      <SaveRow saving={state.saving} saved={state.saved} error={localError ?? state.error} onSave={() => void handleSave()} />
     </Section>
   );
 }
 
 function AppearanceTab() {
-  // null enquanto não montou: o tema real só existe no navegador (localStorage), e assumir "claro"
-  // no servidor faria o botão piscar errado na hidratação.
   const [theme, setTheme] = useState<Theme | null>(null);
-
-  useEffect(() => {
-    setTheme(readStoredTheme());
-  }, []);
-
+  useEffect(() => { setTheme(readStoredTheme()); }, []);
   function choose(next: Theme) {
     setTheme(next);
     storeTheme(next);
     applyTheme(next);
   }
-
   return (
     <Section
       icon={theme === "dark" ? <Moon className="h-4 w-4" /> : <Sun className="h-4 w-4" />}
       title="Tema do painel"
-      description="Vale só neste aparelho: o PC do balcão pode ficar no escuro e o seu celular no claro, sem um atrapalhar o outro. As telas do cliente seguem com as cores da marca."
+      description="Escolha o modo claro ou escuro para este aparelho. As telas do cliente seguem as cores da marca."
     >
       <div className="flex gap-2">
         {(["light", "dark"] as const).map((option) => (
-          <button
-            key={option}
-            type="button"
-            onClick={() => choose(option)}
-            className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${
-              theme === option
-                ? "border-primary bg-primary/10 text-primary"
-                : "border-border text-muted-foreground hover:bg-muted"
-            }`}
-          >
+          <button key={option} type="button" onClick={() => choose(option)} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${theme === option ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:bg-muted"}`}>
             {option === "light" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             {option === "light" ? "Claro" : "Escuro"}
           </button>
@@ -387,57 +293,15 @@ function OperationTab({ settings }: { settings: Settings }) {
   const [timezone, setTimezone] = useState(settings.operacao.timezone);
   const save = useServerFn(saveOperationConfig);
   const state = useSaveState();
-
   return (
-    <Section
-      icon={<Clock className="h-4 w-4" />}
-      title="Horário do expediente"
-      description="Define a qual dia de operação cada venda pertence — o que separa o faturamento de sexta do de sábado quando o bar atravessa a madrugada."
-    >
+    <Section icon={<Clock className="h-4 w-4" />} title="Horário do expediente" description="Define a qual dia de operação cada venda pertence quando o bar atravessa a madrugada.">
       <div className="grid gap-3 sm:grid-cols-3">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Abertura</label>
-          <input
-            type="time"
-            value={inicio}
-            onChange={(event) => setInicio(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Virada</label>
-          <input
-            type="time"
-            value={virada}
-            onChange={(event) => setVirada(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Fuso horário</label>
-          <input
-            type="text"
-            value={timezone}
-            onChange={(event) => setTimezone(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
+        <div><label className="text-xs font-medium text-muted-foreground">Abertura</label><input type="time" value={inicio} onChange={(event) => setInicio(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" /></div>
+        <div><label className="text-xs font-medium text-muted-foreground">Virada</label><input type="time" value={virada} onChange={(event) => setVirada(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" /></div>
+        <div><label className="text-xs font-medium text-muted-foreground">Fuso horário</label><input type="text" value={timezone} onChange={(event) => setTimezone(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" /></div>
       </div>
-
-      <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-        <strong className="text-foreground">O que a virada faz:</strong> com virada às {virada},
-        uma venda registrada às {virada === "00:00" ? "23:59" : "03:00"} ainda entra no movimento do
-        dia anterior. É o que faz uma comanda aberta sexta 23h e fechada sábado 2h contar como
-        faturamento de sexta, e não dividir a noite em dois relatórios. A abertura é só informativa
-        — quem decide a que dia a venda pertence é a virada.
-      </p>
-
-      <SaveRow
-        saving={state.saving}
-        saved={state.saved}
-        error={state.error}
-        onSave={() => void state.run(() => save({ data: { inicio, virada, timezone } }))}
-      />
+      <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground"><strong className="text-foreground">Virada:</strong> vendas depois da meia-noite podem continuar pertencendo ao movimento do dia anterior, conforme o horário configurado.</p>
+      <SaveRow saving={state.saving} saved={state.saved} error={state.error} onSave={() => void state.run(() => save({ data: { inicio, virada, timezone } }))} />
     </Section>
   );
 }
@@ -447,51 +311,62 @@ function ServiceFeeTab({ settings }: { settings: Settings }) {
   const [onByDefault, setOnByDefault] = useState(settings.taxaServico.onByDefault);
   const save = useServerFn(saveServiceFeeConfig);
   const state = useSaveState();
+  return (
+    <Section icon={<Percent className="h-4 w-4" />} title="Taxa de serviço" description="Percentual sugerido no fechamento da comanda. A equipe pode tirar na hora.">
+      <div className="grid gap-3 sm:max-w-xs">
+        <div><label className="text-xs font-medium text-muted-foreground">Percentual (%)</label><input type="number" min={0} max={100} step="0.5" value={percent} onChange={(event) => setPercent(event.target.value)} className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary" /></div>
+        <label className="flex items-center gap-2 text-xs font-medium"><input type="checkbox" checked={onByDefault} onChange={(event) => setOnByDefault(event.target.checked)} className="h-4 w-4 rounded border-border" />Já vem marcada no fechamento</label>
+      </div>
+      <SaveRow saving={state.saving} saved={state.saved} error={state.error} onSave={() => void state.run(() => save({ data: { percent: Number(percent), onByDefault } }))} />
+    </Section>
+  );
+}
+
+function SuggestionsTab() {
+  const [text, setText] = useState("");
+  const [saved, setSaved] = useState(false);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem("fastbar:last-suggestion");
+    if (stored) setText(stored);
+  }, []);
+
+  function saveSuggestion() {
+    const value = text.trim();
+    if (!value) return;
+    window.localStorage.setItem("fastbar:last-suggestion", value);
+    setText(value);
+    setSaved(true);
+    window.setTimeout(() => setSaved(false), 2000);
+  }
 
   return (
     <Section
-      icon={<Percent className="h-4 w-4" />}
-      title="Taxa de serviço"
-      description="Percentual sugerido no fechamento da comanda. A equipe sempre pode tirar na hora, comanda a comanda."
+      icon={<MessageSquare className="h-4 w-4" />}
+      title="Sugestões"
+      description="Registre uma ideia, melhoria ou problema para não perder o contexto durante o uso do FastBar."
     >
-      <div className="grid gap-3 sm:max-w-xs">
-        <div>
-          <label className="text-xs font-medium text-muted-foreground">Percentual (%)</label>
-          <input
-            type="number"
-            min={0}
-            max={100}
-            step="0.5"
-            value={percent}
-            onChange={(event) => setPercent(event.target.value)}
-            className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
-          />
-        </div>
-        <label className="flex items-center gap-2 text-xs font-medium">
-          <input
-            type="checkbox"
-            checked={onByDefault}
-            onChange={(event) => setOnByDefault(event.target.checked)}
-            className="h-4 w-4 rounded border-border"
-          />
-          Já vem marcada no fechamento
-        </label>
-      </div>
-
-      <p className="mt-3 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">
-        A taxa de serviço é opcional para o cliente — ele pode recusar, e o fechamento tem um botão
-        pra tirar. O percentual cobrado fica gravado em cada comanda, então mudar esse número aqui
-        não reescreve o que já foi cobrado antes.
-      </p>
-
-      <SaveRow
-        saving={state.saving}
-        saved={state.saved}
-        error={state.error}
-        onSave={() =>
-          void state.run(() => save({ data: { percent: Number(percent), onByDefault } }))
-        }
+      <textarea
+        value={text}
+        onChange={(event) => setText(event.target.value)}
+        rows={6}
+        placeholder="Ex.: adicionar um filtro por garçom no relatório de vendas..."
+        className="w-full resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-primary"
       />
+      <div className="mt-3 flex items-center gap-3">
+        <button
+          type="button"
+          disabled={!text.trim()}
+          onClick={saveSuggestion}
+          className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground disabled:opacity-50"
+        >
+          Registrar sugestão
+        </button>
+        {saved && <span className="text-xs text-emerald-500">Registrada neste aparelho.</span>}
+      </div>
+      <p className="mt-3 text-xs text-muted-foreground">
+        Nesta primeira versão, a sugestão fica salva apenas neste aparelho. Ela não é enviada para terceiros nem altera dados da operação.
+      </p>
     </Section>
   );
 }
