@@ -9,53 +9,52 @@ import {
   lookupNotaFiscal,
   parseSupplyFile,
 } from "@/lib/nota-fiscal.functions";
+import { normalizarDocumentoEstoqueComIA } from "@/lib/stock-ai.functions";
 
-type ComponentOption = { id: string; name: string; kind: "base_drink" | "ingredient" };
-
-type Alias = { rawTextNormalized: string | null; kind: "base_drink" | "ingredient"; componentId: string };
-
-type ItemLido = {
-  descricao: string;
-  quantidade: number;
-  unidade: string;
-  valorUnitario: number;
-};
-
-type LinhaConfirmacao = {
+type Kind = "base_drink" | "ingredient";
+type ComponentOption = { id: string; name: string; kind: Kind };
+type Alias = { rawTextNormalized: string | null; kind: Kind; componentId: string };
+type ReadItem = { descricao: string; quantidade: number; unidade: string; valorUnitario: number };
+type Line = {
   key: string;
   descricaoOriginal: string;
   quantidadeNota: string;
-  kind: "base_drink" | "ingredient";
+  kind: Kind;
   componentId: string;
   packs: string;
   purchaseCost: string;
 };
 
-/** Casamento do item externo (nota, planilha) com um insumo do estoque, em duas etapas: primeiro
- * tenta o que já foi aprendido (a equipe confirmou essa mesma descrição antes -- ver
- * upsertSupplyAliases no servidor), que é exato e não erra; só na ausência disso cai pro casamento
- * por substring ("Heineken Long Neck" contém "Heineken"), que é só uma pré-seleção, não uma
- * certeza -- por isso sempre revisável na tela de confirmação. */
-function sugerirComponente(
-  descricaoNota: string,
-  componentes: ComponentOption[],
-  aliases: Alias[],
-): ComponentOption | null {
-  const alvo = descricaoNota.trim().toLowerCase();
+type Mode = "choosing" | "camera" | "scanning" | "processing" | "confirming" | "done";
+
+function suggest(descricao: string, components: ComponentOption[], aliases: Alias[]) {
+  const alvo = descricao.trim().toLowerCase();
   if (!alvo) return null;
-
-  const aprendido = aliases.find((a) => a.rawTextNormalized === alvo);
-  if (aprendido) {
-    const match = componentes.find((c) => c.id === aprendido.componentId && c.kind === aprendido.kind);
-    if (match) return match;
+  const alias = aliases.find((a) => a.rawTextNormalized === alvo);
+  if (alias) {
+    const found = components.find((c) => c.id === alias.componentId && c.kind === alias.kind);
+    if (found) return found;
   }
-
-  const exato = componentes.find((c) => c.name.trim().toLowerCase() === alvo);
-  if (exato) return exato;
-  const parcial = componentes.find(
-    (c) => alvo.includes(c.name.trim().toLowerCase()) || c.name.trim().toLowerCase().includes(alvo),
+  return (
+    components.find((c) => c.name.trim().toLowerCase() === alvo) ??
+    components.find((c) => alvo.includes(c.name.trim().toLowerCase()) || c.name.trim().toLowerCase().includes(alvo)) ??
+    null
   );
-  return parcial ?? null;
+}
+
+function makeLines(items: ReadItem[], components: ComponentOption[], aliases: Alias[], prefix: string): Line[] {
+  return items.map((item, index) => {
+    const match = suggest(item.descricao, components, aliases);
+    return {
+      key: `${prefix}-${index}-${Date.now()}`,
+      descricaoOriginal: item.descricao,
+      quantidadeNota: `${item.quantidade} ${item.unidade}`,
+      kind: match?.kind ?? "base_drink",
+      componentId: match?.id ?? "",
+      packs: "",
+      purchaseCost: item.valorUnitario > 0 ? String(item.valorUnitario * item.quantidade).replace(".", ",") : "",
+    };
+  });
 }
 
 export function NotaFiscalImport(props: {
@@ -64,91 +63,77 @@ export function NotaFiscalImport(props: {
   onClose: () => void;
   onImported: () => void;
 }) {
-  const componentes: ComponentOption[] = [
-    ...props.baseDrinks.map((b) => ({ id: b.id, name: b.name, kind: "base_drink" as const })),
-    ...props.ingredients.map((i) => ({ id: i.id, name: i.name, kind: "ingredient" as const })),
+  const components: ComponentOption[] = [
+    ...props.baseDrinks.map((x) => ({ ...x, kind: "base_drink" as const })),
+    ...props.ingredients.map((x) => ({ ...x, kind: "ingredient" as const })),
   ];
-
-  const [mode, setMode] = useState<"choosing" | "scanning" | "looking_up" | "parsing_file" | "confirming" | "done">(
-    "choosing",
-  );
-  // De onde vieram os itens em confirmação -- decide qual server function o "Confirmar" chama:
-  // nota fiscal tem chave de acesso (trava contra reimportar a mesma nota), planilha não tem
-  // esse identificador único, então usa um caminho de confirmação mais simples.
-  const [origem, setOrigem] = useState<"qr" | "arquivo" | null>(null);
-  const [arquivoNome, setArquivoNome] = useState("");
+  const [mode, setMode] = useState<Mode>("choosing");
+  const [origin, setOrigin] = useState<"qr" | "arquivo" | "foto" | null>(null);
+  const [fileName, setFileName] = useState("");
   const [aliases, setAliases] = useState<Alias[]>([]);
+  const [lines, setLines] = useState<Line[]>([]);
   const [cameraError, setCameraError] = useState<string | null>(null);
-  const [lookupError, setLookupError] = useState<string | null>(null);
-  const [arquivoError, setArquivoError] = useState<string | null>(null);
-  const [avisoItensVazios, setAvisoItensVazios] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [info, setInfo] = useState<string | null>(null);
   const [chave, setChave] = useState("");
   const [uf, setUf] = useState<string | null>(null);
-  const [emitenteNome, setEmitenteNome] = useState<string | null>(null);
-  const [emitenteDocumento, setEmitenteDocumento] = useState<string | null>(null);
+  const [emitente, setEmitente] = useState<string | null>(null);
+  const [documento, setDocumento] = useState<string | null>(null);
   const [valorTotal, setValorTotal] = useState<number | null>(null);
-  const [linhas, setLinhas] = useState<LinhaConfirmacao[]>([]);
-  const [confirmError, setConfirmError] = useState<string | null>(null);
-  const [confirming, setConfirming] = useState(false);
-  const [resultado, setResultado] = useState<string | null>(null);
+  const [confidence, setConfidence] = useState<number | null>(null);
+  const [duplicate, setDuplicate] = useState(false);
+  const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const rafRef = useRef<number | null>(null);
   const stoppedRef = useRef(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const photoRef = useRef<HTMLInputElement | null>(null);
 
   const lookup = useServerFn(lookupNotaFiscal);
-  const confirmar = useServerFn(confirmarNotaFiscal);
-  const confirmarArquivo = useServerFn(confirmarEntradaEstoque);
-  const parseArquivo = useServerFn(parseSupplyFile);
+  const confirmNF = useServerFn(confirmarNotaFiscal);
+  const confirmFile = useServerFn(confirmarEntradaEstoque);
+  const parseFile = useServerFn(parseSupplyFile);
   const loadAliases = useServerFn(getSupplyItemAliases);
+  const normalizeAI = useServerFn(normalizarDocumentoEstoqueComIA);
 
   useEffect(() => {
-    // Carrega o que já foi aprendido uma vez, ao abrir o painel -- não depende do modo, porque
-    // tanto o caminho de QR quanto o de planilha usam a mesma lista de sugestões.
-    loadAliases()
-      .then((result) => setAliases(result.aliases))
-      .catch(() => {
-        /* sem aliases carregados, as sugestões caem pro casamento por substring -- não é um erro
-           que precise travar a tela por causa disso. */
-      });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    loadAliases().then((r) => setAliases(r.aliases)).catch(() => undefined);
+  }, [loadAliases]);
+
+  function stopCamera() {
+    stoppedRef.current = true;
+    if (rafRef.current) cancelAnimationFrame(rafRef.current);
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  }
 
   useEffect(() => {
-    if (mode !== "scanning") return;
+    if (mode !== "camera" && mode !== "scanning") return;
     stoppedRef.current = false;
-
     async function start() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: "environment" },
-        });
-        // A permissão pode levar segundos, e o modal pode ter sido fechado (ou o modo mudado)
-        // enquanto o navegador ainda perguntava -- sem essa checagem, a câmera fica ligada em
-        // segundo plano pra sempre, porque o cleanup já rodou antes de existir stream pra parar.
-        if (stoppedRef.current) {
-          stream.getTracks().forEach((track) => track.stop());
-          return;
-        }
+        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (stoppedRef.current) return stream.getTracks().forEach((track) => track.stop());
         streamRef.current = stream;
         if (videoRef.current) {
           videoRef.current.srcObject = stream;
           await videoRef.current.play();
         }
-        tick();
+        if (mode === "scanning") scan();
       } catch {
         setCameraError("Não foi possível acessar a câmera. Confirme a permissão do navegador.");
       }
     }
-
-    async function tick() {
+    async function scan() {
       if (stoppedRef.current) return;
       const video = videoRef.current;
       const canvas = canvasRef.current;
-      if (video && canvas && video.readyState === video.HAVE_ENOUGH_DATA) {
+      if (video && canvas && video.readyState >= video.HAVE_ENOUGH_DATA) {
         canvas.width = video.videoWidth;
         canvas.height = video.videoHeight;
         const ctx = canvas.getContext("2d");
@@ -158,499 +143,260 @@ export function NotaFiscalImport(props: {
           const jsQR = (await import("jsqr")).default;
           const code = jsQR(frame.data, frame.width, frame.height);
           if (code?.data) {
-            stoppedRef.current = true;
             stopCamera();
-            void onDecoded(code.data);
+            void decodeQR(code.data);
             return;
           }
         }
       }
-      rafRef.current = requestAnimationFrame(() => void tick());
+      rafRef.current = requestAnimationFrame(() => void scan());
     }
-
     void start();
-    return () => {
-      stoppedRef.current = true;
-      stopCamera();
-    };
+    return () => stopCamera();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  function stopCamera() {
-    if (rafRef.current) cancelAnimationFrame(rafRef.current);
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
-  }
-
-  async function onDecoded(qrUrl: string) {
-    setMode("looking_up");
-    setLookupError(null);
-    let result: Awaited<ReturnType<typeof lookup>>;
+  async function decodeQR(qrUrl: string) {
+    setMode("processing");
+    setError(null);
     try {
-      result = await lookup({ data: { qrUrl } });
-    } catch {
-      setLookupError("Não foi possível consultar a nota agora -- tente escanear de novo.");
-      setMode("scanning");
-      return;
-    }
-    if (!result.ok) {
-      // Chave de acesso lida com sucesso mas o portal da SEFAZ não respondeu -- ainda dá pra
-      // aproveitar a chave e completar os itens à mão, em vez de forçar escanear tudo de novo.
-      if (result.code === "portal_indisponivel" && result.chave) {
-        setOrigem("qr");
-        setChave(result.chave);
-        setUf(result.uf ?? null);
-        setEmitenteNome(null);
-        setEmitenteDocumento(null);
-        setValorTotal(null);
-        setAvisoItensVazios(true);
-        setLinhas([]);
-        setLookupError(result.message);
-        setMode("confirming");
+      const r = await lookup({ data: { qrUrl } });
+      if (!r.ok) {
+        setError(r.message);
+        setMode(r.code === "portal_indisponivel" ? "confirming" : "scanning");
+        if (r.code === "portal_indisponivel" && r.chave) {
+          setOrigin("qr");
+          setChave(r.chave);
+          setUf(r.uf ?? null);
+          setLines([]);
+        }
         return;
       }
-      setLookupError(result.message);
+      setOrigin("qr");
+      setChave(r.chave);
+      setUf(r.uf);
+      setEmitente(r.emitenteNome);
+      setDocumento(r.emitenteDocumento);
+      setValorTotal(r.valorTotal);
+      setLines(makeLines(r.itens, components, aliases, "nf"));
+      setMode("confirming");
+    } catch {
+      setError("Não foi possível consultar a nota agora.");
       setMode("scanning");
-      return;
     }
-    setOrigem("qr");
-    setChave(result.chave);
-    setUf(result.uf);
-    setEmitenteNome(result.emitenteNome);
-    setEmitenteDocumento(result.emitenteDocumento);
-    setValorTotal(result.valorTotal);
-    setAvisoItensVazios(result.avisoItensVazios);
-    setLinhas(
-      result.itens.map((item: ItemLido, index: number) => {
-        const sugestao = sugerirComponente(item.descricao, componentes, aliases);
-        return {
-          key: `nf-${index}`,
-          descricaoOriginal: item.descricao,
-          quantidadeNota: `${item.quantidade} ${item.unidade}`,
-          kind: sugestao?.kind ?? "base_drink",
-          componentId: sugestao?.id ?? "",
-          // "packs" no sistema é embalagem de compra (caixa, garrafa), multiplicada por
-          // units_per_pack -- não é a mesma coisa que a quantidade de unidades da nota (ex.: nota
-          // com "24 UN" não vira 24 embalagens). Deixa em branco de propósito: a equipe informa
-          // quantas embalagens comprou de fato, só usando a quantidade da nota (mostrada acima do
-          // campo) como referência visual, nunca preenchendo esse número sozinho.
-          packs: "",
-          purchaseCost:
-            item.valorUnitario > 0 ? String(item.valorUnitario * item.quantidade).replace(".", ",") : "",
-        };
-      }),
-    );
-    setMode("confirming");
   }
 
-  async function onArquivoSelecionado(file: File) {
-    setArquivoError(null);
-    setMode("parsing_file");
-    setArquivoNome(file.name);
-
+  async function normalizePhoto(file: File) {
+    setOrigin("foto");
+    setFileName(file.name);
+    setError(null);
+    setInfo(null);
+    setMode("processing");
     const base64 = await new Promise<string | null>((resolve) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        const result = reader.result;
-        if (typeof result !== "string") return resolve(null);
-        const [, data] = result.split(",");
-        resolve(data ?? null);
-      };
+      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result.split(",")[1] ?? null : null);
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
     });
     if (!base64) {
-      setArquivoError("Não foi possível ler esse arquivo.");
+      setError("Não foi possível ler a foto.");
       setMode("choosing");
       return;
     }
-
-    let result: Awaited<ReturnType<typeof parseArquivo>>;
     try {
-      result = await parseArquivo({ data: { fileName: file.name, base64 } });
-    } catch {
-      setArquivoError("Não foi possível processar o arquivo agora -- tente de novo.");
-      setMode("choosing");
-      return;
-    }
-    if (!result.ok) {
-      setArquivoError(result.message);
-      setMode("choosing");
-      return;
-    }
-
-    setOrigem("arquivo");
-    setChave("");
-    setUf(null);
-    setEmitenteNome(null);
-    setEmitenteDocumento(null);
-    setValorTotal(null);
-    setAvisoItensVazios(false);
-    setLinhas(
-      result.itens.map((item, index) => {
-        const sugestao = sugerirComponente(item.descricao, componentes, aliases);
-        return {
-          key: `arq-${index}`,
-          descricaoOriginal: item.descricao,
-          quantidadeNota: `${item.quantidade} ${item.unidade}`,
-          kind: sugestao?.kind ?? "base_drink",
-          componentId: sugestao?.id ?? "",
-          packs: "",
-          purchaseCost:
-            item.valorUnitario > 0 ? String(item.valorUnitario * item.quantidade).replace(".", ",") : "",
-        };
-      }),
-    );
-    setMode("confirming");
-  }
-
-  function updateLinha(key: string, patch: Partial<LinhaConfirmacao>) {
-    setLinhas((current) => current.map((linha) => (linha.key === key ? { ...linha, ...patch } : linha)));
-  }
-
-  function adicionarLinhaManual() {
-    setLinhas((current) => [
-      ...current,
-      {
-        key: `manual-${Date.now()}-${current.length}`,
-        descricaoOriginal: "",
-        quantidadeNota: "",
-        kind: "base_drink",
-        componentId: "",
-        packs: "",
-        purchaseCost: "",
-      },
-    ]);
-  }
-
-  async function handleConfirmar() {
-    setConfirmError(null);
-    const itensValidos: Array<{
-      kind: "base_drink" | "ingredient";
-      componentId: string;
-      packs: number;
-      purchaseCost?: number;
-      descricaoOriginal?: string;
-    }> = [];
-    for (const linha of linhas) {
-      if (!linha.componentId) continue;
-      const packs = Number(linha.packs);
-      if (!Number.isInteger(packs) || packs <= 0) {
-        setConfirmError(`Quantidade de embalagens inválida em "${linha.descricaoOriginal || "item manual"}".`);
+      const r = await normalizeAI({ data: { base64, mimeType: file.type || "image/jpeg", fileName: file.name } });
+      if (!r.ok) {
+        setError(r.message ?? "A IA não conseguiu interpretar o documento.");
+        setMode("choosing");
         return;
       }
-      let purchaseCost: number | undefined;
-      if (linha.purchaseCost.trim()) {
-        const parsed = parseAmount(linha.purchaseCost);
-        if (parsed === null) {
-          setConfirmError(`Valor pago inválido em "${linha.descricaoOriginal || "item manual"}".`);
-          return;
-        }
-        purchaseCost = parsed;
-      }
-      itensValidos.push({
-        kind: linha.kind,
-        componentId: linha.componentId,
-        packs,
-        ...(purchaseCost !== undefined ? { purchaseCost } : {}),
-        ...(linha.descricaoOriginal.trim() ? { descricaoOriginal: linha.descricaoOriginal.trim() } : {}),
+      setEmitente(r.fornecedorNome ?? null);
+      setDocumento(r.fornecedorDocumento ?? null);
+      setChave(r.chaveAcesso ?? "");
+      setValorTotal(r.valorTotal ?? null);
+      setConfidence(r.confianca ?? null);
+      setDuplicate(Boolean(r.duplicada));
+      setDuplicateWarning(r.avisoDuplicidade ?? null);
+      setLines(makeLines(r.itens, components, aliases, "ai"));
+      if (r.duplicada) setInfo("Documento identificado como possível duplicata. A confirmação ficará bloqueada.");
+      setMode("confirming");
+    } catch {
+      setError("Não foi possível processar a foto com a IA.");
+      setMode("choosing");
+    }
+  }
+
+  async function selectFile(file: File) {
+    if (/^image\//.test(file.type) || file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
+      await normalizePhoto(file);
+      return;
+    }
+    setOrigin("arquivo");
+    setFileName(file.name);
+    setMode("processing");
+    try {
+      const base64 = await new Promise<string | null>((resolve) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result.split(",")[1] ?? null : null);
+        reader.onerror = () => resolve(null);
+        reader.readAsDataURL(file);
       });
+      if (!base64) throw new Error();
+      const r = await parseFile({ data: { fileName: file.name, base64 } });
+      if (!r.ok) throw new Error(r.message);
+      setLines(makeLines(r.itens, components, aliases, "file"));
+      setMode("confirming");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Não foi possível processar o arquivo.");
+      setMode("choosing");
     }
-    if (itensValidos.length === 0) {
-      setConfirmError("Escolha o item correspondente em pelo menos uma linha.");
+  }
+
+  async function capturePhoto() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || !video.videoWidth) {
+      setCameraError("A câmera ainda não está pronta.");
       return;
     }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+    stopCamera();
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+    if (!blob) return;
+    await normalizePhoto(new File([blob], `nota-${Date.now()}.jpg`, { type: "image/jpeg" }));
+  }
 
-    // Planilha não tem chave de acesso -- não há como travar contra reenvio duplicado como na
-    // nota fiscal, então usa o caminho mais simples, sem a lógica de retry/reconciliação abaixo
-    // (que existe especificamente pra aproveitar essa trava).
-    if (origem === "arquivo") {
-      setConfirming(true);
-      try {
-        const result = await confirmarArquivo({
-          data: { origem: `planilha: ${arquivoNome}`, itens: itensValidos },
-        });
-        if (!result.ok) {
-          setConfirmError(result.message ?? "Não foi possível confirmar a entrada.");
-          return;
-        }
-        setResultado(`${itensValidos.length} item(ns) lançados no estoque.`);
-        setMode("done");
-        props.onImported();
-      } catch {
-        setConfirmError("Não foi possível confirmar agora -- confira o estoque antes de tentar de novo.");
-      } finally {
-        setConfirming(false);
-      }
+  function updateLine(key: string, patch: Partial<Line>) {
+    setLines((current) => current.map((line) => (line.key === key ? { ...line, ...patch } : line)));
+  }
+
+  function addManual() {
+    setLines((current) => [...current, { key: `manual-${Date.now()}`, descricaoOriginal: "", quantidadeNota: "", kind: "base_drink", componentId: "", packs: "", purchaseCost: "" }]);
+  }
+
+  async function confirm() {
+    setError(null);
+    if (duplicate) {
+      setError(duplicateWarning ?? "Esse documento já foi importado.");
       return;
     }
-
-    const payload = {
-      chave,
-      uf: uf ?? undefined,
-      emitenteNome: emitenteNome ?? undefined,
-      emitenteDocumento: emitenteDocumento ?? undefined,
-      valorTotal: valorTotal ?? undefined,
-      itens: itensValidos,
-    };
-
-    // "ja_importada" só prova que a trava existe -- não que todos os itens foram lançados. Uma
-    // tentativa anterior (ou a que colidiu agora) pode ter tido sucesso parcial ou ainda estar
-    // no meio do loop de itens no servidor (todosItensOk null). Tratar isso sempre como "sucesso
-    // total" mascararia itens que precisam de lançamento manual.
-    function tratarJaImportada(res: { todosItensOk?: boolean | null; message?: string }) {
-      if (res.todosItensOk === false) {
-        props.onImported();
-        setConfirmError(
-          res.message ?? "Essa nota foi lançada parcialmente -- confira o estoque e lance o restante manualmente.",
-        );
+    const items = [] as Array<{ kind: Kind; componentId: string; packs: number; purchaseCost?: number; descricaoOriginal?: string }>;
+    for (const line of lines) {
+      if (!line.componentId) continue;
+      const packs = Number(line.packs);
+      if (!Number.isInteger(packs) || packs <= 0) {
+        setError(`Informe uma quantidade válida de embalagens para "${line.descricaoOriginal || "item manual"}".`);
         return;
       }
-      if (res.todosItensOk === null || res.todosItensOk === undefined) {
-        setConfirmError(
-          res.message ?? "Essa nota já está sendo processada em outra tentativa -- confira o estoque em instantes.",
-        );
+      const cost = line.purchaseCost.trim() ? parseAmount(line.purchaseCost) : null;
+      if (line.purchaseCost.trim() && cost === null) {
+        setError(`Valor inválido em "${line.descricaoOriginal || "item manual"}".`);
         return;
       }
-      setResultado("A nota já tinha sido importada -- estoque atualizado.");
-      setMode("done");
-      props.onImported();
+      items.push({ kind: line.kind, componentId: line.componentId, packs, ...(cost !== null ? { purchaseCost: cost } : {}), ...(line.descricaoOriginal.trim() ? { descricaoOriginal: line.descricaoOriginal.trim() } : {}) });
     }
-
-    setConfirming(true);
+    if (!items.length) {
+      setError("Escolha pelo menos um item do estoque.");
+      return;
+    }
+    setBusy(true);
     try {
-      const result = await confirmar({ data: payload });
-      if (!result.ok) {
-        if (result.code === "ja_importada") {
-          tratarJaImportada(result);
+      if (origin === "qr" && chave) {
+        const r = await confirmNF({ data: { chave, uf: uf ?? undefined, emitenteNome: emitente ?? undefined, emitenteDocumento: documento ?? undefined, valorTotal: valorTotal ?? undefined, itens: items } });
+        if (!r.ok) {
+          setError(r.message ?? "Não foi possível confirmar a entrada.");
           return;
         }
-        setConfirmError(result.message ?? "Não foi possível confirmar a entrada.");
-        return;
+      } else {
+        const r = await confirmFile({ data: { origem: `${origin === "foto" ? "foto IA" : "arquivo"}: ${fileName || "documento"}`, itens: items } });
+        if (!r.ok) {
+          setError(r.message ?? "Não foi possível confirmar a entrada.");
+          return;
+        }
       }
-      setResultado(`${itensValidos.length} item(ns) lançados no estoque.`);
+      setResult(`${items.length} item(ns) lançados no estoque.`);
       setMode("done");
       props.onImported();
     } catch {
-      // A chamada pode ter comitado no servidor e a resposta se perdido na rede -- reenviar o
-      // mesmo payload é seguro graças à trava de chave_acesso única: se a nota já tiver sido
-      // importada (ou estiver em andamento), o retry só confirma isso (sem duplicar) em vez de
-      // deixar o operador achando que nada aconteceu.
-      try {
-        const recheck = await confirmar({ data: payload });
-        if (!recheck.ok && recheck.code === "ja_importada") {
-          tratarJaImportada(recheck);
-          return;
-        }
-        if (recheck.ok) {
-          setResultado(`${itensValidos.length} item(ns) lançados no estoque.`);
-          setMode("done");
-          props.onImported();
-          return;
-        }
-        setConfirmError(recheck.message ?? "Não foi possível confirmar a entrada.");
-      } catch {
-        setConfirmError("Não foi possível confirmar agora -- confira o estoque antes de tentar de novo.");
-      }
+      setError("Não foi possível confirmar agora. Confira o estoque antes de tentar novamente.");
     } finally {
-      setConfirming(false);
+      setBusy(false);
     }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-4">
+      <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-semibold">Dar entrada no estoque</p>
-          <button onClick={props.onClose} className="text-xs text-muted-foreground underline">
-            Fechar
-          </button>
+          <button onClick={props.onClose} className="text-xs text-muted-foreground underline">Fechar</button>
         </div>
 
         {mode === "choosing" && (
           <div className="space-y-2">
-            <p className="mb-1 text-xs text-muted-foreground">Como você quer lançar essa entrada?</p>
-            <button
-              onClick={() => {
-                setOrigem("qr");
-                setCameraError(null);
-                setLookupError(null);
-                setMode("scanning");
-              }}
-              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
-            >
+            <p className="text-xs text-muted-foreground">Foto, QR, PDF ou planilha. Tudo passa pela mesma etapa de conferência antes de alterar o estoque.</p>
+            <button onClick={() => { setCameraError(null); setMode("camera"); }} className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary">
+              <p className="text-xs font-semibold">Tirar foto da nota</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Abre a câmera do celular com botão de disparo. A IA interpreta a nota e preenche os campos.</p>
+            </button>
+            <button onClick={() => photoRef.current?.click()} className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary">
+              <p className="text-xs font-semibold">Escolher foto ou PDF</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Use uma foto já tirada, PDF da nota ou outro documento compatível.</p>
+            </button>
+            <input ref={photoRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void selectFile(f); }} />
+            <button onClick={() => setMode("scanning")} className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary">
               <p className="text-xs font-semibold">Ler QR code da nota fiscal</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Aponta a câmera pro QR do cupom -- busca os itens direto no portal da SEFAZ.
-              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">Consulta a nota diretamente no portal oficial da SEFAZ.</p>
             </button>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
-            >
+            <button onClick={() => fileRef.current?.click()} className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary">
               <p className="text-xs font-semibold">Subir planilha do fornecedor</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                .xlsx, .xls ou .csv com produto, quantidade e valor -- normaliza e você confere
-                antes de lançar.
-              </p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">.xlsx, .xls ou .csv.</p>
             </button>
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept=".csv,.xlsx,.xls"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) void onArquivoSelecionado(file);
-              }}
-            />
-            <div className="w-full cursor-not-allowed rounded-xl border border-dashed border-border p-3 text-left opacity-60">
-              <p className="text-xs font-semibold">Foto da nota (em breve)</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">
-                Ler uma foto de nota sem QR precisa de leitura por IA, que ainda não está
-                configurada neste projeto.
-              </p>
-            </div>
-            {arquivoError && <p className="text-xs text-destructive">{arquivoError}</p>}
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void selectFile(f); }} />
+            {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
         )}
 
-        {mode === "parsing_file" && (
-          <p className="py-8 text-center text-sm text-muted-foreground">Lendo a planilha...</p>
-        )}
-
-        {mode === "scanning" && (
-          <div>
-            <button
-              onClick={() => setMode("choosing")}
-              className="mb-2 text-[11px] font-medium text-muted-foreground underline hover:text-foreground"
-            >
-              ← voltar
-            </button>
-            <p className="mb-2 text-xs text-muted-foreground">
-              Aponte a câmera pro QR code impresso no cupom fiscal.
-            </p>
-            {cameraError ? (
-              <p className="rounded-lg border border-dashed border-border p-3 text-xs text-destructive">
-                {cameraError}
-              </p>
-            ) : (
-              <div className="overflow-hidden rounded-xl border border-border bg-black">
-                <video ref={videoRef} className="w-full" muted playsInline />
-              </div>
-            )}
+        {(mode === "camera" || mode === "scanning") && (
+          <div className="space-y-2">
+            <button onClick={() => { stopCamera(); setMode("choosing"); }} className="text-[11px] font-medium text-muted-foreground underline">← voltar</button>
+            <p className="text-xs text-muted-foreground">{mode === "camera" ? "Enquadre a nota e toque em Disparar." : "Aponte para o QR code da nota."}</p>
+            {cameraError ? <p className="rounded-lg border border-dashed border-border p-3 text-xs text-destructive">{cameraError}</p> : <div className="relative overflow-hidden rounded-xl border border-border bg-black"><video ref={videoRef} className="w-full" muted playsInline /><div className="pointer-events-none absolute inset-x-8 top-8 bottom-20 rounded-xl border-2 border-white/70" />{mode === "camera" && <button onClick={() => void capturePhoto()} className="absolute bottom-3 left-1/2 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full border-4 border-white bg-white/20" aria-label="Disparar foto"><span className="h-10 w-10 rounded-full bg-white" /></button>}</div>}
             <canvas ref={canvasRef} className="hidden" />
-            {lookupError && <p className="mt-2 text-xs text-destructive">{lookupError}</p>}
           </div>
         )}
 
-        {mode === "looking_up" && (
-          <p className="py-8 text-center text-sm text-muted-foreground">Buscando os itens da nota...</p>
-        )}
+        {mode === "processing" && <p className="py-10 text-center text-sm text-muted-foreground">Interpretando o documento e preparando os campos...</p>}
 
         {mode === "confirming" && (
           <div className="space-y-3">
-            {origem === "qr" ? (
-              <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
-                <p>Chave: {chave}</p>
-                {uf && <p>UF: {uf}</p>}
-                {emitenteNome && <p>Emitente: {emitenteNome}</p>}
-                {valorTotal != null && <p>Valor total da nota: {valorTotal.toFixed(2).replace(".", ",")}</p>}
-              </div>
-            ) : (
-              <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
-                <p>Planilha: {arquivoNome}</p>
-              </div>
-            )}
-
-            {avisoItensVazios && (
-              <p className="rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-                {lookupError ?? "Não consegui ler os itens automaticamente desse portal. Adicione manualmente abaixo."}
-              </p>
-            )}
-
+            <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
+              {origin === "qr" ? <><p>Chave: {chave || "não disponível"}</p>{uf && <p>UF: {uf}</p>}</> : <p>Origem: {origin === "foto" ? "Foto + IA" : `Arquivo: ${fileName}`}</p>}
+              {emitente && <p>Fornecedor: {emitente}</p>}
+              {documento && <p>CNPJ/Documento: {documento}</p>}
+              {valorTotal != null && <p>Valor total: {valorTotal.toFixed(2).replace(".", ",")}</p>}
+              {confidence != null && <p>Confiança da IA: {Math.round(confidence <= 1 ? confidence * 100 : confidence)}%</p>}
+            </div>
+            {duplicateWarning && <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">{duplicateWarning}</p>}
+            {info && <p className="rounded-lg border border-border p-3 text-xs text-muted-foreground">{info}</p>}
+            {error && <p className="text-xs text-destructive">{error}</p>}
+            <p className="text-[11px] text-muted-foreground">A IA apenas sugere. Nenhuma entrada é gravada até você revisar e confirmar. Campos faltantes podem ser preenchidos manualmente.</p>
             <div className="space-y-2">
-              {linhas.map((linha) => {
-                const opcoes = linha.kind === "base_drink" ? props.baseDrinks : props.ingredients;
-                return (
-                  <div key={linha.key} className="rounded-xl border border-border p-3">
-                    {linha.descricaoOriginal && (
-                      <p className="mb-1.5 truncate text-xs font-medium text-muted-foreground">
-                        Nota: {linha.descricaoOriginal}
-                      </p>
-                    )}
-                    <div className="grid grid-cols-2 gap-2">
-                      <label className="block">
-                        <span className="text-xs font-medium text-muted-foreground">Tipo</span>
-                        <select
-                          value={linha.kind}
-                          onChange={(event) =>
-                            updateLinha(linha.key, {
-                              kind: event.target.value as "base_drink" | "ingredient",
-                              componentId: "",
-                            })
-                          }
-                          className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-                        >
-                          <option value="base_drink">Bebida base</option>
-                          <option value="ingredient">Ingrediente</option>
-                        </select>
-                      </label>
-                      <label className="block">
-                        <span className="text-xs font-medium text-muted-foreground">Item</span>
-                        <select
-                          value={linha.componentId}
-                          onChange={(event) => updateLinha(linha.key, { componentId: event.target.value })}
-                          className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-ring"
-                        >
-                          <option value="">Ignorar esse item</option>
-                          {opcoes.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.name}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <TextField
-                        label="Embalagens (caixas/garrafas)"
-                        value={linha.packs}
-                        onChange={(value) => updateLinha(linha.key, { packs: value })}
-                        type="number"
-                        placeholder={linha.quantidadeNota ? `Nota: ${linha.quantidadeNota}` : ""}
-                      />
-                      <TextField
-                        label="Valor pago (opcional)"
-                        value={linha.purchaseCost}
-                        onChange={(value) => updateLinha(linha.key, { purchaseCost: value })}
-                        type="text"
-                      />
-                    </div>
-                  </div>
-                );
+              {lines.map((line) => {
+                const options = line.kind === "base_drink" ? props.baseDrinks : props.ingredients;
+                return <div key={line.key} className="rounded-xl border border-border p-3"><p className="mb-2 truncate text-xs font-medium text-muted-foreground">{line.descricaoOriginal || "Item manual"}{line.quantidadeNota && ` · ${line.quantidadeNota}`}</p><div className="grid grid-cols-2 gap-2"><label className="block"><span className="text-xs font-medium text-muted-foreground">Tipo</span><select value={line.kind} onChange={(e) => updateLine(line.key, { kind: e.target.value as Kind, componentId: "" })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="base_drink">Bebida base</option><option value="ingredient">Ingrediente</option></select></label><label className="block"><span className="text-xs font-medium text-muted-foreground">Item</span><select value={line.componentId} onChange={(e) => updateLine(line.key, { componentId: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="">Ignorar</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label><TextField label="Embalagens" value={line.packs} onChange={(value) => updateLine(line.key, { packs: value })} type="number" placeholder={line.quantidadeNota ? `Nota: ${line.quantidadeNota}` : ""} /><TextField label="Valor pago (opcional)" value={line.purchaseCost} onChange={(value) => updateLine(line.key, { purchaseCost: value })} type="text" /></div></div>;
               })}
             </div>
-
-            <button
-              onClick={adicionarLinhaManual}
-              className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
-            >
-              + Adicionar item manualmente
-            </button>
-
-            {confirmError && <p className="text-xs text-destructive">{confirmError}</p>}
-            <PrimaryButton onClick={() => void handleConfirmar()} disabled={confirming}>
-              {confirming ? "Lançando..." : "Confirmar entrada no estoque"}
-            </PrimaryButton>
+            <button onClick={addManual} className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground">+ Adicionar item manualmente</button>
+            <PrimaryButton onClick={() => void confirm()} disabled={busy || duplicate}>{busy ? "Lançando..." : duplicate ? "Documento já importado" : "Confirmar entrada no estoque"}</PrimaryButton>
           </div>
         )}
 
-        {mode === "done" && (
-          <div className="space-y-3 py-4 text-center">
-            <p className="text-sm font-semibold text-primary">{resultado}</p>
-            <PrimaryButton onClick={props.onClose}>Fechar</PrimaryButton>
-          </div>
-        )}
+        {mode === "done" && <div className="space-y-3 py-4 text-center"><p className="text-sm font-semibold text-primary">{result}</p><PrimaryButton onClick={props.onClose}>Fechar</PrimaryButton></div>}
       </div>
     </div>
   );
