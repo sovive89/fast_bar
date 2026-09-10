@@ -9,6 +9,19 @@ import { VitePWA } from "vite-plugin-pwa";
 
 export default defineConfig({
   vite: {
+    // Carimbo da build — o MESMO literal no bundle do servidor e no do cliente, porque é
+    // substituído em tempo de compilação. É isso que deixa o app perceber sozinho que a aba
+    // aberta ficou pra trás: o cliente antigo carrega o carimbo ANTIGO e pergunta ao servidor
+    // (que já é o deploy NOVO) qual é o dele; se não baterem, a aba está velha.
+    //
+    // Sem isso, uma aba do caixa aberta durante um deploy continua rodando o JS de quando foi
+    // aberta — foi exatamente assim que o módulo Configurações "sumiu" do celular da equipe
+    // mesmo com a produção já correta.
+    define: {
+      __BUILD_ID__: JSON.stringify(
+        process.env["VERCEL_GIT_COMMIT_SHA"] || `dev-${Date.now().toString(36)}`,
+      ),
+    },
     plugins: [
       VitePWA({
         injectRegister: "auto",
@@ -35,10 +48,14 @@ export default defineConfig({
         },
         workbox: {
           globPatterns: ["**/*.{js,css,html,svg,png,ico}"],
-          // Uma aba do caixa aberta durante um deploy não pode ficar presa na versão antiga até
-          // alguém lembrar de dar refresh — skipWaiting ativa o SW novo assim que ele termina de
-          // instalar, e clientsClaim faz ele assumir o controle das abas já abertas na hora,
-          // sem esperar a próxima navegação.
+          // skipWaiting/clientsClaim pra que um service worker novo assuma as abas já abertas na
+          // hora, em vez de esperar a próxima navegação.
+          //
+          // ATENÇÃO: hoje este plugin escreve em `dist/`, e o que a Vercel publica é
+          // `.output/public/` — ou seja, NENHUM service worker chega à produção e este bloco está
+          // inerte. O manifest que vale é o `public/manifest.webmanifest`, escrito à mão. Por isso
+          // a detecção de versão nova é feita no app (ver src/lib/app-version.functions.ts), e não
+          // via ciclo de vida do service worker: não dá pra depender de um SW que não existe.
           skipWaiting: true,
           clientsClaim: true,
         },

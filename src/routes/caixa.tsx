@@ -22,6 +22,7 @@ import {
 import { checkBarAccess, lockBarPanel } from "@/lib/bar-gate.functions";
 import { getOperationStatus, openOperation, closeOperation } from "@/lib/operations.functions";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
+import { UpdateBanner } from "@/components/shared/UpdateBanner";
 import {
   Sidebar,
   SidebarContent,
@@ -275,9 +276,14 @@ function RegisterLayout() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <div className="sticky top-0 z-10 flex items-center gap-2 border-b border-border bg-background/95 px-3 py-2 backdrop-blur">
-          <SidebarTrigger />
-          <OperationBar />
+        <div className="sticky top-0 z-10 border-b border-border bg-background/95 backdrop-blur">
+          {/* Acima da barra de operação de propósito: com a aba desatualizada, tudo que vem
+              abaixo pode ser a versão errada da tela. */}
+          <UpdateBanner />
+          <div className="flex items-center gap-2 px-3 py-2">
+            <SidebarTrigger />
+            <OperationBar />
+          </div>
         </div>
         <Outlet />
       </SidebarInset>

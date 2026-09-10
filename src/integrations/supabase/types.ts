@@ -866,43 +866,79 @@ export type Database = {
       }
       fastbar_stock_lots: {
         Row: {
+          chave_acesso: string | null
           component_id: string
           component_kind: string
           created_at: string
+          documento_emissao: string | null
+          documento_numero: string | null
+          documento_serie: string | null
+          documento_tipo: string
           expires_on: string | null
+          fabricacao: string | null
+          fornecedor_documento: string | null
+          fornecedor_nome: string | null
           id: string
+          lote: string | null
+          motivo: string | null
           note: string | null
           quantity_received: number
           quantity_remaining: number
           received_at: string
+          registrado_por: string
+          status: string
           supplier_id: string | null
           tenant_id: string
           unit_cost: number | null
         }
         Insert: {
+          chave_acesso?: string | null
           component_id: string
           component_kind: string
           created_at?: string
+          documento_emissao?: string | null
+          documento_numero?: string | null
+          documento_serie?: string | null
+          documento_tipo?: string
           expires_on?: string | null
+          fabricacao?: string | null
+          fornecedor_documento?: string | null
+          fornecedor_nome?: string | null
           id?: string
+          lote?: string | null
+          motivo?: string | null
           note?: string | null
           quantity_received: number
           quantity_remaining?: number
           received_at?: string
+          registrado_por?: string
+          status?: string
           supplier_id?: string | null
           tenant_id?: string
           unit_cost?: number | null
         }
         Update: {
+          chave_acesso?: string | null
           component_id?: string
           component_kind?: string
           created_at?: string
+          documento_emissao?: string | null
+          documento_numero?: string | null
+          documento_serie?: string | null
+          documento_tipo?: string
           expires_on?: string | null
+          fabricacao?: string | null
+          fornecedor_documento?: string | null
+          fornecedor_nome?: string | null
           id?: string
+          lote?: string | null
+          motivo?: string | null
           note?: string | null
           quantity_received?: number
           quantity_remaining?: number
           received_at?: string
+          registrado_por?: string
+          status?: string
           supplier_id?: string | null
           tenant_id?: string
           unit_cost?: number | null

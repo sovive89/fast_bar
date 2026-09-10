@@ -114,6 +114,33 @@ async function applyComponentUpdate(
  * Best-effort: se a gravação do lote falhar, a entrada em si (que já rodou antes) não é desfeita —
  * o saldo e o custo médio já estão certos, só a rastreabilidade por lote é que fica incompleta.
  */
+export type LotTraceability = {
+  /** Número do lote impresso na embalagem — é ele que permite recolher um lote específico. */
+  lote?: string | undefined;
+  fabricacao?: string | undefined;
+  /** Fotografia do fornecedor na data da entrada (ver comentário abaixo). */
+  fornecedorNome?: string | undefined;
+  fornecedorDocumento?: string | undefined;
+  documentoTipo?: DocumentoTipo | undefined;
+  documentoNumero?: string | undefined;
+  documentoSerie?: string | undefined;
+  chaveAcesso?: string | undefined;
+  documentoEmissao?: string | undefined;
+  motivo?: string | undefined;
+};
+
+export type DocumentoTipo =
+  | "nfe"
+  | "nfce"
+  | "danfe"
+  | "cupom"
+  | "comprovante"
+  | "entrada_manual"
+  | "outro";
+
+/** Texto vazio/só espaço vira null: coluna vazia é honesta, string vazia finge que tem dado. */
+const orNull = (value?: string | undefined) => value?.trim() || null;
+
 async function insertStockLot(params: {
   kind: "base_drink" | "ingredient";
   componentId: string;
@@ -122,8 +149,25 @@ async function insertStockLot(params: {
   supplierId?: string | undefined;
   expiresOn?: string | undefined;
   note?: string | undefined;
+  trace?: LotTraceability | undefined;
 }) {
   const { admin } = await import("./fastbar.server");
+  const trace = params.trace ?? {};
+
+  // Sem fotografia do fornecedor informada, copia o nome/documento do cadastro AGORA — é o que
+  // preserva a origem da mercadoria caso o cadastro seja renomeado ou desativado depois.
+  let fornecedorNome = orNull(trace.fornecedorNome);
+  let fornecedorDocumento = orNull(trace.fornecedorDocumento);
+  if (params.supplierId && !fornecedorNome) {
+    const { data: supplier } = await admin()
+      .from("fastbar_suppliers")
+      .select("name, document")
+      .eq("id", params.supplierId)
+      .maybeSingle();
+    fornecedorNome = supplier?.name ?? null;
+    fornecedorDocumento = fornecedorDocumento ?? supplier?.document ?? null;
+  }
+
   await admin()
     .from("fastbar_stock_lots")
     .insert({
@@ -133,8 +177,19 @@ async function insertStockLot(params: {
       unit_cost: params.unitCost,
       quantity_received: params.quantity,
       quantity_remaining: params.quantity,
-      expires_on: params.expiresOn?.trim() || null,
-      note: params.note?.trim() || null,
+      expires_on: orNull(params.expiresOn),
+      note: orNull(params.note),
+      lote: orNull(trace.lote),
+      fabricacao: orNull(trace.fabricacao),
+      fornecedor_nome: fornecedorNome,
+      fornecedor_documento: fornecedorDocumento,
+      // Default do banco também é entrada_manual: o caminho sem nota nunca vira NF-e por omissão.
+      documento_tipo: trace.documentoTipo ?? "entrada_manual",
+      documento_numero: orNull(trace.documentoNumero),
+      documento_serie: orNull(trace.documentoSerie),
+      chave_acesso: orNull(trace.chaveAcesso),
+      documento_emissao: orNull(trace.documentoEmissao),
+      motivo: orNull(trace.motivo),
     });
 }
 
@@ -311,6 +366,7 @@ export const addBaseDrinkEntry = createServerFn({ method: "POST" })
       supplierId?: string | undefined;
       note?: string | undefined;
       expiresOn?: string | undefined;
+      trace?: LotTraceability | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -375,6 +431,7 @@ export const addBaseDrinkEntry = createServerFn({ method: "POST" })
       unitCost: unitCost,
       supplierId: data.supplierId,
       expiresOn: data.expiresOn,
+      trace: data.trace,
     });
 
     return { ok: true as const, newStock };
@@ -558,6 +615,7 @@ export const addIngredientEntry = createServerFn({ method: "POST" })
       supplierId?: string | undefined;
       note?: string | undefined;
       expiresOn?: string | undefined;
+      trace?: LotTraceability | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -621,6 +679,7 @@ export const addIngredientEntry = createServerFn({ method: "POST" })
       unitCost: unitCost,
       supplierId: data.supplierId,
       expiresOn: data.expiresOn,
+      trace: data.trace,
     });
 
     return { ok: true as const, newStock };
@@ -1131,7 +1190,10 @@ export const getStockLots = createServerFn({ method: "POST" })
     const { data: lots } = await admin()
       .from("fastbar_stock_lots")
       .select(
-        "id, unit_cost, quantity_received, quantity_remaining, expires_on, received_at, note, supplier_id, fastbar_suppliers(name)",
+        // Precisa ser um literal único (sem concatenação com +): o Supabase infere o tipo de
+        // retorno a partir do TEXTO literal da string de select, e uma expressão concatenada em
+        // tempo de execução perde essa inferência — foi o que gerou os erros de "GenericStringError".
+        "id, unit_cost, quantity_received, quantity_remaining, expires_on, received_at, note, supplier_id, lote, fabricacao, fornecedor_nome, fornecedor_documento, documento_tipo, documento_numero, documento_serie, chave_acesso, documento_emissao, motivo, registrado_por, status, fastbar_suppliers(name)",
       )
       .eq("component_kind", data.kind)
       .eq("component_id", data.componentId)
@@ -1152,7 +1214,20 @@ export const getStockLots = createServerFn({ method: "POST" })
           receivedAt: lot.received_at,
           note: lot.note,
           supplierId: lot.supplier_id,
-          supplierName: supplierName ?? null,
+          // Nome vivo do cadastro quando existe; senão a fotografia gravada na entrada — é o que
+          // sobra quando o fornecedor foi apagado do cadastro depois.
+          supplierName: supplierName ?? lot.fornecedor_nome ?? null,
+          lote: lot.lote,
+          fabricacao: lot.fabricacao,
+          fornecedorDocumento: lot.fornecedor_documento,
+          documentoTipo: lot.documento_tipo,
+          documentoNumero: lot.documento_numero,
+          documentoSerie: lot.documento_serie,
+          chaveAcesso: lot.chave_acesso,
+          documentoEmissao: lot.documento_emissao,
+          motivo: lot.motivo,
+          registradoPor: lot.registrado_por,
+          status: lot.status,
         };
       }),
     };

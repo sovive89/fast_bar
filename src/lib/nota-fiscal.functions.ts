@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { LotTraceability } from "./base-drinks.functions";
 import { addBaseDrinkEntry, addIngredientEntry } from "./base-drinks.functions";
 
 const UF_POR_CODIGO: Record<string, string> = {
@@ -368,6 +369,16 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
         continue;
       }
       algumaTentativaFeita = true;
+      // Rastreabilidade legal: a chave de acesso, o CNPJ/nome do emitente e o tipo do documento
+      // (sempre "nfe" aqui -- é uma NF-e lida por chave) ficam gravados no LOTE, não só na
+      // observação em texto livre do movimento. É isso que deixa uma fiscalização, ou um
+      // recolhimento de lote, encontrar a nota por trás de um saldo específico.
+      const trace: LotTraceability = {
+        documentoTipo: "nfe",
+        chaveAcesso: data.chave,
+        fornecedorNome: data.emitenteNome,
+        fornecedorDocumento: data.emitenteDocumento,
+      };
       const result =
         item.kind === "base_drink"
           ? await addBaseDrinkEntry({
@@ -377,6 +388,7 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
                 ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
                 ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
                 note: `Entrada via nota fiscal ${data.chave}`,
+                trace,
               },
             })
           : await addIngredientEntry({
@@ -386,6 +398,7 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
                 ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
                 ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
                 note: `Entrada via nota fiscal ${data.chave}`,
+                trace,
               },
             });
       resultados.push(
@@ -466,6 +479,13 @@ export const confirmarEntradaEstoque = createServerFn({ method: "POST" })
         resultados.push({ componentId: item.componentId, ok: false, message: "Quantidade inválida." });
         continue;
       }
+      // Sem nota fiscal por trás (planilha do fornecedor, digitação avulsa): o documento fica
+      // "entrada_manual" -- interno, nunca tratado como NF-e -- com a origem como motivo, pra
+      // uma auditoria depois entender de onde saiu esse saldo sem documento fiscal.
+      const trace: LotTraceability = {
+        documentoTipo: "entrada_manual",
+        motivo: `Entrada via ${data.origem}`,
+      };
       const result =
         item.kind === "base_drink"
           ? await addBaseDrinkEntry({
@@ -475,6 +495,7 @@ export const confirmarEntradaEstoque = createServerFn({ method: "POST" })
                 ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
                 ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
                 note: `Entrada via ${data.origem}`,
+                trace,
               },
             })
           : await addIngredientEntry({
@@ -484,6 +505,7 @@ export const confirmarEntradaEstoque = createServerFn({ method: "POST" })
                 ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
                 ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
                 note: `Entrada via ${data.origem}`,
+                trace,
               },
             });
       resultados.push(

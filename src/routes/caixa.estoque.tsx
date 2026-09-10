@@ -154,6 +154,32 @@ type StockLot = {
   note: string | null;
   supplierId: string | null;
   supplierName: string | null;
+  // Rastreabilidade: de onde a mercadoria veio e por qual documento entrou. Tudo anulável porque
+  // compra de bar vem de tudo quanto é jeito — distribuidor com NF-e, mercado com cupom, feira sem
+  // papel nenhum. Campo vazio é honesto; obrigar preenchimento produziria "SEM LOTE" e validade
+  // 31/12/2099, que é pior: mata a chance de auditar de verdade.
+  lote: string | null;
+  fabricacao: string | null;
+  fornecedorDocumento: string | null;
+  documentoTipo: string | null;
+  documentoNumero: string | null;
+  documentoSerie: string | null;
+  chaveAcesso: string | null;
+  documentoEmissao: string | null;
+  motivo: string | null;
+  registradoPor: string | null;
+  status: string | null;
+};
+
+/** Rótulo do tipo de documento. "Entrada manual" é documento INTERNO — nunca some com NF-e. */
+const DOCUMENTO_LABEL: Record<string, string> = {
+  nfe: "NF-e",
+  nfce: "NFC-e",
+  danfe: "DANFE",
+  cupom: "Cupom fiscal",
+  comprovante: "Comprovante",
+  entrada_manual: "Entrada manual",
+  outro: "Documento",
 };
 
 type Supplier = { id: string; name: string; document: string | null; phone: string | null; active: boolean };
@@ -891,19 +917,42 @@ function ComponentStockTab(props: {
                                 </div>
                               </div>
                             ) : (
-                              <div className="flex items-center justify-between gap-2 text-muted-foreground">
-                                <span>
-                                  <span className="font-medium text-foreground">
-                                    {lot.quantityRemaining} / {lot.quantityReceived} {item.unit}
-                                  </span>{" "}
-                                  restante · recebido{" "}
-                                  {new Date(lot.receivedAt).toLocaleDateString("pt-BR")}
-                                  {lot.expiresOn
-                                    ? ` · vence ${new Date(`${lot.expiresOn}T00:00:00`).toLocaleDateString("pt-BR")}`
-                                    : ""}
-                                  {lot.unitCost !== null ? ` · ${brl(lot.unitCost)}/${item.unit}` : ""}
-                                  {lot.supplierName ? ` · ${lot.supplierName}` : ""}
-                                </span>
+                              <div className="flex items-start justify-between gap-2 text-muted-foreground">
+                                <div className="min-w-0">
+                                  <span>
+                                    <span className="font-medium text-foreground">
+                                      {lot.quantityRemaining} / {lot.quantityReceived} {item.unit}
+                                    </span>{" "}
+                                    restante · recebido{" "}
+                                    {new Date(lot.receivedAt).toLocaleDateString("pt-BR")}
+                                    {lot.expiresOn
+                                      ? ` · vence ${new Date(`${lot.expiresOn}T00:00:00`).toLocaleDateString("pt-BR")}`
+                                      : ""}
+                                    {lot.unitCost !== null ? ` · ${brl(lot.unitCost)}/${item.unit}` : ""}
+                                    {lot.supplierName ? ` · ${lot.supplierName}` : ""}
+                                  </span>
+
+                                  {/* Lote é o campo que uma fiscalização/recolhimento pede primeiro — ficava
+                                      perdido no meio do texto corrido. */}
+                                  {lot.lote && (
+                                    <p className="mt-0.5 text-foreground">Lote {lot.lote}</p>
+                                  )}
+
+                                  {/* Documento de origem — é o que liga este saldo a um papel. */}
+                                  {lot.documentoTipo && (
+                                    <p className="mt-0.5 text-[11px]">
+                                      {DOCUMENTO_LABEL[lot.documentoTipo] ?? lot.documentoTipo}
+                                      {lot.documentoNumero ? ` nº ${lot.documentoNumero}` : ""}
+                                      {lot.documentoSerie ? `/${lot.documentoSerie}` : ""}
+                                      {lot.motivo ? ` · ${lot.motivo}` : ""}
+                                      {lot.chaveAcesso ? (
+                                        <span className="block break-all opacity-70">
+                                          chave {lot.chaveAcesso}
+                                        </span>
+                                      ) : null}
+                                    </p>
+                                  )}
+                                </div>
                                 <button
                                   onClick={() => openLotEditor(lot)}
                                   className="shrink-0 text-xs font-medium text-primary"
