@@ -141,8 +141,8 @@ export type DocumentoTipo =
 /** Texto vazio/só espaço vira null: coluna vazia é honesta, string vazia finge que tem dado. */
 const orNull = (value?: string | undefined) => value?.trim() || null;
 
-async function insertStockLot(params: {
-  kind: "base_drink" | "ingredient";
+export async function insertStockLot(params: {
+  kind: "base_drink" | "ingredient" | "product";
   componentId: string;
   quantity: number;
   unitCost: number | null;
@@ -193,13 +193,70 @@ async function insertStockLot(params: {
     });
 }
 
-/** Lê o total pago de uma entrada. `undefined` = entrada sem custo informado (permitido). */
-function readPurchaseCost(value: number | undefined) {
-  if (value === undefined) return { ok: true as const, purchaseCost: null };
-  if (!Number.isFinite(value) || value < 0) {
-    return { ok: false as const, message: "Valor pago inválido." };
+/**
+ * Como o lote chegou: "pacote" usa a embalagem fixa cadastrada no item (caixa fechada, units por
+ * pacote × conteúdo) — o comportamento padrão de sempre. "avulso" ignora essa config fixa e usa a
+ * quantidade informada direto na unidade de venda — é a entrada de quem comprou fora do padrão
+ * (uma lata solta, um saco fracionado). Nenhum dos dois trava o item num formato só: cada lote
+ * escolhe o seu, o cadastro do item continua sendo só o padrão sugerido.
+ */
+export type EntryMode = "pacote" | "avulso";
+
+export function resolveEntryQuantity(params: {
+  mode: EntryMode | undefined;
+  packs: number | undefined;
+  avulsoQuantity: number | undefined;
+  unitsPerPack: number;
+  contentAmount: number;
+}): { ok: true; quantity: number } | { ok: false; message: string } {
+  const mode = params.mode ?? "pacote";
+  if (mode === "avulso") {
+    const quantity = Number(params.avulsoQuantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return { ok: false, message: "Informe uma quantidade avulsa válida." };
+    }
+    return { ok: true, quantity };
   }
-  return { ok: true as const, purchaseCost: value > 0 ? value : null };
+  const packs = Number(params.packs);
+  if (!Number.isInteger(packs) || packs <= 0) {
+    return { ok: false, message: "Informe uma quantidade de embalagens válida." };
+  }
+  const quantity = packs * params.unitsPerPack * params.contentAmount;
+  if (!Number.isFinite(quantity) || quantity <= 0) {
+    return { ok: false, message: "Embalagem mal configurada — revise o cadastro." };
+  }
+  return { ok: true, quantity };
+}
+
+/**
+ * Calculadora de valor do lote: a pessoa digita o valor TOTAL pago no lote OU o valor UNITÁRIO —
+ * nunca os dois — e esta função sempre devolve o par completo, calculando o que faltou a partir
+ * da quantidade já resolvida (resolveEntryQuantity). Mandar os dois ao mesmo tempo é erro: não dá
+ * pra saber qual dos dois o usuário realmente digitou por último.
+ */
+export function resolveLotValue(params: {
+  quantity: number;
+  totalCost: number | undefined;
+  unitCost: number | undefined;
+}): { ok: true; totalCost: number | null; unitCost: number | null } | { ok: false; message: string } {
+  if (params.totalCost !== undefined && params.unitCost !== undefined) {
+    return { ok: false, message: "Informe o valor total OU o valor unitário do lote, não os dois." };
+  }
+  if (params.totalCost !== undefined) {
+    if (!Number.isFinite(params.totalCost) || params.totalCost < 0) {
+      return { ok: false, message: "Valor total inválido." };
+    }
+    if (params.totalCost === 0) return { ok: true, totalCost: null, unitCost: null };
+    return { ok: true, totalCost: params.totalCost, unitCost: params.totalCost / params.quantity };
+  }
+  if (params.unitCost !== undefined) {
+    if (!Number.isFinite(params.unitCost) || params.unitCost < 0) {
+      return { ok: false, message: "Valor unitário inválido." };
+    }
+    if (params.unitCost === 0) return { ok: true, totalCost: null, unitCost: null };
+    return { ok: true, totalCost: params.unitCost * params.quantity, unitCost: params.unitCost };
+  }
+  return { ok: true, totalCost: null, unitCost: null };
 }
 
 // ============ FORNECEDORES ============
@@ -361,8 +418,13 @@ export const addBaseDrinkEntry = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
       baseDrinkId: string;
+      // packs continua obrigatório no TIPO por compatibilidade com quem já chama esta função —
+      // na prática só é lido quando entryMode é "pacote" (o padrão).
       packs: number;
+      entryMode?: EntryMode | undefined;
+      avulsoQuantity?: number | undefined;
       purchaseCost?: number | undefined;
+      unitCost?: number | undefined;
       supplierId?: string | undefined;
       note?: string | undefined;
       expiresOn?: string | undefined;
@@ -373,14 +435,6 @@ export const addBaseDrinkEntry = createServerFn({ method: "POST" })
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
 
-    const packs = Number(data.packs);
-    if (!Number.isInteger(packs) || packs <= 0) {
-      return { ok: false as const, message: "Informe uma quantidade de embalagens válida." };
-    }
-
-    const cost = readPurchaseCost(data.purchaseCost);
-    if (!cost.ok) return cost;
-
     const { data: material } = await admin()
       .from("fastbar_base_drinks")
       .select("id, current_stock, average_cost, units_per_pack, content_amount")
@@ -388,11 +442,23 @@ export const addBaseDrinkEntry = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!material) return { ok: false as const, message: "Bebida base não encontrada." };
 
-    const quantity = packs * material.units_per_pack * Number(material.content_amount);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      return { ok: false as const, message: "Embalagem mal configurada — revise o cadastro." };
-    }
-    const unitCost = cost.purchaseCost !== null ? cost.purchaseCost / quantity : null;
+    const resolvedQuantity = resolveEntryQuantity({
+      mode: data.entryMode,
+      packs: data.packs,
+      avulsoQuantity: data.avulsoQuantity,
+      unitsPerPack: material.units_per_pack,
+      contentAmount: Number(material.content_amount),
+    });
+    if (!resolvedQuantity.ok) return { ok: false as const, message: resolvedQuantity.message };
+    const quantity = resolvedQuantity.quantity;
+
+    const value = resolveLotValue({
+      quantity,
+      totalCost: data.purchaseCost,
+      unitCost: data.unitCost,
+    });
+    if (!value.ok) return { ok: false as const, message: value.message };
+    const unitCost = value.unitCost;
 
     const { error: movementError } = await admin().from("fastbar_base_drink_movements").insert({
       base_drink_id: material.id,
@@ -611,7 +677,10 @@ export const addIngredientEntry = createServerFn({ method: "POST" })
     (data: {
       ingredientId: string;
       packs: number;
+      entryMode?: EntryMode | undefined;
+      avulsoQuantity?: number | undefined;
       purchaseCost?: number | undefined;
+      unitCost?: number | undefined;
       supplierId?: string | undefined;
       note?: string | undefined;
       expiresOn?: string | undefined;
@@ -622,14 +691,6 @@ export const addIngredientEntry = createServerFn({ method: "POST" })
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
 
-    const packs = Number(data.packs);
-    if (!Number.isInteger(packs) || packs <= 0) {
-      return { ok: false as const, message: "Informe uma quantidade de embalagens válida." };
-    }
-
-    const cost = readPurchaseCost(data.purchaseCost);
-    if (!cost.ok) return cost;
-
     const { data: ingredient } = await admin()
       .from("fastbar_drink_ingredients")
       .select("id, current_stock, average_cost, units_per_pack, content_amount")
@@ -637,11 +698,23 @@ export const addIngredientEntry = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!ingredient) return { ok: false as const, message: "Ingrediente não encontrado." };
 
-    const quantity = packs * ingredient.units_per_pack * Number(ingredient.content_amount);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      return { ok: false as const, message: "Embalagem mal configurada — revise o cadastro." };
-    }
-    const unitCost = cost.purchaseCost !== null ? cost.purchaseCost / quantity : null;
+    const resolvedQuantity = resolveEntryQuantity({
+      mode: data.entryMode,
+      packs: data.packs,
+      avulsoQuantity: data.avulsoQuantity,
+      unitsPerPack: ingredient.units_per_pack,
+      contentAmount: Number(ingredient.content_amount),
+    });
+    if (!resolvedQuantity.ok) return { ok: false as const, message: resolvedQuantity.message };
+    const quantity = resolvedQuantity.quantity;
+
+    const value = resolveLotValue({
+      quantity,
+      totalCost: data.purchaseCost,
+      unitCost: data.unitCost,
+    });
+    if (!value.ok) return { ok: false as const, message: value.message };
+    const unitCost = value.unitCost;
 
     const { error: movementError } = await admin().from("fastbar_drink_ingredient_movements").insert({
       ingredient_id: ingredient.id,
@@ -1183,7 +1256,7 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
  * mostra pra equipe, ao expandir o card, de onde o saldo atual veio.
  */
 export const getStockLots = createServerFn({ method: "POST" })
-  .inputValidator((data: { kind: "base_drink" | "ingredient"; componentId: string }) => data)
+  .inputValidator((data: { kind: "base_drink" | "ingredient" | "product"; componentId: string }) => data)
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
@@ -1247,7 +1320,7 @@ export const getStockLots = createServerFn({ method: "POST" })
 export const updateStockLot = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
-      kind: "base_drink" | "ingredient";
+      kind: "base_drink" | "ingredient" | "product";
       lotId: string;
       quantityReceived: number;
       unitCost?: number | undefined;
@@ -1291,16 +1364,49 @@ export const updateStockLot = createServerFn({ method: "POST" })
       };
     }
 
-    const table = data.kind === "base_drink" ? "fastbar_base_drinks" : "fastbar_drink_ingredients";
-    const { data: component } = await admin()
-      .from(table)
-      .select("id, current_stock, average_cost")
-      .eq("id", lot.component_id)
-      .maybeSingle();
-    if (!component) return { ok: false as const, message: "Item não encontrado." };
+    // Produto tem sua própria tabela e a coluna de saldo se chama stock_quantity, não
+    // current_stock (bebida base/ingrediente) — resto do cálculo é idêntico nos três. Branches
+    // explícitas (em vez de montar o nome da tabela/coluna numa variável) porque o Supabase só
+    // consegue inferir os tipos do .select()/.update() com uma string literal — uma coluna vinda
+    // de variável interpolada devolve SelectQueryError em tempo de compilação (mesmo problema já
+    // visto em getStockLots).
+    let componentId: string;
+    let componentStock: number;
+    let currentAvg: number;
+    if (data.kind === "base_drink") {
+      const { data: component } = await admin()
+        .from("fastbar_base_drinks")
+        .select("id, current_stock, average_cost")
+        .eq("id", lot.component_id)
+        .maybeSingle();
+      if (!component) return { ok: false as const, message: "Item não encontrado." };
+      componentId = component.id;
+      componentStock = Number(component.current_stock);
+      currentAvg = Number(component.average_cost);
+    } else if (data.kind === "ingredient") {
+      const { data: component } = await admin()
+        .from("fastbar_drink_ingredients")
+        .select("id, current_stock, average_cost")
+        .eq("id", lot.component_id)
+        .maybeSingle();
+      if (!component) return { ok: false as const, message: "Item não encontrado." };
+      componentId = component.id;
+      componentStock = Number(component.current_stock);
+      currentAvg = Number(component.average_cost);
+    } else {
+      const { data: component } = await admin()
+        .from("fastbar_products")
+        .select("id, stock_quantity, average_cost")
+        .eq("id", lot.component_id)
+        .maybeSingle();
+      if (!component) return { ok: false as const, message: "Item não encontrado." };
+      componentId = component.id;
+      componentStock = Number(component.stock_quantity);
+      currentAvg = Number(component.average_cost);
+    }
 
     const deltaQty = quantityReceived - Number(lot.quantity_received);
-    const newComponentStock = Number(component.current_stock) + deltaQty;
+    const newComponentStock = componentStock + deltaQty;
     if (newComponentStock < 0) {
       return { ok: false as const, message: "Esse ajuste deixaria o estoque do item negativo." };
     }
@@ -1308,10 +1414,9 @@ export const updateStockLot = createServerFn({ method: "POST" })
     // "Desfaz" o valor que o lote antigo tinha somado ao custo médio (na quantidade/custo de antes)
     // e soma de volta com os números novos. Lote sem custo informado conta como se tivesse entrado
     // no custo médio de então — mesma regra usada quando a entrada original foi lançada.
-    const currentAvg = Number(component.average_cost);
     const oldUnitCost = lot.unit_cost !== null ? Number(lot.unit_cost) : currentAvg;
     const newUnitCost = unitCost !== null ? unitCost : currentAvg;
-    const totalValueBefore = Number(component.current_stock) * currentAvg;
+    const totalValueBefore = componentStock * currentAvg;
     const totalValueAfter =
       totalValueBefore - oldUnitCost * Number(lot.quantity_received) + newUnitCost * quantityReceived;
     const newAvg = newComponentStock > 0 ? Math.max(totalValueAfter / newComponentStock, 0) : 0;
@@ -1329,10 +1434,21 @@ export const updateStockLot = createServerFn({ method: "POST" })
       .eq("id", lot.id);
     if (lotError) return { ok: false as const, message: "Não foi possível salvar o lote." };
 
-    const { error: componentError } = await admin()
-      .from(table)
-      .update({ current_stock: newComponentStock, average_cost: newAvg })
-      .eq("id", component.id);
+    const { error: componentError } =
+      data.kind === "base_drink"
+        ? await admin()
+            .from("fastbar_base_drinks")
+            .update({ current_stock: newComponentStock, average_cost: newAvg })
+            .eq("id", componentId)
+        : data.kind === "ingredient"
+          ? await admin()
+              .from("fastbar_drink_ingredients")
+              .update({ current_stock: newComponentStock, average_cost: newAvg })
+              .eq("id", componentId)
+          : await admin()
+              .from("fastbar_products")
+              .update({ stock_quantity: newComponentStock, average_cost: newAvg })
+              .eq("id", componentId);
     if (componentError) {
       return {
         ok: false as const,

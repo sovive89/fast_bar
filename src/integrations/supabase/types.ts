@@ -640,6 +640,7 @@ export type Database = {
           category: string
           content_amount: number
           created_at: string
+          depletion_rule: string
           id: string
           image_url: string | null
           is_active: boolean
@@ -659,6 +660,7 @@ export type Database = {
           category?: string
           content_amount?: number
           created_at?: string
+          depletion_rule?: string
           id?: string
           image_url?: string | null
           is_active?: boolean
@@ -678,6 +680,7 @@ export type Database = {
           category?: string
           content_amount?: number
           created_at?: string
+          depletion_rule?: string
           id?: string
           image_url?: string | null
           is_active?: boolean
