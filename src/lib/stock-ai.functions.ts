@@ -22,7 +22,27 @@ type AIResult = {
   avisoDuplicidade?: string | null;
 };
 
-const PROMPT = `Você é o normalizador de documentos de entrada de estoque do FastBar.
+/**
+ * Modelo usado na leitura. Trocável por variável de ambiente (FASTBAR_OCR_MODEL) porque "qual
+ * modelo lê melhor" só se responde testando contra nota de verdade do fornecedor do bar — cupom
+ * amassado, impressão fraca, foto torta — e não contra benchmark de blog.
+ *
+ * Alternativas já verificadas no catálogo do gateway, da mais barata pra mais cara:
+ *   google/gemini-3.8-flash      $0,75/M entrada  (padrão — geração mais nova do mesmo modelo)
+ *   openai/gpt-5                 $1,25/M
+ *   google/gemini-3.1-pro-preview $2,00/M
+ *   anthropic/claude-sonnet-5    $2,00/M
+ *
+ * A diferença de custo entre elas é irrelevante aqui: uma nota gasta ~2 mil tokens de entrada, o
+ * que dá menos de dois centavos por documento no mais caro da lista. Num bar que recebe 20 notas
+ * por mês, escolher pelo preço é otimizar o que não custa — escolha por acerto.
+ *
+ * (Declarando o óbvio: quem escreveu este comentário é o Claude, então tome a menção ao
+ * claude-sonnet-5 com o desconto devido e teste você mesmo.)
+ */
+const MODELO_PADRAO = "google/gemini-3.8-flash";
+
+const PROMPT = `Você é o normalizador de documentos de entrada de estoque de um bar brasileiro.
 Leia a imagem ou documento e retorne SOMENTE JSON válido, sem markdown, com este formato:
 {
   "fornecedorNome": string|null,
@@ -34,8 +54,31 @@ Leia a imagem ou documento e retorne SOMENTE JSON válido, sem markdown, com est
   "confianca": number,
   "itens": [{"descricao":string,"quantidade":number,"unidade":string,"valorUnitario":number}]
 }
-Não invente dados. Se um campo não estiver legível, use null. Preserve quantidade e unidade exatamente como aparecem. Use ponto decimal nos números.
-A imagem pode ser uma nota fiscal, cupom fiscal, comprovante, etiqueta, planilha renderizada ou outro documento de compra. Extraia somente dados visíveis.`;
+
+REGRAS:
+- Não invente dados. Campo ilegível ou ausente = null. É melhor null do que um palpite.
+- "confianca" é de 0 a 1 e deve refletir a legibilidade REAL do documento. Foto tremida, impressão
+  fraca ou papel amassado = confiança baixa. Não infle esse número.
+
+NÚMEROS (documento brasileiro):
+- O separador decimal no papel é a VÍRGULA e o de milhar é o PONTO: "1.234,56" são mil duzentos e
+  trinta e quatro reais e cinquenta e seis centavos. No JSON, converta para ponto decimal: 1234.56.
+- "valorUnitario" é o preço de UMA unidade, não o total da linha. Em cupom costuma aparecer como
+  "VL UNIT", "V.UNIT" ou "UNIT"; o total da linha aparece como "VL TOTAL" ou à direita. Se só o
+  total da linha estiver legível, divida pela quantidade.
+
+CHAVE DE ACESSO:
+- Se aparecer uma sequência de 44 dígitos (costuma vir quebrada em grupos de 4, embaixo do código
+  de barras ou perto do QR code), junte todos os dígitos e devolva em "chaveAcesso". Esse campo
+  vale muito: com ele o sistema consulta a nota na fonte oficial em vez de depender desta leitura.
+
+ITENS:
+- A descrição de um item pode quebrar em duas linhas no cupom — junte antes de devolver.
+- Ignore linhas que não são produto: subtotal, desconto, troco, forma de pagamento, tributos.
+- Preserve a unidade como está no papel (UN, CX, KG, FD, PC, L).
+
+O documento pode ser nota fiscal, cupom fiscal (NFC-e), DANFE, comprovante, etiqueta ou planilha
+impressa. Extraia somente o que está visível.`;
 
 function parseAIText(text: string): Partial<AIResult> {
   const cleaned = text
@@ -54,9 +97,9 @@ function parseAIText(text: string): Partial<AIResult> {
   }
 }
 
-async function chamarIA(data: { base64: string; mimeType: string; fileName?: string }) {
-  const customEndpoint = process.env.FASTBAR_AI_NORMALIZER_URL;
-  const customSecret = process.env.FASTBAR_AI_NORMALIZER_SECRET;
+async function chamarIA(data: { base64: string; mimeType: string; fileName?: string | undefined }) {
+  const customEndpoint = process.env["FASTBAR_AI_NORMALIZER_URL"];
+  const customSecret = process.env["FASTBAR_AI_NORMALIZER_SECRET"];
 
   if (customEndpoint) {
     const response = await fetch(customEndpoint, {
@@ -78,7 +121,7 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
 
   // Em Vercel, VERCEL_OIDC_TOKEN é disponibilizado automaticamente para funções implantadas.
   // Assim o FastBar não precisa de um endpoint de IA próprio nem de segredo exposto no navegador.
-  const gatewayToken = process.env.AI_GATEWAY_API_KEY || process.env.VERCEL_OIDC_TOKEN;
+  const gatewayToken = process.env["AI_GATEWAY_API_KEY"] || process.env["VERCEL_OIDC_TOKEN"];
   if (!gatewayToken) {
     throw new Error(
       "A IA não está autenticada. No Vercel, habilite o AI Gateway/OIDC ou configure AI_GATEWAY_API_KEY.",
@@ -92,7 +135,7 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
       Authorization: `Bearer ${gatewayToken}`,
     },
     body: JSON.stringify({
-      model: "google/gemini-3-flash",
+      model: process.env["FASTBAR_OCR_MODEL"] || MODELO_PADRAO,
       messages: [
         {
           role: "user",

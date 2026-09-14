@@ -9,7 +9,7 @@ import {
   lookupNotaFiscal,
   parseSupplyFile,
 } from "@/lib/nota-fiscal.functions";
-import { normalizarDocumentoEstoqueComIA } from "@/lib/stock-ai.functions";
+import { normalizarDocumentoEstoque } from "@/lib/stock-normalizer.functions";
 
 type Kind = "base_drink" | "ingredient";
 type ComponentOption = { id: string; name: string; kind: Kind };
@@ -99,7 +99,7 @@ export function NotaFiscalImport(props: {
   const confirmFile = useServerFn(confirmarEntradaEstoque);
   const parseFile = useServerFn(parseSupplyFile);
   const loadAliases = useServerFn(getSupplyItemAliases);
-  const normalizeAI = useServerFn(normalizarDocumentoEstoqueComIA);
+  const normalizar = useServerFn(normalizarDocumentoEstoque);
 
   useEffect(() => {
     loadAliases().then((r) => setAliases(r.aliases)).catch(() => undefined);
@@ -186,68 +186,100 @@ export function NotaFiscalImport(props: {
     }
   }
 
-  async function normalizePhoto(file: File) {
-    setOrigin("foto");
-    setFileName(file.name);
-    setError(null);
-    setInfo(null);
-    setMode("processing");
-    const base64 = await new Promise<string | null>((resolve) => {
+  function lerBase64(file: File): Promise<string | null> {
+    return new Promise((resolve) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(typeof reader.result === "string" ? reader.result.split(",")[1] ?? null : null);
+      reader.onload = () =>
+        resolve(typeof reader.result === "string" ? reader.result.split(",")[1] ?? null : null);
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
     });
-    if (!base64) {
-      setError("Não foi possível ler a foto.");
-      setMode("choosing");
-      return;
-    }
+  }
+
+  /**
+   * Procura QR code DENTRO de uma imagem já capturada.
+   *
+   * A câmera ao vivo já lia QR, mas a foto tirada ou enviada ia direto pra IA — e quase toda NFC-e
+   * impressa tem o QR no papel. Achando o código aqui, a nota é buscada na fonte oficial (SEFAZ)
+   * em vez de interpretada por leitura de imagem: dado exato, sem chance de trocar um dígito.
+   * O melhor OCR é o que não precisa acontecer.
+   */
+  async function acharQRNaImagem(file: File): Promise<string | null> {
     try {
-      const r = await normalizeAI({ data: { base64, mimeType: file.type || "image/jpeg", fileName: file.name } });
-      if (!r.ok) {
-        setError(r.message ?? "A IA não conseguiu interpretar o documento.");
-        setMode("choosing");
-        return;
-      }
-      setEmitente(r.fornecedorNome ?? null);
-      setDocumento(r.fornecedorDocumento ?? null);
-      setChave(r.chaveAcesso ?? "");
-      setValorTotal(r.valorTotal ?? null);
-      setConfidence(r.confianca ?? null);
-      setDuplicate(Boolean(r.duplicada));
-      setDuplicateWarning(r.avisoDuplicidade ?? null);
-      setLines(makeLines(r.itens, components, aliases, "ai"));
-      if (r.duplicada) setInfo("Documento identificado como possível duplicata. A confirmação ficará bloqueada.");
-      setMode("confirming");
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return null;
+      ctx.drawImage(bitmap, 0, 0);
+      const frame = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const jsQR = (await import("jsqr")).default;
+      return jsQR(frame.data, frame.width, frame.height)?.data ?? null;
     } catch {
-      setError("Não foi possível processar a foto com a IA.");
-      setMode("choosing");
+      return null;
     }
   }
 
+  /**
+   * Porta única de entrada: qualquer arquivo (foto, PDF, XML da NF-e, planilha) vai pro mesmo
+   * normalizador do servidor, que detecta o formato pelo CONTEÚDO e devolve sempre a mesma
+   * estrutura. A tela não precisa mais saber qual função chamar pra cada tipo.
+   */
   async function selectFile(file: File) {
-    if (/^image\//.test(file.type) || file.type === "application/pdf" || /\.pdf$/i.test(file.name)) {
-      await normalizePhoto(file);
+    setError(null);
+    setInfo(null);
+    setFileName(file.name);
+
+    const ehImagem = /^image\//.test(file.type);
+
+    // Atalho: imagem com QR code vira consulta oficial, não leitura por IA.
+    if (ehImagem) {
+      const qr = await acharQRNaImagem(file);
+      if (qr) {
+        setInfo("QR code encontrado na foto — consultando a nota na SEFAZ em vez de interpretar a imagem.");
+        await decodeQR(qr);
+        return;
+      }
+    }
+
+    setOrigin(ehImagem || /pdf$/i.test(file.type) ? "foto" : "arquivo");
+    setMode("processing");
+
+    const base64 = await lerBase64(file);
+    if (!base64) {
+      setError("Não foi possível ler o arquivo.");
+      setMode("choosing");
       return;
     }
-    setOrigin("arquivo");
-    setFileName(file.name);
-    setMode("processing");
+
     try {
-      const base64 = await new Promise<string | null>((resolve) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(typeof reader.result === "string" ? reader.result.split(",")[1] ?? null : null);
-        reader.onerror = () => resolve(null);
-        reader.readAsDataURL(file);
+      const r = await normalizar({
+        data: { arquivo: { fileName: file.name, base64, mimeType: file.type || undefined } },
       });
-      if (!base64) throw new Error();
-      const r = await parseFile({ data: { fileName: file.name, base64 } });
-      if (!r.ok) throw new Error(r.message);
-      setLines(makeLines(r.itens, components, aliases, "file"));
+      if (!r.ok) {
+        setError(r.message);
+        setMode("choosing");
+        return;
+      }
+
+      setEmitente(r.fornecedor.nome);
+      setDocumento(r.fornecedor.documento);
+      setChave(r.chaveAcesso ?? "");
+      setValorTotal(r.valorTotal);
+      setConfidence(r.confianca);
+      setDuplicate(r.duplicada);
+      setDuplicateWarning(r.avisoDuplicidade);
+      setLines(makeLines(r.itens, components, aliases, r.fonte));
+
+      // Avisos do normalizador incluem a conferência aritmética (soma dos itens × total da nota),
+      // que é o que pega dígito lido errado sem depender da IA se dar conta do próprio erro.
+      const avisos = [...r.avisos];
+      if (r.duplicada) avisos.unshift("Documento identificado como possível duplicata. A confirmação ficará bloqueada.");
+      setInfo(avisos.length > 0 ? avisos.join(" ") : null);
       setMode("confirming");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Não foi possível processar o arquivo.");
+    } catch {
+      setError("Não foi possível processar o documento.");
       setMode("choosing");
     }
   }
@@ -267,7 +299,7 @@ export function NotaFiscalImport(props: {
     stopCamera();
     const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
     if (!blob) return;
-    await normalizePhoto(new File([blob], `nota-${Date.now()}.jpg`, { type: "image/jpeg" }));
+    await selectFile(new File([blob], `nota-${Date.now()}.jpg`, { type: "image/jpeg" }));
   }
 
   function updateLine(key: string, patch: Partial<Line>) {
@@ -356,7 +388,7 @@ export function NotaFiscalImport(props: {
               <p className="text-xs font-semibold">Subir planilha do fornecedor</p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">.xlsx, .xls ou .csv.</p>
             </button>
-            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void selectFile(f); }} />
+            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.xml,text/xml,application/xml" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void selectFile(f); }} />
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
         )}
@@ -375,7 +407,7 @@ export function NotaFiscalImport(props: {
         {mode === "confirming" && (
           <div className="space-y-3">
             <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
-              {origin === "qr" ? <><p>Chave: {chave || "não disponível"}</p>{uf && <p>UF: {uf}</p>}</> : <p>Origem: {origin === "foto" ? "Foto + IA" : `Arquivo: ${fileName}`}</p>}
+              {origin === "qr" ? <><p>Chave: {chave || "não disponível"}</p>{uf && <p>UF: {uf}</p>}</> : <p>Origem: {origin === "foto" ? "Foto lida por IA" : `Arquivo: ${fileName}`}</p>}
               {emitente && <p>Fornecedor: {emitente}</p>}
               {documento && <p>CNPJ/Documento: {documento}</p>}
               {valorTotal != null && <p>Valor total: {valorTotal.toFixed(2).replace(".", ",")}</p>}
@@ -384,11 +416,11 @@ export function NotaFiscalImport(props: {
             {duplicateWarning && <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">{duplicateWarning}</p>}
             {info && <p className="rounded-lg border border-border p-3 text-xs text-muted-foreground">{info}</p>}
             {error && <p className="text-xs text-destructive">{error}</p>}
-            <p className="text-[11px] text-muted-foreground">A IA apenas sugere. Nenhuma entrada é gravada até você revisar e confirmar. Campos faltantes podem ser preenchidos manualmente.</p>
+            <p className="text-[11px] text-muted-foreground">{confidence != null ? "A IA apenas sugere — confira item por item. " : "Leitura exata (documento oficial), mas confira mesmo assim. "}Nenhuma entrada é gravada até você revisar e confirmar. Campos faltantes podem ser preenchidos manualmente.</p>
             <div className="space-y-2">
               {lines.map((line) => {
                 const options = line.kind === "base_drink" ? props.baseDrinks : props.ingredients;
-                return <div key={line.key} className="rounded-xl border border-border p-3"><p className="mb-2 truncate text-xs font-medium text-muted-foreground">{line.descricaoOriginal || "Item manual"}{line.quantidadeNota && ` · ${line.quantidadeNota}`}</p><div className="grid grid-cols-2 gap-2"><label className="block"><span className="text-xs font-medium text-muted-foreground">Tipo</span><select value={line.kind} onChange={(e) => updateLine(line.key, { kind: e.target.value as Kind, componentId: "" })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="base_drink">Bebida base</option><option value="ingredient">Ingrediente</option></select></label><label className="block"><span className="text-xs font-medium text-muted-foreground">Item</span><select value={line.componentId} onChange={(e) => updateLine(line.key, { componentId: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="">Ignorar</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label><TextField label="Embalagens" value={line.packs} onChange={(value) => updateLine(line.key, { packs: value })} type="number" placeholder={line.quantidadeNota ? `Nota: ${line.quantidadeNota}` : ""} /><TextField label="Valor pago (opcional)" value={line.purchaseCost} onChange={(value) => updateLine(line.key, { purchaseCost: value })} type="text" /></div></div>;
+                return <div key={line.key} className="rounded-xl border border-border p-3"><p className="mb-2 truncate text-xs font-medium text-muted-foreground">{line.descricaoOriginal || "Item manual"}{line.quantidadeNota && ` · ${line.quantidadeNota}`}</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><label className="block"><span className="text-xs font-medium text-muted-foreground">Tipo</span><select value={line.kind} onChange={(e) => updateLine(line.key, { kind: e.target.value as Kind, componentId: "" })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="base_drink">Bebida base</option><option value="ingredient">Ingrediente</option></select></label><label className="block"><span className="text-xs font-medium text-muted-foreground">Item</span><select value={line.componentId} onChange={(e) => updateLine(line.key, { componentId: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="">Ignorar</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label><TextField label="Embalagens" value={line.packs} onChange={(value) => updateLine(line.key, { packs: value })} type="number" placeholder={line.quantidadeNota ? `Nota: ${line.quantidadeNota}` : ""} /><TextField label="Valor pago (opcional)" value={line.purchaseCost} onChange={(value) => updateLine(line.key, { purchaseCost: value })} type="text" /></div></div>;
               })}
             </div>
             <button onClick={addManual} className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground">+ Adicionar item manualmente</button>

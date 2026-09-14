@@ -175,6 +175,33 @@ function lerXmlNfe(xml: string): {
   };
 }
 
+// ============ CONFERÊNCIA ARITMÉTICA ============
+
+/**
+ * Soma quantidade × valor unitário dos itens lidos e compara com o total declarado no documento.
+ *
+ * Isto é a trava de qualidade mais barata que existe no fluxo, e a única que não depende de IA:
+ * é aritmética. Quando a leitura troca um dígito — 48,90 virando 4,89, ou 10 caixas virando 70 —
+ * a soma para de fechar, e isso aparece SEM precisar de ninguém comparando item por item com o
+ * papel na mão. O modelo pode devolver confiança alta num número que ele leu errado; a soma, não.
+ *
+ * Tolerância de 2%: nota real tem desconto de linha, frete diluído e arredondamento de centavo,
+ * então exigir igualdade exata geraria alarme em nota correta — e alarme que toca à toa é alarme
+ * que a equipe aprende a ignorar.
+ */
+function conferirSomaDosItens(itens: ItemNormalizado[], valorTotal: number | null): string | null {
+  if (!valorTotal || valorTotal <= 0 || itens.length === 0) return null;
+
+  const soma = itens.reduce((total, item) => total + item.quantidade * item.valorUnitario, 0);
+  if (soma <= 0) return null;
+
+  const diferenca = Math.abs(soma - valorTotal);
+  if (diferenca / valorTotal <= 0.02) return null;
+
+  const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return `A soma dos itens (${fmt(soma)}) não bate com o total da nota (${fmt(valorTotal)}). Confira quantidade e valor unitário antes de confirmar — provavelmente algum número foi lido errado.`;
+}
+
 // ============ IDENTIFICAÇÃO DO FORNECEDOR ============
 
 function normalizarNome(texto: string): string {
@@ -331,6 +358,8 @@ async function normalizarTexto(texto: string): Promise<DocumentoNormalizado> {
   const duplicidade = await checarDuplicidade(resultado.chave);
 
   const avisos: string[] = [];
+  const somaQR = conferirSomaDosItens(resultado.itens, resultado.valorTotal);
+  if (somaQR) avisos.push(somaQR);
   if (resultado.avisoItensVazios) {
     avisos.push(
       "O portal respondeu, mas não consegui ler os itens — a chave e o valor estão aqui, os itens precisam ser adicionados à mão.",
@@ -390,6 +419,8 @@ async function normalizarXml(xml: string): Promise<DocumentoNormalizado> {
   const duplicidade = await checarDuplicidade(lido.chaveAcesso);
 
   const avisos: string[] = [];
+  const somaXml = conferirSomaDosItens(lido.itens, lido.valorTotal);
+  if (somaXml) avisos.push(somaXml);
   if (lido.itens.length === 0) {
     avisos.push("O XML foi lido mas não tinha itens (det/prod) — adicione os itens à mão.");
   }
@@ -467,6 +498,8 @@ async function normalizarComIA(arquivo: {
   );
 
   const avisos: string[] = [];
+  const somaIA = conferirSomaDosItens(resultado.itens, resultado.valorTotal ?? null);
+  if (somaIA) avisos.push(somaIA);
   if (typeof resultado.confianca === "number" && resultado.confianca < 0.7) {
     avisos.push(
       "A leitura saiu com confiança baixa — confira item por item antes de confirmar a entrada.",
