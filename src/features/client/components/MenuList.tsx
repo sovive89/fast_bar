@@ -1,20 +1,23 @@
 import { useEffect, useMemo, useState } from "react";
-import { fetchProducts } from "@/services/supabase/products";
+import { getCardapioCliente } from "@/lib/menu-cliente.functions";
 import { brl } from "@/lib/format";
-import type { BarProduct } from "@/types/fastbar";
+import type { ItemCardapioCliente } from "@/lib/menu-cliente.functions";
 
 const POLL_MS = 15000;
 
 export function MenuList() {
-  const [products, setProducts] = useState<BarProduct[]>([]);
+  const [products, setProducts] = useState<ItemCardapioCliente[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      const result = await fetchProducts();
+      // Disponibilidade vem calculada do servidor (ver menu-cliente.functions): produto com ficha
+      // técnica não tem saldo próprio, então decidir "esgotado" aqui pelo estoque do produto
+      // marcava todo drink como esgotado. O saldo em si não trafega até o aparelho do cliente.
+      const result = await getCardapioCliente();
       if (!cancelled) {
-        setProducts(result);
+        setProducts(result.itens);
         setLoading(false);
       }
     }
@@ -27,7 +30,7 @@ export function MenuList() {
   }, []);
 
   const grouped = useMemo(() => {
-    const map = new Map<string, BarProduct[]>();
+    const map = new Map<string, ItemCardapioCliente[]>();
     for (const product of products) {
       const list = map.get(product.category) ?? [];
       list.push(product);
@@ -54,7 +57,7 @@ export function MenuList() {
             </p>
             <ul className="space-y-2">
               {items.map((product) => {
-                const soldOut = product.stock_quantity <= 0;
+                const soldOut = !product.disponivel;
                 return (
                   <li
                     key={product.id}
