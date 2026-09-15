@@ -385,7 +385,7 @@ function CardapioPage() {
   // null = ainda não escolheu; "stock" = puxar um insumo só direto do estoque; "recipe" = montar
   // ficha técnica com vários insumos. Só decide a apresentação — os dois usam a mesma tabela de
   // receita por baixo, então trocar de modo não perde nada além das linhas já digitadas.
-  const [productMode, setProductMode] = useState<"stock" | "recipe" | null>(null);
+  const [productMode, setProductMode] = useState<"stock" | "recipe" | null>("stock");
 
   // Categoria é uma divisão do menu, não um produto — cadastro próprio, separado do formulário
   // de produto, pra "criar categoria" nunca virar "criar um produto vazio só pra registrar o nome".
@@ -416,6 +416,16 @@ function CardapioPage() {
   const [editProductSaving, setEditProductSaving] = useState(false);
   const [editProductCompressing, setEditProductCompressing] = useState(false);
   const [editProductError, setEditProductError] = useState<string | null>(null);
+  // O modo de estoque vem da CATEGORIA, não de uma pergunta ao operador. Categoria marcada como
+  // "consome insumos" (DRINKS, DOSES) monta ficha com vários componentes; o resto (CERVEJAS,
+  // REFRIGERANTES) puxa uma linha só — cerveja não é produzida, é revendida: entra uma lata, sai
+  // uma lata. Perguntar isso item a item era pedir pro operador reclassificar a mesma coisa toda
+  // vez, e era de onde saía o campo de ficha aparecendo em cerveja.
+  useEffect(() => {
+    const precisaFicha = categories.find((c) => c.name === category)?.needs_recipe ?? false;
+    setProductMode(precisaFicha ? "recipe" : "stock");
+  }, [category, categories]);
+
   // Ficha técnica do produto sendo editado — carregada do banco ao abrir o painel, separada de
   // `components` (que é só do formulário de "Novo produto") pra abrir um editor não pisar no outro.
   const [editComponents, setEditComponents] = useState<ComponentRow[]>([]);
@@ -1282,88 +1292,40 @@ function CardapioPage() {
                     </select>
                   </label>
                 </div>
-                {productMode === null ? (
-                  <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
-                    <p className="text-xs font-semibold">Do que é feito</p>
-                    <p className="mt-0.5 text-xs text-muted-foreground">
-                      Esse item consome algo do estoque pra vender? Escolha como — ou deixe assim
-                      e use "Estoque inicial" logo abaixo pra um item sem insumo nenhum.
+                {/* Sempre a mesma mecânica: todo produto sai do estoque por ficha. O que muda é o
+                    número de linhas — cerveja tem uma (1 lata), caipirinha tem três. Não existe
+                    mais "estoque próprio do produto": aquele contador corria por fora e nunca
+                    batia com o saldo real, e impedia a mesma garrafa de ser vendida inteira E em
+                    dose. O botão "trocar" existe porque sempre há exceção à categoria. */}
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-xs font-semibold">
+                      {productMode === "recipe" ? "Ficha técnica" : "Sai do estoque"}
+                      <span className="ml-1 font-normal text-muted-foreground">
+                        {productMode === "recipe"
+                          ? "— vários insumos, pela categoria"
+                          : "— uma linha só, pela categoria"}
+                      </span>
                     </p>
-                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <button
-                        onClick={() => {
-                          setProductMode("stock");
-                          setComponents([
-                            {
-                              key: `c-${Date.now()}-0`,
-                              stockId: "",
-                              quantity: "",
-                              quantityMode: "whole",
-                              newName: "",
-                              newKind: "base_drink",
-                              newUnit: "ml",
-                            },
-                          ]);
-                        }}
-                        className="rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
-                      >
-                        <p className="text-xs font-semibold">Puxar direto do estoque</p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          Um insumo só — ex.: cerveja lata (unidade inteira) ou uma dose de uma
-                          garrafa (fração).
-                        </p>
-                      </button>
-                      <button
-                        onClick={() => {
-                          setProductMode("recipe");
-                          setComponents([]);
-                        }}
-                        className="rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
-                      >
-                        <p className="text-xs font-semibold">Elaborar ficha técnica</p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground">
-                          Vários insumos juntos — drinks e pratos com mais de um componente.
-                        </p>
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="space-y-1.5">
                     <button
                       onClick={() => {
-                        setProductMode(null);
-                        setComponents([]);
+                        const proximo = productMode === "recipe" ? "stock" : "recipe";
+                        setProductMode(proximo);
+                        if (proximo === "stock") setComponents((atual) => atual.slice(0, 1));
                       }}
-                      className="text-[11px] font-medium text-muted-foreground underline hover:text-foreground"
+                      className="shrink-0 text-[11px] font-medium text-muted-foreground underline hover:text-foreground"
                     >
-                      ← trocar modo
+                      trocar
                     </button>
-                    <RecipeBuilder
-                      components={components}
-                      onChange={setComponents}
-                      stockOptions={stockOptions}
-                      maxRows={productMode === "stock" ? 1 : undefined}
-                      warning={
-                        categories.find((c) => c.name === category)?.needs_recipe
-                          ? `A categoria "${category}" marca que os itens consomem insumos — este produto vai ficar pendente até você montar a ficha.`
-                          : undefined
-                      }
-                    />
                   </div>
-                )}
-
-                {/* Só aparece antes de escolher um modo de "Do que é feito" — depois que o modo é
-                    escolhido (mesmo com a lista ainda vazia), o campo certo pra saldo é a ficha,
-                    não esse aqui, senão vira um número paralelo que nunca baixa. */}
-                {productMode === null && (
-                  <TextField
-                    label="Estoque inicial (só para item SEM insumo escolhido acima, ex.: cerveja lata fechada)"
-                    value={stockQuantity}
-                    onChange={setStockQuantity}
-                    placeholder="0"
-                    type="number"
+                  <RecipeBuilder
+                    components={components}
+                    onChange={setComponents}
+                    stockOptions={stockOptions}
+                    maxRows={productMode === "stock" ? 1 : undefined}
+                    warning={undefined}
                   />
-                )}
+                </div>
                 <label className="block">
                   <span className="text-xs font-medium text-muted-foreground">Foto (opcional)</span>
                   <input

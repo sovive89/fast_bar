@@ -21,7 +21,6 @@ import {
   getStockReport,
   listAllProducts,
   listSuppliers,
-  setRecipeItems,
   updateBaseDrink,
   updateIngredient,
   updateStockLot,
@@ -33,20 +32,32 @@ export const Route = createFileRoute("/caixa/estoque")({
       { title: "Estoque | Pop9Bar" },
       {
         name: "description",
-        content: "Bebidas base, ingredientes, fornecedores e fichas técnicas.",
+        content: "Bebidas, ingredientes e fornecedores.",
       },
     ],
   }),
   component: StockOverview,
 });
 
-type Tab = "bebidas" | "ingredientes" | "fornecedores" | "fichas" | "relatorios";
+type Tab = "bebidas" | "ingredientes" | "fornecedores" | "relatorios";
 
+/**
+ * Duas listas de estoque, divididas por COMPORTAMENTO, não por tabela do banco:
+ *
+ *   Bebidas     - tudo que vem em garrafa, lata ou barril: cerveja, refrigerante, cachaça, gin,
+ *                 vinho. Lado a lado, sem subdividir. A mesma garrafa pode sair inteira, em dose,
+ *                 ou dentro de um drink — nos três casos é o MESMO saldo, e é por isso que ficam
+ *                 juntas: separar por "tipo de bebida" faria o estoque mentir.
+ *   Ingredientes - o que só serve pra preparo: limão, açúcar, xarope, hortelã, gelo.
+ *
+ * A aba "Ficha técnica (Receitas)" saiu daqui de propósito. Ficha é propriedade do item que é
+ * PRODUZIDO, não um acervo do estoque — ela vive dentro do produto, no Cardápio. Ter um cadastro
+ * de receitas aqui fazia o campo de ficha aparecer pra cerveja, que não é produzida.
+ */
 const TABS: Array<{ id: Tab; label: string }> = [
-  { id: "bebidas", label: "Bebidas base" },
+  { id: "bebidas", label: "Bebidas" },
   { id: "ingredientes", label: "Ingredientes" },
   { id: "fornecedores", label: "Fornecedores" },
-  { id: "fichas", label: "Ficha técnica (Receitas)" },
   { id: "relatorios", label: "Relatórios" },
 ];
 
@@ -116,7 +127,6 @@ function StockOverview() {
         {tab === "bebidas" && <BebidasBaseTab />}
         {tab === "ingredientes" && <IngredientesTab />}
         {tab === "fornecedores" && <FornecedoresTab />}
-        {tab === "fichas" && <FichasTecnicasTab />}
         {tab === "relatorios" && <RelatoriosTab />}
       </div>
     </main>
@@ -1527,249 +1537,3 @@ function FornecedoresTab() {
 }
 
 // ============================================================
-// Aba: Fichas técnicas
-// ============================================================
-
-type ProductOption = { id: string; name: string; category: string; is_active: boolean };
-type RecipeRow = {
-  id: string;
-  base_drink_id: string | null;
-  ingredient_id: string | null;
-  quantity: number;
-  base_drink: { name: string; unit: string } | null;
-  ingredient: { name: string; unit: string } | null;
-};
-
-function FichasTecnicasTab() {
-  const [products, setProducts] = useState<ProductOption[]>([]);
-  const [baseDrinks, setBaseDrinks] = useState<StockComponent[]>([]);
-  const [ingredients, setIngredients] = useState<StockComponent[]>([]);
-  const [selectedProduct, setSelectedProduct] = useState("");
-  const [recipe, setRecipe] = useState<RecipeRow[]>([]);
-  const [loadingRecipe, setLoadingRecipe] = useState(false);
-
-  const [newType, setNewType] = useState<"base_drink" | "ingredient">("base_drink");
-  const [newComponentId, setNewComponentId] = useState("");
-  const [newQuantity, setNewQuantity] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  const listProducts = useServerFn(listAllProducts);
-  const overview = useServerFn(getBaseDrinksOverview);
-  const getItems = useServerFn(getRecipeItems);
-  const saveItems = useServerFn(setRecipeItems);
-
-  useEffect(() => {
-    async function loadReferenceData() {
-      const [productsResult, overviewResult] = await Promise.all([listProducts(), overview()]);
-      setProducts(productsResult.products as ProductOption[]);
-      setBaseDrinks((overviewResult.baseDrinks ?? []) as StockComponent[]);
-      setIngredients((overviewResult.ingredients ?? []) as StockComponent[]);
-    }
-    void loadReferenceData();
-    // só atualiza as listas de referência (produtos/bebidas base/ingredientes) — nunca mexe na
-    // receita que o usuário está montando na tela, então é seguro rodar em segundo plano.
-    const poll = setInterval(() => void loadReferenceData(), 15000);
-    return () => clearInterval(poll);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function loadRecipe(productId: string) {
-    setSelectedProduct(productId);
-    setMessage(null);
-    if (!productId) {
-      setRecipe([]);
-      return;
-    }
-    setLoadingRecipe(true);
-    const result = await getItems({ data: { productId } });
-    setRecipe(result.items as RecipeRow[]);
-    setLoadingRecipe(false);
-  }
-
-  function addComponentToRecipe() {
-    if (!newComponentId || !newQuantity) return;
-    const quantity = Number(newQuantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) return;
-
-    const source = newType === "base_drink" ? baseDrinks : ingredients;
-    const component = source.find((item) => item.id === newComponentId);
-    if (!component) return;
-
-    setRecipe((current) => [
-      ...current.filter((row) => {
-        const rowComponentId = newType === "base_drink" ? row.base_drink_id : row.ingredient_id;
-        return rowComponentId !== newComponentId;
-      }),
-      {
-        id: `local-${newComponentId}`,
-        base_drink_id: newType === "base_drink" ? newComponentId : null,
-        ingredient_id: newType === "ingredient" ? newComponentId : null,
-        quantity,
-        base_drink:
-          newType === "base_drink" ? { name: component.name, unit: component.unit } : null,
-        ingredient:
-          newType === "ingredient" ? { name: component.name, unit: component.unit } : null,
-      },
-    ]);
-    setNewComponentId("");
-    setNewQuantity("");
-  }
-
-  function removeRow(row: RecipeRow) {
-    setRecipe((current) => current.filter((item) => item !== row));
-  }
-
-  async function save() {
-    if (!selectedProduct) return;
-    setSaving(true);
-    setMessage(null);
-    const result = await saveItems({
-      data: {
-        productId: selectedProduct,
-        items: recipe.map((row) =>
-          row.base_drink_id
-            ? {
-                type: "base_drink" as const,
-                baseDrinkId: row.base_drink_id,
-                quantity: row.quantity,
-              }
-            : {
-                type: "ingredient" as const,
-                ingredientId: row.ingredient_id as string,
-                quantity: row.quantity,
-              },
-        ),
-      },
-    });
-    setSaving(false);
-    setMessage(result.ok ? "Ficha técnica salva." : result.message ?? "Erro ao salvar.");
-  }
-
-  const componentOptions = newType === "base_drink" ? baseDrinks : ingredients;
-
-  return (
-    <div className="space-y-5">
-      {/* Ficha técnica é sempre de um produto que já existe — criar produto novo (com ficha ou
-          não) acontece no Cardápio, que já tem esse formulário. Reaproveita em vez de duplicar. */}
-      <Link
-        to="/caixa/cardapio"
-        className="block w-full rounded-xl border border-dashed border-border py-3 text-center text-sm font-medium text-muted-foreground hover:text-foreground"
-      >
-        + Criar produto novo com ficha técnica
-      </Link>
-
-      <label className="block">
-        <span className="text-xs font-medium text-muted-foreground">
-          Ou edite a ficha de um produto já cadastrado
-        </span>
-        <select
-          value={selectedProduct}
-          onChange={(event) => void loadRecipe(event.target.value)}
-          className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
-        >
-          <option value="">Selecione um produto</option>
-          {products.map((product) => (
-            <option key={product.id} value={product.id}>
-              {product.category} — {product.name}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      {selectedProduct && (
-        <SectionCard title="Ficha técnica">
-          {loadingRecipe ? (
-            <p className="text-sm text-muted-foreground">Carregando...</p>
-          ) : (
-            <>
-              {recipe.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  Sem ficha técnica — esse produto não desconta nada automaticamente ao ser
-                  vendido (ex.: cerveja lata fechada).
-                </p>
-              ) : (
-                <ul className="space-y-2">
-                  {recipe.map((row) => {
-                    const componentName =
-                      row.base_drink?.name ?? row.ingredient?.name ?? "—";
-                    const unit =
-                      row.base_drink?.unit ?? row.ingredient?.unit ?? "";
-                    return (
-                      <li
-                        key={row.id}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-border px-3.5 py-2.5"
-                      >
-                        <span className="text-sm">
-                          {componentName}{" "}
-                          <span className="text-muted-foreground">
-                            — {row.quantity} {unit}
-                          </span>
-                        </span>
-                        <button
-                          onClick={() => removeRow(row)}
-                          className="text-xs font-medium text-destructive"
-                        >
-                          Remover
-                        </button>
-                      </li>
-                    );
-                  })}
-                </ul>
-              )}
-
-              <div className="mt-4 space-y-2 border-t border-border pt-4">
-                <p className="text-xs font-medium text-muted-foreground">Adicionar componente</p>
-                <select
-                  value={newType}
-                  onChange={(event) => {
-                    setNewType(event.target.value as "base_drink" | "ingredient");
-                    setNewComponentId("");
-                  }}
-                  className="h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
-                >
-                  <option value="base_drink">Bebida base</option>
-                  <option value="ingredient">Ingrediente</option>
-                </select>
-                <select
-                  value={newComponentId}
-                  onChange={(event) => setNewComponentId(event.target.value)}
-                  className="h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
-                >
-                  <option value="">Selecione</option>
-                  {componentOptions.map((item) => (
-                    <option key={item.id} value={item.id}>
-                      {item.name} ({item.unit})
-                    </option>
-                  ))}
-                </select>
-                <div className="flex gap-2">
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    value={newQuantity}
-                    onChange={(event) => setNewQuantity(event.target.value)}
-                    placeholder="Quantidade consumida por venda"
-                    className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-sm outline-none placeholder:text-muted-foreground focus:border-ring"
-                  />
-                  <button
-                    onClick={addComponentToRecipe}
-                    disabled={!newComponentId || !newQuantity}
-                    className="h-11 rounded-xl bg-secondary px-4 text-sm font-medium text-secondary-foreground disabled:opacity-60"
-                  >
-                    Adicionar
-                  </button>
-                </div>
-              </div>
-
-              {message && <p className="mt-3 text-xs text-muted-foreground">{message}</p>}
-              <PrimaryButton onClick={save} disabled={saving}>
-                {saving ? "Salvando..." : "Salvar ficha técnica"}
-              </PrimaryButton>
-            </>
-          )}
-        </SectionCard>
-      )}
-    </div>
-  );
-}
