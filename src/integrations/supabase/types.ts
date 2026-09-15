@@ -216,6 +216,7 @@ export type Database = {
           current_stock: number
           depletion_rule: string
           id: string
+          image_url: string | null
           min_stock: number
           name: string
           purchase_unit: string | null
@@ -232,6 +233,7 @@ export type Database = {
           current_stock?: number
           depletion_rule?: string
           id?: string
+          image_url?: string | null
           min_stock?: number
           name: string
           purchase_unit?: string | null
@@ -248,6 +250,7 @@ export type Database = {
           current_stock?: number
           depletion_rule?: string
           id?: string
+          image_url?: string | null
           min_stock?: number
           name?: string
           purchase_unit?: string | null
@@ -428,6 +431,7 @@ export type Database = {
           current_stock: number
           depletion_rule: string
           id: string
+          image_url: string | null
           kind: string
           min_stock: number
           name: string
@@ -445,6 +449,7 @@ export type Database = {
           current_stock?: number
           depletion_rule?: string
           id?: string
+          image_url?: string | null
           kind?: string
           min_stock?: number
           name: string
@@ -462,6 +467,7 @@ export type Database = {
           current_stock?: number
           depletion_rule?: string
           id?: string
+          image_url?: string | null
           kind?: string
           min_stock?: number
           name?: string

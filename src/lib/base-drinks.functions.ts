@@ -297,7 +297,7 @@ export const listBaseDrinks = createServerFn({ method: "POST" }).handler(async (
   const { data } = await admin()
     .from("fastbar_base_drinks")
     .select(
-      "id, name, unit, current_stock, min_stock, average_cost, active, purchase_unit, units_per_pack, content_amount",
+      "id, name, unit, current_stock, min_stock, average_cost, active, purchase_unit, units_per_pack, content_amount, image_url",
     )
     .eq("active", true)
     .order("name");
@@ -313,6 +313,8 @@ export const createBaseDrink = createServerFn({ method: "POST" })
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
+      /** Copiada do produto quando a bebida nasce junto com o item do cardápio. */
+      imageUrl?: string | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -337,6 +339,7 @@ export const createBaseDrink = createServerFn({ method: "POST" })
         purchase_unit: data.purchaseUnit?.trim() || null,
         units_per_pack: packaging.unitsPerPack,
         content_amount: packaging.contentAmount,
+        image_url: data.imageUrl?.trim() || null,
       })
       .select("id")
       .maybeSingle();
@@ -564,7 +567,7 @@ export const listIngredients = createServerFn({ method: "POST" }).handler(async 
   const { data } = await admin()
     .from("fastbar_drink_ingredients")
     .select(
-      "id, name, unit, current_stock, min_stock, average_cost, active, purchase_unit, units_per_pack, content_amount, kind",
+      "id, name, unit, current_stock, min_stock, average_cost, active, purchase_unit, units_per_pack, content_amount, kind, image_url",
     )
     .eq("active", true)
     .order("name");
@@ -581,6 +584,8 @@ export const createIngredient = createServerFn({ method: "POST" })
       purchaseUnit?: string | undefined;
       unitsPerPack?: number | undefined;
       contentAmount?: number | undefined;
+      /** Copiada do produto quando o ingrediente nasce junto com o item do cardápio. */
+      imageUrl?: string | undefined;
     }) => data,
   )
   .handler(async ({ data }) => {
@@ -603,6 +608,7 @@ export const createIngredient = createServerFn({ method: "POST" })
         kind,
         min_stock: data.minStock && data.minStock > 0 ? data.minStock : 0,
         purchase_unit: data.purchaseUnit?.trim() || null,
+        image_url: data.imageUrl?.trim() || null,
         units_per_pack: packaging.unitsPerPack,
         content_amount: packaging.contentAmount,
       })

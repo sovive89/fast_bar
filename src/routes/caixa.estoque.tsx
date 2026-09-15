@@ -148,6 +148,8 @@ type StockComponent = {
   units_per_pack: number;
   content_amount: number;
   doses: Array<{ productName: string; doses: number }>;
+  // Copiada do produto quando o item nasce junto com o cadastro no cardápio.
+  image_url?: string | null;
   // Só existe pra ingredientes — bebida base não tem esse campo (vem undefined, e o card não
   // mostra nada, o que é o comportamento certo pra ela).
   kind?: "drink" | "cozinha";
@@ -755,7 +757,17 @@ function ComponentStockTab(props: {
             return (
               <li key={item.id} className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
-                  <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-3">
+                    {item.image_url ? (
+                      <img
+                        src={item.image_url}
+                        alt={item.name}
+                        className="h-11 w-11 shrink-0 rounded-lg border border-border object-cover"
+                      />
+                    ) : (
+                      <div className="h-11 w-11 shrink-0 rounded-lg border border-dashed border-border" />
+                    )}
+                    <div className="min-w-0">
                     <p className="truncate font-semibold">
                       {item.name}
                       {item.kind === "cozinha" && (
@@ -781,6 +793,7 @@ function ComponentStockTab(props: {
                         {item.doses.map((d) => `${d.productName}: ${d.doses} doses`).join(" · ")}
                       </p>
                     )}
+                    </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">
                     <span className={`text-sm font-bold ${low ? "text-destructive" : ""}`}>

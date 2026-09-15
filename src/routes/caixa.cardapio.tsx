@@ -850,54 +850,9 @@ function CardapioPage() {
 
     setSaving(true);
 
-    // Linhas marcadas "+ Criar novo insumo" ainda não existem no estoque — nascem agora, com
-    // saldo zero, antes de a ficha ser salva. É esse passo que inverte a ordem: o insumo pode ser
-    // apontado na ficha antes de existir fisicamente no bar.
-    const resolvedComponents: Array<{
-      kind: "base_drink" | "ingredient";
-      id: string;
-      quantity: number;
-    }> = [];
-    for (const row of components) {
-      const quantity = Number(row.quantity.replace(",", "."));
-      if (row.stockId !== NEW_STOCK_ID) {
-        const option = stockOptions.find((item) => item.id === row.stockId)!;
-        resolvedComponents.push({ kind: option.kind, id: option.id, quantity });
-        continue;
-      }
-      if (row.newKind === "base_drink") {
-        const created = await createBaseDrinkFn({
-          data: { name: row.newName, unit: row.newUnit as "ml" | "un" },
-        });
-        if (!created.ok) {
-          setSaving(false);
-          return setError(`Não foi possível criar o insumo "${row.newName}": ${created.message ?? ""}`);
-        }
-        resolvedComponents.push({ kind: "base_drink", id: created.id, quantity });
-      } else {
-        const created = await createIngredientFn({
-          data: {
-            name: row.newName,
-            unit: row.newUnit as "ml" | "un" | "g",
-            kind: row.newKind === "cozinha" ? "cozinha" : "drink",
-          },
-        });
-        if (!created.ok) {
-          setSaving(false);
-          return setError(`Não foi possível criar o insumo "${row.newName}": ${created.message ?? ""}`);
-        }
-        resolvedComponents.push({ kind: "ingredient", id: created.id, quantity });
-      }
-    }
-
-    const recipe: Array<
-      | { type: "base_drink"; baseDrinkId: string; quantity: number }
-      | { type: "ingredient"; ingredientId: string; quantity: number }
-    > = resolvedComponents.map((c) =>
-      c.kind === "base_drink"
-        ? { type: "base_drink", baseDrinkId: c.id, quantity: c.quantity }
-        : { type: "ingredient", ingredientId: c.id, quantity: c.quantity },
-    );
+    // A foto sobe ANTES de criar os insumos, porque o insumo que nasce aqui junto com o produto
+    // (cerveja cadastrada no cardápio vira bebida no estoque) leva a mesma foto — sem isso o card
+    // do estoque nasceria cinza e alguém teria que subir a mesma imagem duas vezes.
     let imageUrl: string | undefined;
     if (photoFile) {
       setCompressing(true);
@@ -922,6 +877,55 @@ function CardapioPage() {
       imageUrl = uploadResult.url;
     }
 
+    // Linhas marcadas "+ Criar novo insumo" ainda não existem no estoque — nascem agora, com
+    // saldo zero, antes de a ficha ser salva. É esse passo que inverte a ordem: o insumo pode ser
+    // apontado na ficha antes de existir fisicamente no bar.
+    const resolvedComponents: Array<{
+      kind: "base_drink" | "ingredient";
+      id: string;
+      quantity: number;
+    }> = [];
+    for (const row of components) {
+      const quantity = Number(row.quantity.replace(",", "."));
+      if (row.stockId !== NEW_STOCK_ID) {
+        const option = stockOptions.find((item) => item.id === row.stockId)!;
+        resolvedComponents.push({ kind: option.kind, id: option.id, quantity });
+        continue;
+      }
+      if (row.newKind === "base_drink") {
+        const created = await createBaseDrinkFn({
+          data: { name: row.newName, unit: row.newUnit as "ml" | "un", imageUrl },
+        });
+        if (!created.ok) {
+          setSaving(false);
+          return setError(`Não foi possível criar o insumo "${row.newName}": ${created.message ?? ""}`);
+        }
+        resolvedComponents.push({ kind: "base_drink", id: created.id, quantity });
+      } else {
+        const created = await createIngredientFn({
+          data: {
+            name: row.newName,
+            unit: row.newUnit as "ml" | "un" | "g",
+            kind: row.newKind === "cozinha" ? "cozinha" : "drink",
+            imageUrl,
+          },
+        });
+        if (!created.ok) {
+          setSaving(false);
+          return setError(`Não foi possível criar o insumo "${row.newName}": ${created.message ?? ""}`);
+        }
+        resolvedComponents.push({ kind: "ingredient", id: created.id, quantity });
+      }
+    }
+
+    const recipe: Array<
+      | { type: "base_drink"; baseDrinkId: string; quantity: number }
+      | { type: "ingredient"; ingredientId: string; quantity: number }
+    > = resolvedComponents.map((c) =>
+      c.kind === "base_drink"
+        ? { type: "base_drink", baseDrinkId: c.id, quantity: c.quantity }
+        : { type: "ingredient", ingredientId: c.id, quantity: c.quantity },
+    );
     const result = await create({
       data: {
         name,
