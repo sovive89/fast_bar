@@ -366,7 +366,6 @@ function CardapioPage() {
   const [price, setPrice] = useState("");
   const [unit, setUnit] = useState<(typeof PRODUCT_UNITS)[number]>("un");
   const [packageType, setPackageType] = useState<(typeof PRODUCT_PACKAGE_TYPES)[number]>("Lata");
-  const [stockQuantity, setStockQuantity] = useState("");
   const [photoFile, setPhotoFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [compressing, setCompressing] = useState(false);
@@ -934,8 +933,6 @@ function CardapioPage() {
         unit,
         packageType,
         imageUrl,
-        // Produto com ficha técnica não tem estoque próprio: quem controla é o dos insumos.
-        stockQuantity: recipe.length > 0 ? undefined : stockQuantity ? Number(stockQuantity) : undefined,
       },
     });
     if (!result.ok) {
@@ -944,14 +941,14 @@ function CardapioPage() {
     }
 
     // O produto já foi gravado. Se a ficha falhar, ele existe sem receita — a mensagem diz onde
-    // parou, para a equipe completar em Estoque → Fichas técnicas, em vez de recadastrar tudo.
+    // parou, para a equipe abrir o produto no Cardápio e salvar a ficha de novo, sem recadastrar.
     if (recipe.length > 0 && result.productId) {
       const saved = await saveRecipe({ data: { productId: result.productId, items: recipe } });
       if (!saved.ok) {
         setSaving(false);
         await load();
         return setError(
-          `Produto criado, mas a ficha técnica não foi salva: ${saved.message ?? "complete em Estoque → Fichas técnicas."}`,
+          `Produto criado, mas a ficha técnica não foi salva: ${saved.message ?? "abra o produto no Cardápio e salve a ficha de novo."}`,
         );
       }
     }
@@ -963,7 +960,6 @@ function CardapioPage() {
     setPrice("");
     setUnit("un");
     setPackageType("Lata");
-    setStockQuantity("");
     setPhotoFile(null);
     setShowForm(false);
     setDismissedSuggestionIds(new Set());
