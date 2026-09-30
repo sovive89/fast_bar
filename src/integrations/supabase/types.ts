@@ -269,6 +269,122 @@ export type Database = {
           },
         ]
       }
+      fastbar_consumable_movements: {
+        Row: {
+          consumable_id: string
+          created_at: string
+          id: string
+          note: string | null
+          quantity: number
+          reason: string
+          supplier_id: string | null
+          tenant_id: string
+          type: string
+          unit_cost: number | null
+        }
+        Insert: {
+          consumable_id: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          quantity: number
+          reason?: string
+          supplier_id?: string | null
+          tenant_id?: string
+          type: string
+          unit_cost?: number | null
+        }
+        Update: {
+          consumable_id?: string
+          created_at?: string
+          id?: string
+          note?: string | null
+          quantity?: number
+          reason?: string
+          supplier_id?: string | null
+          tenant_id?: string
+          type?: string
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_consumable_movements_consumable_id_fkey"
+            columns: ["consumable_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_consumables"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fastbar_consumable_movements_supplier_id_fkey"
+            columns: ["supplier_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_suppliers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fastbar_consumables: {
+        Row: {
+          active: boolean
+          average_cost: number
+          content_amount: number
+          created_at: string
+          current_stock: number
+          depletion_rule: string
+          id: string
+          image_url: string | null
+          min_stock: number
+          name: string
+          purchase_unit: string | null
+          tenant_id: string
+          unit: string
+          units_per_pack: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          average_cost?: number
+          content_amount?: number
+          created_at?: string
+          current_stock?: number
+          depletion_rule?: string
+          id?: string
+          image_url?: string | null
+          min_stock?: number
+          name: string
+          purchase_unit?: string | null
+          tenant_id?: string
+          unit?: string
+          units_per_pack?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          average_cost?: number
+          content_amount?: number
+          created_at?: string
+          current_stock?: number
+          depletion_rule?: string
+          id?: string
+          image_url?: string | null
+          min_stock?: number
+          name?: string
+          purchase_unit?: string | null
+          tenant_id?: string
+          unit?: string
+          units_per_pack?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_consumables_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fastbar_customers: {
         Row: {
           administrative_region: string | null
@@ -643,6 +759,7 @@ export type Database = {
       fastbar_products: {
         Row: {
           average_cost: number
+          campo_estoque: string | null
           category: string
           content_amount: number
           created_at: string
@@ -663,6 +780,7 @@ export type Database = {
         }
         Insert: {
           average_cost?: number
+          campo_estoque?: string | null
           category?: string
           content_amount?: number
           created_at?: string
@@ -683,6 +801,7 @@ export type Database = {
         }
         Update: {
           average_cost?: number
+          campo_estoque?: string | null
           category?: string
           content_amount?: number
           created_at?: string
@@ -1174,27 +1293,77 @@ export type Database = {
           },
         ]
       }
-      fastbar_tenants: {
+      fastbar_tenant_admins: {
         Row: {
           created_at: string
+          email: string
           id: string
+          last_login_at: string | null
           name: string
-          slug: string
-          status: string
+          password_hash: string
+          tenant_id: string
         }
         Insert: {
           created_at?: string
+          email: string
           id?: string
+          last_login_at?: string | null
           name: string
-          slug: string
-          status?: string
+          password_hash: string
+          tenant_id: string
         }
         Update: {
           created_at?: string
+          email?: string
+          id?: string
+          last_login_at?: string | null
+          name?: string
+          password_hash?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_tenant_admins_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fastbar_tenants: {
+        Row: {
+          cnpj: string | null
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          slug: string
+          status: string
+          trade_name: string | null
+        }
+        Insert: {
+          cnpj?: string | null
+          created_at?: string
+          email?: string | null
+          id?: string
+          name: string
+          phone?: string | null
+          slug: string
+          status?: string
+          trade_name?: string | null
+        }
+        Update: {
+          cnpj?: string | null
+          created_at?: string
+          email?: string | null
           id?: string
           name?: string
+          phone?: string | null
           slug?: string
           status?: string
+          trade_name?: string | null
         }
         Relationships: []
       }
@@ -2539,23 +2708,50 @@ export type Database = {
       }
       fastbar_cancel_session: { Args: { p_session_id: string }; Returns: Json }
       fastbar_clear_tab_items: { Args: { p_session_id: string }; Returns: Json }
-      fastbar_create_product: {
-        Args: {
-          p_category: string
-          p_image_url: string
-          p_initial_stock: number
-          p_name: string
-          p_package_type: string
-          p_price: number
-          p_unit: string
-        }
+      fastbar_create_product:
+        | {
+            Args: {
+              p_category: string
+              p_image_url: string
+              p_initial_stock: number
+              p_name: string
+              p_package_type: string
+              p_price: number
+              p_unit: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_campo_estoque: string
+              p_category: string
+              p_image_url: string
+              p_initial_stock: number
+              p_name: string
+              p_package_type: string
+              p_price: number
+              p_tenant_id: string
+              p_unit: string
+            }
+            Returns: Json
+          }
+      fastbar_default_tenant_id: { Args: never; Returns: string }
+      fastbar_delete_base_drink:
+        | { Args: { p_id: string }; Returns: Json }
+        | { Args: { p_id: string; p_tenant_id: string }; Returns: Json }
+      fastbar_delete_consumable: {
+        Args: { p_id: string; p_tenant_id: string }
         Returns: Json
       }
-      fastbar_default_tenant_id: { Args: never; Returns: string }
-      fastbar_delete_base_drink: { Args: { p_id: string }; Returns: Json }
-      fastbar_delete_ingredient: { Args: { p_id: string }; Returns: Json }
-      fastbar_delete_product: { Args: { p_product_id: string }; Returns: Json }
-      fastbar_delete_product_category: { Args: { p_id: string }; Returns: Json }
+      fastbar_delete_ingredient:
+        | { Args: { p_id: string }; Returns: Json }
+        | { Args: { p_id: string; p_tenant_id: string }; Returns: Json }
+      fastbar_delete_product:
+        | { Args: { p_product_id: string }; Returns: Json }
+        | { Args: { p_product_id: string; p_tenant_id: string }; Returns: Json }
+      fastbar_delete_product_category:
+        | { Args: { p_id: string }; Returns: Json }
+        | { Args: { p_id: string; p_tenant_id: string }; Returns: Json }
       fastbar_deplete_lots: {
         Args: {
           p_component_id: string
@@ -2573,6 +2769,10 @@ export type Database = {
         }
         Returns: undefined
       }
+      fastbar_reset_catalog_and_stock: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
       fastbar_restock_product: {
         Args: { p_product_id: string; p_quantity: number }
         Returns: Json
@@ -2585,23 +2785,41 @@ export type Database = {
         Args: { p_session_id: string }
         Returns: Json
       }
-      fastbar_update_product: {
-        Args: {
-          p_category: string
-          p_change_image: boolean
-          p_id: string
-          p_image_url: string
-          p_name: string
-          p_package_type: string
-          p_price: number
-          p_unit: string
-        }
-        Returns: Json
-      }
-      fastbar_update_product_category: {
-        Args: { p_id: string; p_name: string }
-        Returns: Json
-      }
+      fastbar_update_product:
+        | {
+            Args: {
+              p_category: string
+              p_change_image: boolean
+              p_id: string
+              p_image_url: string
+              p_name: string
+              p_package_type: string
+              p_price: number
+              p_unit: string
+            }
+            Returns: Json
+          }
+        | {
+            Args: {
+              p_campo_estoque: string
+              p_category: string
+              p_change_campo_estoque: boolean
+              p_change_image: boolean
+              p_id: string
+              p_image_url: string
+              p_name: string
+              p_package_type: string
+              p_price: number
+              p_unit: string
+            }
+            Returns: Json
+          }
+      fastbar_update_product_category:
+        | { Args: { p_id: string; p_name: string }; Returns: Json }
+        | {
+            Args: { p_id: string; p_name: string; p_tenant_id: string }
+            Returns: Json
+          }
       pop9_fastbar_add_product_entry: {
         Args: {
           p_packs: number

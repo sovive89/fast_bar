@@ -392,7 +392,7 @@ const DELETE_MESSAGES: Record<string, string> = {
 export const deleteBaseDrink = createServerFn({ method: "POST" })
   .inputValidator((data: { id: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess, getDefaultTenantId } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!(await teamPasswordMatches(data.password))) {
@@ -400,6 +400,7 @@ export const deleteBaseDrink = createServerFn({ method: "POST" })
     }
     const { data: result, error } = await admin().rpc("fastbar_delete_base_drink", {
       p_id: data.id,
+      p_tenant_id: await getDefaultTenantId(),
     });
     const parsed = result as { ok: boolean; code?: string } | null;
     if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
@@ -654,7 +655,7 @@ export const updateIngredient = createServerFn({ method: "POST" })
 export const deleteIngredient = createServerFn({ method: "POST" })
   .inputValidator((data: { id: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess, getDefaultTenantId } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!(await teamPasswordMatches(data.password))) {
@@ -662,6 +663,7 @@ export const deleteIngredient = createServerFn({ method: "POST" })
     }
     const { data: result, error } = await admin().rpc("fastbar_delete_ingredient", {
       p_id: data.id,
+      p_tenant_id: await getDefaultTenantId(),
     });
     const parsed = result as { ok: boolean; code?: string } | null;
     if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
@@ -888,7 +890,7 @@ export const setCategoryNeedsRecipe = createServerFn({ method: "POST" })
 export const deleteProductCategory = createServerFn({ method: "POST" })
   .inputValidator((data: { id: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess, getDefaultTenantId } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!(await teamPasswordMatches(data.password))) {
@@ -896,6 +898,7 @@ export const deleteProductCategory = createServerFn({ method: "POST" })
     }
     const { data: result, error } = await admin().rpc("fastbar_delete_product_category", {
       p_id: data.id,
+      p_tenant_id: await getDefaultTenantId(),
     });
     const parsed = result as { ok: boolean; code?: string; count?: number } | null;
     if (error || !parsed) return { ok: false as const, message: "Não foi possível apagar." };
@@ -916,11 +919,12 @@ export const deleteProductCategory = createServerFn({ method: "POST" })
 export const updateProductCategory = createServerFn({ method: "POST" })
   .inputValidator((data: { id: string; name: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess, getDefaultTenantId } = await import("./fastbar.server");
     await assertRegisterAccess();
     const { data: result, error } = await admin().rpc("fastbar_update_product_category", {
       p_id: data.id,
       p_name: data.name,
+      p_tenant_id: await getDefaultTenantId(),
     });
     const parsed = result as { ok: boolean; code?: string } | null;
     if (error || !parsed) return { ok: false as const, message: "Não foi possível renomear." };
@@ -959,7 +963,7 @@ export const createProduct = createServerFn({ method: "POST" })
     }) => data,
   )
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess, getDefaultTenantId } = await import("./fastbar.server");
     await assertRegisterAccess();
 
     const name = data.name.trim();
@@ -987,6 +991,10 @@ export const createProduct = createServerFn({ method: "POST" })
       p_package_type: data.packageType?.trim() || null,
       p_image_url: data.imageUrl?.trim() || null,
       p_initial_stock: initialStock,
+      p_tenant_id: await getDefaultTenantId(),
+      // campo_estoque classifica produto SEM ficha técnica com lançamento próprio — nenhum produto
+      // criado por esta tela é assim (toda venda desconta pela ficha), então vai nulo.
+      p_campo_estoque: null as unknown as string,
     });
     const parsed = result as { ok: boolean; code?: string; product_id?: string } | null;
     if (error || !parsed) return { ok: false as const, message: "Não foi possível salvar o produto." };
@@ -1068,6 +1076,8 @@ export const updateProduct = createServerFn({ method: "POST" })
       p_package_type: data.packageType?.trim() || null,
       p_image_url: newImageUrl,
       p_change_image: changeImage,
+      p_campo_estoque: null as unknown as string,
+      p_change_campo_estoque: false,
     });
     const parsed = result as { ok: boolean; code?: string } | null;
     if (error || !parsed) {

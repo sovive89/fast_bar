@@ -643,7 +643,7 @@ export const deactivateProduct = createServerFn({ method: "POST" })
 export const deleteProduct = createServerFn({ method: "POST" })
   .inputValidator((data: { productId: string; password: string }) => data)
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { admin, assertRegisterAccess, getDefaultTenantId } = await import("./fastbar.server");
     const { teamPasswordMatches } = await import("./bar-gate.server");
     await assertRegisterAccess();
     if (!(await teamPasswordMatches(data.password))) {
@@ -660,6 +660,7 @@ export const deleteProduct = createServerFn({ method: "POST" })
 
     const { data: result, error } = await admin().rpc("fastbar_delete_product", {
       p_product_id: data.productId,
+      p_tenant_id: await getDefaultTenantId(),
     });
     const parsed = fromRpc(result as RpcResult | null, error, "Não foi possível apagar o produto.");
     if (!parsed.ok) return parsed;
