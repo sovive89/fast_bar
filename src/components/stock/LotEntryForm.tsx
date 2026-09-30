@@ -276,7 +276,7 @@ export function LotEntryForm(props: {
 
       {quantity !== null && (
         <p className="text-xs text-muted-foreground">
-          Entra {quantity} {target.unit} no estoque
+          Entra {Number(quantity.toFixed(3)).toLocaleString("pt-BR")} {target.unit} no estoque
           {unitCost !== null && totalCost !== null && quantity > 0
             ? ` · ${brl(unitCost)} por ${target.unit} · total ${brl(totalCost)}`
             : ""}

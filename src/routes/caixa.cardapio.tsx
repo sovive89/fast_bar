@@ -847,6 +847,16 @@ function CardapioPage() {
     if (name.trim().length < 2) return setError("Digite o nome do produto.");
     if (!Number.isFinite(priceNumber) || priceNumber < 0) return setError("Preço inválido.");
     if (!category) return setError("Escolha uma categoria.");
+    // Categoria de ficha sem nenhum insumo gravaria um produto que o caixa recusa vender
+    // (product_not_configured) sem ninguém entender por quê.
+    if (productMode === "recipe" && components.length === 0) {
+      return setError(
+        'Monte a ficha técnica (pelo menos um insumo) — ou use "trocar" para uma linha só, se for revenda.',
+      );
+    }
+    // "Nunca esgota" só vale quando o produto não consome nada do estoque; com insumo escolhido
+    // ele desligaria a baixa desses insumos.
+    const skipStock = noStockControl && productMode !== "recipe" && components.length === 0;
 
     // Valida a ficha antes de criar o produto: melhor recusar agora do que deixar um produto
     // gravado com a receita pela metade.
@@ -942,7 +952,7 @@ function CardapioPage() {
     // equipe precisava clicar em "+ Criar novo insumo" e digitar o nome de novo pra cada cerveja.
     // Item de estoque com o MESMO nome é reaproveitado em vez de duplicado. Nasce teórico (saldo
     // zero, sem lote) e não vende até a primeira entrada.
-    if (productMode !== "recipe" && components.length === 0 && !noStockControl) {
+    if (productMode !== "recipe" && components.length === 0 && !skipStock) {
       const productName = name.trim();
       const sameName = stockOptions.find(
         (item) => item.name.trim().toLowerCase() === productName.toLowerCase(),
@@ -993,6 +1003,9 @@ function CardapioPage() {
     });
     if (!result.ok) {
       setSaving(false);
+      // Insumos/espelho já podem ter nascido acima: recarrega pra a próxima tentativa enxergá-los
+      // (senão o "mesmo nome" não os acha e cria um segundo item igual no estoque).
+      if (resolvedComponents.length > 0) await load();
       return setError(result.message);
     }
 
@@ -1009,8 +1022,15 @@ function CardapioPage() {
       }
     }
 
-    if (noStockControl && result.productId) {
-      await toggleUnlimited({ data: { productId: result.productId, unlimited: true } });
+    if (skipStock && result.productId) {
+      const unlimited = await toggleUnlimited({ data: { productId: result.productId, unlimited: true } });
+      if (!unlimited.ok) {
+        setSaving(false);
+        await load();
+        return setError(
+          'Produto criado, mas não foi marcado como "nunca esgota" — marque no card do produto, senão ele não vende.',
+        );
+      }
     }
 
     // "Já tem isso no bar?": em vez de fechar direto, oferece lançar o primeiro lote do que o

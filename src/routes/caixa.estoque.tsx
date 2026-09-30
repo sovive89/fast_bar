@@ -730,7 +730,11 @@ function ComponentStockTab(props: {
         </p>
       ) : (
         <ul className="space-y-3">
-          {items.filter((item) => !onlyTheoretical || item.is_theoretical).map((item) => {
+          {items
+            // Some junto com o botão: se o último teórico recebeu lote, o filtro não pode ficar
+            // ligado escondendo a lista inteira sem ter como desligar.
+            .filter((item) => !onlyTheoretical || !items.some((i) => i.is_theoretical) || item.is_theoretical)
+            .map((item) => {
             const low = item.current_stock < item.min_stock;
             const isOpen = openEntryId === item.id;
             const isEditing = openEditId === item.id;
