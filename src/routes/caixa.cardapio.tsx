@@ -1,9 +1,8 @@
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
-import { LotEntryForm, type LotEntrySupplier, type LotEntryTarget } from "@/components/stock/LotEntryForm";
 import { brl } from "@/lib/format";
 import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
 import { deactivateProduct, deleteProduct as deleteProductFn } from "@/lib/register.functions";
@@ -25,7 +24,6 @@ import {
   uploadProductPhoto,
   PRODUCT_UNITS,
   PRODUCT_PACKAGE_TYPES,
-  listSuppliers,
 } from "@/lib/base-drinks.functions";
 
 export const Route = createFileRoute("/caixa/cardapio")({
@@ -395,15 +393,11 @@ function CardapioPage() {
   const [mirrorKind, setMirrorKind] = useState<"base_drink" | "ingredient" | "cozinha">("base_drink");
   // Taxa, ficha de sinuca e afins: sem espelho no estoque, o produto já nasce "nunca esgota".
   const [noStockControl, setNoStockControl] = useState(false);
-  // Etapa pós-cadastro "Já tem isso no bar?": o que o produto consome, pra lançar o primeiro lote
-  // ali mesmo. null = etapa fechada.
-  const [postCreate, setPostCreate] = useState<{
-    productName: string;
-    targets: Array<LotEntryTarget & { isTheoretical: boolean }>;
-    saved: string[];
-    openId: string | null;
-  } | null>(null);
-  const [suppliers, setSuppliers] = useState<LotEntrySupplier[]>([]);
+  // Aviso depois de salvar: o Cardápio só cadastra o que aparece pra venda — quantidade entra
+  // pelo Estoque. Lista o que ficou teórico (sem nenhuma entrada) pra equipe saber o que lançar lá.
+  const [createdNotice, setCreatedNotice] = useState<{ productName: string; pending: string[] } | null>(
+    null,
+  );
 
   // Categoria é uma divisão do menu, não um produto — cadastro próprio, separado do formulário
   // de produto, pra "criar categoria" nunca virar "criar um produto vazio só pra registrar o nome".
@@ -464,7 +458,6 @@ function CardapioPage() {
   const create = useServerFn(createProduct);
   const createBaseDrinkFn = useServerFn(createBaseDrink);
   const createIngredientFn = useServerFn(createIngredient);
-  const loadSuppliers = useServerFn(listSuppliers);
   const update = useServerFn(updateProductFn);
   const saveRecipe = useServerFn(setRecipeItems);
   const loadRecipeItems = useServerFn(getRecipeItems);
@@ -1033,33 +1026,16 @@ function CardapioPage() {
       }
     }
 
-    // "Já tem isso no bar?": em vez de fechar direto, oferece lançar o primeiro lote do que o
-    // produto consome, com os teóricos (nunca receberam nada) primeiro. Busca o estoque de novo
-    // porque os insumos podem ter acabado de nascer aqui.
+    // O Cardápio só cadastra o que aparece pra venda; lançamento de quantidade é no Estoque. Aqui
+    // só se descobre quais itens de estoque desse produto ainda estão teóricos, pra avisar.
     const productName = name.trim();
-    let targets: Array<LotEntryTarget & { isTheoretical: boolean }> = [];
+    let pending: string[] = [];
     if (resolvedComponents.length > 0) {
-      const [stock, suppliersResult] = await Promise.all([loadStock(), loadSuppliers()]);
-      const all = [
-        ...(stock.baseDrinks ?? []).map((item) => ({ ...item, kind: "base_drink" as const })),
-        ...(stock.ingredients ?? []).map((item) => ({ ...item, kind: "ingredient" as const })),
-      ];
-      targets = resolvedComponents
-        .filter((c, index, list) => list.findIndex((o) => o.id === c.id) === index)
-        .map((c) => all.find((item) => item.id === c.id && item.kind === c.kind))
-        .filter((item): item is (typeof all)[number] => !!item)
-        .map((item) => ({
-          kind: item.kind,
-          id: item.id,
-          name: item.name,
-          unit: item.unit,
-          purchase_unit: item.purchase_unit,
-          units_per_pack: item.units_per_pack,
-          content_amount: Number(item.content_amount),
-          isTheoretical: !!item.is_theoretical,
-        }))
-        .sort((a, b) => Number(b.isTheoretical) - Number(a.isTheoretical));
-      setSuppliers(suppliersResult.suppliers.map((supplier) => ({ id: supplier.id, name: supplier.name })));
+      const stock = await loadStock();
+      const ids = new Set(resolvedComponents.map((c) => c.id));
+      pending = [...(stock.baseDrinks ?? []), ...(stock.ingredients ?? [])]
+        .filter((item) => ids.has(item.id) && item.is_theoretical)
+        .map((item) => item.name);
     }
 
     setSaving(false);
@@ -1072,11 +1048,8 @@ function CardapioPage() {
     setNoStockControl(false);
     setMirrorKind("base_drink");
     setDismissedSuggestionIds(new Set());
-    if (targets.length > 0) {
-      setPostCreate({ productName, targets, saved: [], openId: targets[0]?.id ?? null });
-    } else {
-      setShowForm(false);
-    }
+    setShowForm(false);
+    setCreatedNotice({ productName, pending });
     await load();
   }
 
@@ -1298,7 +1271,7 @@ function CardapioPage() {
           <button
             onClick={() => {
               setShowForm((value) => !value);
-              setPostCreate(null);
+              setCreatedNotice(null);
               setDismissedSuggestionIds(new Set());
             }}
             className="w-full rounded-xl border border-dashed border-border py-3 text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -1306,86 +1279,32 @@ function CardapioPage() {
             {showForm ? "Cancelar" : "+ Novo produto"}
           </button>
 
-          {showForm &&
-            (postCreate ? (
-              <SectionCard title={`Produto criado: ${postCreate.productName}`}>
-                <div className="space-y-3">
-                  <p className="text-sm">
-                    <span className="font-semibold">Já tem isso no bar?</span>{" "}
-                    <span className="text-muted-foreground">
-                      Lance o primeiro lote agora — ou deixe pra depois, pelo Estoque. Item teórico
-                      não vende até receber a primeira entrada.
-                    </span>
+          {createdNotice && !showForm && (
+            <div className="flex items-start justify-between gap-3 rounded-xl border border-border bg-card p-3 text-sm">
+              <div className="min-w-0">
+                <p className="font-medium">{createdNotice.productName} criado no cardápio.</p>
+                {createdNotice.pending.length > 0 ? (
+                  <p className="mt-0.5 text-xs text-muted-foreground">
+                    No Estoque, <span className="font-medium text-amber-600">{createdNotice.pending.join(", ")}</span>{" "}
+                    {createdNotice.pending.length === 1 ? "está" : "estão"} como teórico — não vende até dar a
+                    primeira entrada.{" "}
+                    <Link to="/caixa/estoque" className="font-medium text-primary underline">
+                      Ir para o Estoque
+                    </Link>
                   </p>
-                  <ul className="space-y-2">
-                    {postCreate.targets.map((target) => {
-                      const saved = postCreate.saved.includes(target.id);
-                      const open = postCreate.openId === target.id && !saved;
-                      return (
-                        <li key={`${target.kind}-${target.id}`} className="rounded-xl border border-border p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="min-w-0 truncate text-sm font-medium">
-                              {target.name}
-                              {target.isTheoretical && !saved && (
-                                <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-amber-600">
-                                  Teórico
-                                </span>
-                              )}
-                            </p>
-                            {saved ? (
-                              <span className="shrink-0 text-xs font-medium text-primary">Lote lançado ✓</span>
-                            ) : (
-                              <button
-                                onClick={() =>
-                                  setPostCreate((current) =>
-                                    current ? { ...current, openId: open ? null : target.id } : current,
-                                  )
-                                }
-                                className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
-                              >
-                                {open ? "Pular" : "Lançar estoque agora"}
-                              </button>
-                            )}
-                          </div>
-                          {open && (
-                            <div className="mt-3">
-                              <LotEntryForm
-                                target={target}
-                                suppliers={suppliers}
-                                onSupplierCreated={(supplier) =>
-                                  setSuppliers((current) =>
-                                    [...current, supplier].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
-                                  )
-                                }
-                                onSaved={async () => {
-                                  setPostCreate((current) => {
-                                    if (!current) return current;
-                                    const savedIds = [...current.saved, target.id];
-                                    const next = current.targets.find((t) => !savedIds.includes(t.id));
-                                    return { ...current, saved: savedIds, openId: next?.id ?? null };
-                                  });
-                                  await load();
-                                }}
-                                submitLabel="Lançar lote"
-                                autoFocus
-                              />
-                            </div>
-                          )}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <PrimaryButton
-                    onClick={() => {
-                      setPostCreate(null);
-                      setShowForm(false);
-                    }}
-                  >
-                    {postCreate.saved.length === postCreate.targets.length ? "Concluir" : "Depois"}
-                  </PrimaryButton>
-                </div>
-              </SectionCard>
-            ) : (
+                ) : null}
+              </div>
+              <button
+                onClick={() => setCreatedNotice(null)}
+                aria-label="Fechar aviso"
+                className="shrink-0 px-1 text-muted-foreground hover:text-foreground"
+              >
+                ×
+              </button>
+            </div>
+          )}
+
+          {showForm && (
             <SectionCard title="Novo produto do cardápio">
               <div className="space-y-3">
                 <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
@@ -1582,7 +1501,7 @@ function CardapioPage() {
                 </PrimaryButton>
               </div>
             </SectionCard>
-            ))}
+          )}
 
           {grouped.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
