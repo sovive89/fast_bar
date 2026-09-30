@@ -271,7 +271,36 @@ export const addTabItem = createServerFn({ method: "POST" })
       p_session_id: data.sessionId,
       p_product_id: data.productId,
     });
-    return fromRpc(result as RpcResult | null, error, "Não foi possível lançar o item.");
+    const rpc = result as RpcResult | null;
+
+    // "Acabou" e "nunca chegou" pedem ações diferentes da equipe: o primeiro é repor, o segundo é
+    // dar a PRIMEIRA entrada de um item que só existe no cadastro (teórico). O banco só devolve o
+    // nome do componente que faltou; aqui se descobre se ele já recebeu algum lote na vida.
+    if (!error && rpc && !rpc.ok && rpc.code === "insufficient_stock" && rpc.component) {
+      const { findTheoreticalComponentIds } = await import("./base-drinks.functions");
+      const { data: recipe } = await admin()
+        .from("fastbar_recipe_items")
+        .select(
+          "base_drink_id, ingredient_id, fastbar_base_drinks(id, name, current_stock), fastbar_drink_ingredients(id, name, current_stock)",
+        )
+        .eq("product_id", data.productId);
+      for (const row of recipe ?? []) {
+        const pick = <T,>(join: T | T[] | null): T | null => (Array.isArray(join) ? (join[0] ?? null) : join);
+        const drink = pick(row.fastbar_base_drinks);
+        const ingredient = pick(row.fastbar_drink_ingredients);
+        const component = drink ?? ingredient;
+        if (!component || component.name !== rpc.component) continue;
+        const theoretical = await findTheoreticalComponentIds(drink ? "base_drink" : "ingredient", [component]);
+        if (theoretical.has(component.id)) {
+          return {
+            ok: false as const,
+            message: `${rpc.component} ainda não tem estoque lançado. Dê entrada no Estoque para poder vender.`,
+          };
+        }
+        break;
+      }
+    }
+    return fromRpc(rpc, error, "Não foi possível lançar o item.");
   });
 
 /**
