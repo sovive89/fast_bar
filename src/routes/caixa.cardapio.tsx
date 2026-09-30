@@ -1,8 +1,9 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
+import { LotEntryForm, type LotEntrySupplier, type LotEntryTarget } from "@/components/stock/LotEntryForm";
 import { brl } from "@/lib/format";
 import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
 import { deactivateProduct, deleteProduct as deleteProductFn } from "@/lib/register.functions";
@@ -24,6 +25,7 @@ import {
   uploadProductPhoto,
   PRODUCT_UNITS,
   PRODUCT_PACKAGE_TYPES,
+  listSuppliers,
 } from "@/lib/base-drinks.functions";
 
 export const Route = createFileRoute("/caixa/cardapio")({
@@ -147,8 +149,10 @@ function RecipeBuilder(props: {
   // Limita quantas linhas cabem — usado no modo "puxar direto do estoque" (1 insumo só). Sem
   // limite (undefined) no modo "elaborar ficha técnica", que aceita vários insumos.
   maxRows: number | undefined;
+  /** Mostrado quando nenhuma linha foi escolhida — no cadastro de revenda explica o espelho automático. */
+  emptyHint?: ReactNode;
 }) {
-  const { components, onChange, stockOptions, warning, maxRows } = props;
+  const { components, onChange, stockOptions, warning, maxRows, emptyHint } = props;
   return (
     <div className="rounded-xl border-2 border-primary/40 bg-primary/5 p-3">
       <p className="text-xs font-semibold">Do que é feito</p>
@@ -166,12 +170,15 @@ function RecipeBuilder(props: {
         (ex.: 50ml de uma garrafa de 1L) — escolha embaixo do insumo.
       </p>
 
-      {stockOptions.length === 0 ? (
+      {/* Estoque vazio não bloqueia mais a ficha: antes esta mensagem escondia até o "+ Criar novo
+          insumo", e com o estoque zerado não havia como cadastrar produto nenhum com ficha. */}
+      {components.length === 0 && emptyHint}
+      {stockOptions.length === 0 && !emptyHint && (
         <p className="mt-3 rounded-lg border border-dashed border-border p-3 text-xs text-muted-foreground">
-          Nada no estoque ainda. Cadastre em Estoque → Bebidas base ou Ingredientes.
+          Estoque vazio — use "+ Criar novo insumo" e ele nasce aqui mesmo, com saldo zero.
         </p>
-      ) : (
-        <div className="mt-3 space-y-2">
+      )}
+      <div className="mt-3 space-y-2">
           {components.map((row) => {
             const option = stockOptions.find((item) => item.id === row.stockId);
             const isNew = row.stockId === NEW_STOCK_ID;
@@ -339,11 +346,10 @@ function RecipeBuilder(props: {
               }
               className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground hover:text-foreground"
             >
-              + Puxar insumo do estoque
+              {stockOptions.length === 0 ? "+ Adicionar insumo" : "+ Puxar insumo do estoque"}
             </button>
           )}
-        </div>
-      )}
+      </div>
     </div>
   );
 }
@@ -385,6 +391,19 @@ function CardapioPage() {
   // ficha técnica com vários insumos. Só decide a apresentação — os dois usam a mesma tabela de
   // receita por baixo, então trocar de modo não perde nada além das linhas já digitadas.
   const [productMode, setProductMode] = useState<"stock" | "recipe" | null>("stock");
+  // Revenda sem insumo escolhido: o item espelho nasce sozinho no estoque, deste tipo.
+  const [mirrorKind, setMirrorKind] = useState<"base_drink" | "ingredient" | "cozinha">("base_drink");
+  // Taxa, ficha de sinuca e afins: sem espelho no estoque, o produto já nasce "nunca esgota".
+  const [noStockControl, setNoStockControl] = useState(false);
+  // Etapa pós-cadastro "Já tem isso no bar?": o que o produto consome, pra lançar o primeiro lote
+  // ali mesmo. null = etapa fechada.
+  const [postCreate, setPostCreate] = useState<{
+    productName: string;
+    targets: Array<LotEntryTarget & { isTheoretical: boolean }>;
+    saved: string[];
+    openId: string | null;
+  } | null>(null);
+  const [suppliers, setSuppliers] = useState<LotEntrySupplier[]>([]);
 
   // Categoria é uma divisão do menu, não um produto — cadastro próprio, separado do formulário
   // de produto, pra "criar categoria" nunca virar "criar um produto vazio só pra registrar o nome".
@@ -445,6 +464,7 @@ function CardapioPage() {
   const create = useServerFn(createProduct);
   const createBaseDrinkFn = useServerFn(createBaseDrink);
   const createIngredientFn = useServerFn(createIngredient);
+  const loadSuppliers = useServerFn(listSuppliers);
   const update = useServerFn(updateProductFn);
   const saveRecipe = useServerFn(setRecipeItems);
   const loadRecipeItems = useServerFn(getRecipeItems);
@@ -917,6 +937,42 @@ function CardapioPage() {
       }
     }
 
+    // Revenda (uma linha só, pela categoria) sem insumo escolhido: o lado do estoque nasce sozinho,
+    // com o mesmo nome e a mesma foto do produto, e a ficha de 1 linha (vende 1, baixa 1). Antes a
+    // equipe precisava clicar em "+ Criar novo insumo" e digitar o nome de novo pra cada cerveja.
+    // Item de estoque com o MESMO nome é reaproveitado em vez de duplicado. Nasce teórico (saldo
+    // zero, sem lote) e não vende até a primeira entrada.
+    if (productMode !== "recipe" && components.length === 0 && !noStockControl) {
+      const productName = name.trim();
+      const sameName = stockOptions.find(
+        (item) => item.name.trim().toLowerCase() === productName.toLowerCase(),
+      );
+      if (sameName) {
+        resolvedComponents.push({ kind: sameName.kind, id: sameName.id, quantity: 1 });
+      } else if (mirrorKind === "base_drink") {
+        const created = await createBaseDrinkFn({ data: { name: productName, unit: "un", imageUrl } });
+        if (!created.ok) {
+          setSaving(false);
+          return setError(`Não foi possível criar "${productName}" no estoque: ${created.message ?? ""}`);
+        }
+        resolvedComponents.push({ kind: "base_drink", id: created.id, quantity: 1 });
+      } else {
+        const created = await createIngredientFn({
+          data: {
+            name: productName,
+            unit: "un",
+            kind: mirrorKind === "cozinha" ? "cozinha" : "drink",
+            imageUrl,
+          },
+        });
+        if (!created.ok) {
+          setSaving(false);
+          return setError(`Não foi possível criar "${productName}" no estoque: ${created.message ?? ""}`);
+        }
+        resolvedComponents.push({ kind: "ingredient", id: created.id, quantity: 1 });
+      }
+    }
+
     const recipe: Array<
       | { type: "base_drink"; baseDrinkId: string; quantity: number }
       | { type: "ingredient"; ingredientId: string; quantity: number }
@@ -953,16 +1009,54 @@ function CardapioPage() {
       }
     }
 
+    if (noStockControl && result.productId) {
+      await toggleUnlimited({ data: { productId: result.productId, unlimited: true } });
+    }
+
+    // "Já tem isso no bar?": em vez de fechar direto, oferece lançar o primeiro lote do que o
+    // produto consome, com os teóricos (nunca receberam nada) primeiro. Busca o estoque de novo
+    // porque os insumos podem ter acabado de nascer aqui.
+    const productName = name.trim();
+    let targets: Array<LotEntryTarget & { isTheoretical: boolean }> = [];
+    if (resolvedComponents.length > 0) {
+      const [stock, suppliersResult] = await Promise.all([loadStock(), loadSuppliers()]);
+      const all = [
+        ...(stock.baseDrinks ?? []).map((item) => ({ ...item, kind: "base_drink" as const })),
+        ...(stock.ingredients ?? []).map((item) => ({ ...item, kind: "ingredient" as const })),
+      ];
+      targets = resolvedComponents
+        .filter((c, index, list) => list.findIndex((o) => o.id === c.id) === index)
+        .map((c) => all.find((item) => item.id === c.id && item.kind === c.kind))
+        .filter((item): item is (typeof all)[number] => !!item)
+        .map((item) => ({
+          kind: item.kind,
+          id: item.id,
+          name: item.name,
+          unit: item.unit,
+          purchase_unit: item.purchase_unit,
+          units_per_pack: item.units_per_pack,
+          content_amount: Number(item.content_amount),
+          isTheoretical: !!item.is_theoretical,
+        }))
+        .sort((a, b) => Number(b.isTheoretical) - Number(a.isTheoretical));
+      setSuppliers(suppliersResult.suppliers.map((supplier) => ({ id: supplier.id, name: supplier.name })));
+    }
+
     setSaving(false);
     setComponents([]);
-    setProductMode(null);
     setName("");
     setPrice("");
     setUnit("un");
     setPackageType("Lata");
     setPhotoFile(null);
-    setShowForm(false);
+    setNoStockControl(false);
+    setMirrorKind("base_drink");
     setDismissedSuggestionIds(new Set());
+    if (targets.length > 0) {
+      setPostCreate({ productName, targets, saved: [], openId: targets[0]?.id ?? null });
+    } else {
+      setShowForm(false);
+    }
     await load();
   }
 
@@ -1184,6 +1278,7 @@ function CardapioPage() {
           <button
             onClick={() => {
               setShowForm((value) => !value);
+              setPostCreate(null);
               setDismissedSuggestionIds(new Set());
             }}
             className="w-full rounded-xl border border-dashed border-border py-3 text-sm font-medium text-muted-foreground hover:text-foreground"
@@ -1191,7 +1286,86 @@ function CardapioPage() {
             {showForm ? "Cancelar" : "+ Novo produto"}
           </button>
 
-          {showForm && (
+          {showForm &&
+            (postCreate ? (
+              <SectionCard title={`Produto criado: ${postCreate.productName}`}>
+                <div className="space-y-3">
+                  <p className="text-sm">
+                    <span className="font-semibold">Já tem isso no bar?</span>{" "}
+                    <span className="text-muted-foreground">
+                      Lance o primeiro lote agora — ou deixe pra depois, pelo Estoque. Item teórico
+                      não vende até receber a primeira entrada.
+                    </span>
+                  </p>
+                  <ul className="space-y-2">
+                    {postCreate.targets.map((target) => {
+                      const saved = postCreate.saved.includes(target.id);
+                      const open = postCreate.openId === target.id && !saved;
+                      return (
+                        <li key={`${target.kind}-${target.id}`} className="rounded-xl border border-border p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="min-w-0 truncate text-sm font-medium">
+                              {target.name}
+                              {target.isTheoretical && !saved && (
+                                <span className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-amber-600">
+                                  Teórico
+                                </span>
+                              )}
+                            </p>
+                            {saved ? (
+                              <span className="shrink-0 text-xs font-medium text-primary">Lote lançado ✓</span>
+                            ) : (
+                              <button
+                                onClick={() =>
+                                  setPostCreate((current) =>
+                                    current ? { ...current, openId: open ? null : target.id } : current,
+                                  )
+                                }
+                                className="shrink-0 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground"
+                              >
+                                {open ? "Pular" : "Lançar estoque agora"}
+                              </button>
+                            )}
+                          </div>
+                          {open && (
+                            <div className="mt-3">
+                              <LotEntryForm
+                                target={target}
+                                suppliers={suppliers}
+                                onSupplierCreated={(supplier) =>
+                                  setSuppliers((current) =>
+                                    [...current, supplier].sort((a, b) => a.name.localeCompare(b.name, "pt-BR")),
+                                  )
+                                }
+                                onSaved={async () => {
+                                  setPostCreate((current) => {
+                                    if (!current) return current;
+                                    const savedIds = [...current.saved, target.id];
+                                    const next = current.targets.find((t) => !savedIds.includes(t.id));
+                                    return { ...current, saved: savedIds, openId: next?.id ?? null };
+                                  });
+                                  await load();
+                                }}
+                                submitLabel="Lançar lote"
+                                autoFocus
+                              />
+                            </div>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                  <PrimaryButton
+                    onClick={() => {
+                      setPostCreate(null);
+                      setShowForm(false);
+                    }}
+                  >
+                    {postCreate.saved.length === postCreate.targets.length ? "Concluir" : "Depois"}
+                  </PrimaryButton>
+                </div>
+              </SectionCard>
+            ) : (
             <SectionCard title="Novo produto do cardápio">
               <div className="space-y-3">
                 <TextField label="Nome" value={name} onChange={setName} placeholder="Caipirinha" />
@@ -1324,6 +1498,53 @@ function CardapioPage() {
                     stockOptions={stockOptions}
                     maxRows={productMode === "stock" ? 1 : undefined}
                     warning={undefined}
+                    emptyHint={
+                      productMode !== "recipe" ? (
+                        <div className="mt-3 space-y-2 rounded-lg border border-dashed border-primary/40 bg-background p-2.5 text-xs">
+                          {noStockControl ? (
+                            <p className="text-muted-foreground">
+                              Sem controle de estoque: o produto nasce como "nunca esgota" (taxa,
+                              ficha de sinuca...) e nada é criado no Estoque.
+                            </p>
+                          ) : (
+                            <>
+                              <p className="text-muted-foreground">
+                                Sem escolher insumo, ao salvar o sistema cria{" "}
+                                <span className="font-semibold text-foreground">
+                                  {name.trim() || "este produto"}
+                                </span>{" "}
+                                no Estoque, com a mesma foto, e liga os dois (vende 1, baixa 1). Ele
+                                nasce <span className="font-semibold">teórico</span>: não vende até
+                                a primeira entrada.
+                              </p>
+                              <label className="flex items-center gap-2">
+                                <span className="text-muted-foreground">Entra no Estoque como</span>
+                                <select
+                                  value={mirrorKind}
+                                  onChange={(event) =>
+                                    setMirrorKind(event.target.value as "base_drink" | "ingredient" | "cozinha")
+                                  }
+                                  className="h-8 rounded-lg border border-border bg-background px-2 text-xs outline-none focus:border-ring"
+                                >
+                                  <option value="base_drink">Bebida</option>
+                                  <option value="ingredient">Ingrediente</option>
+                                  <option value="cozinha">Insumo de cozinha</option>
+                                </select>
+                              </label>
+                            </>
+                          )}
+                          <label className="flex items-center gap-2 text-muted-foreground">
+                            <input
+                              type="checkbox"
+                              checked={noStockControl}
+                              onChange={(event) => setNoStockControl(event.target.checked)}
+                              className="h-4 w-4 rounded border-border"
+                            />
+                            Não controlar estoque deste produto (nunca esgota)
+                          </label>
+                        </div>
+                      ) : undefined
+                    }
                   />
                 </div>
                 <label className="block">
@@ -1341,7 +1562,7 @@ function CardapioPage() {
                 </PrimaryButton>
               </div>
             </SectionCard>
-          )}
+            ))}
 
           {grouped.length === 0 ? (
             <p className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
