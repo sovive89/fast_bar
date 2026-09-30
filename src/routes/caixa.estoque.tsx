@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { NotaFiscalImport } from "@/components/stock/NotaFiscalImport";
+import { LotEntryForm } from "@/components/stock/LotEntryForm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl, parseAmount } from "@/lib/format";
 import {
@@ -154,6 +155,8 @@ type StockComponent = {
   // mostra nada, o que é o comportamento certo pra ela).
   kind?: "drink" | "cozinha";
   depletion_rule: "fefo" | "lowest_cost";
+  /** Nunca recebeu nenhuma entrada (sem lote e saldo zero) — não vende até o primeiro lote. */
+  is_theoretical?: boolean;
 };
 
 type StockLot = {
@@ -272,12 +275,7 @@ function ComponentStockTab(props: {
   const [saving, setSaving] = useState(false);
 
   const [openEntryId, setOpenEntryId] = useState<string | null>(null);
-  const [entryPacks, setEntryPacks] = useState("");
-  const [entryPurchaseCost, setEntryPurchaseCost] = useState("");
-  const [entrySupplierId, setEntrySupplierId] = useState("");
-  const [entryExpiresOn, setEntryExpiresOn] = useState("");
-  const [entryError, setEntryError] = useState<string | null>(null);
-  const [entryBusy, setEntryBusy] = useState(false);
+  const [onlyTheoretical, setOnlyTheoretical] = useState(false);
 
   // Card expandido mostrando os lotes (data/preço/fornecedor de cada entrada) de um item — busca
   // sob demanda, só quando a equipe abre, pra não puxar tudo isso na listagem toda hora.
@@ -428,37 +426,8 @@ function ComponentStockTab(props: {
     await load();
   }
 
-  async function submitEntry(item: StockComponent) {
-    setEntryError(null);
-    const packs = parseAmount(entryPacks);
-    if (packs === null || !Number.isInteger(packs) || packs <= 0) {
-      return setEntryError("Informe um número inteiro de embalagens.");
-    }
-
-    let purchaseCost: number | undefined;
-    if (entryPurchaseCost.trim()) {
-      const parsed = parseAmount(entryPurchaseCost);
-      if (parsed === null || parsed < 0) return setEntryError("Valor pago inválido.");
-      purchaseCost = parsed;
-    }
-
-    setEntryBusy(true);
-    const result = await props.entryFn({
-      data: {
-        id: item.id,
-        packs,
-        purchaseCost,
-        supplierId: entrySupplierId || undefined,
-        expiresOn: entryExpiresOn || undefined,
-      },
-    });
-    setEntryBusy(false);
-    if (!result.ok) return setEntryError(result.message ?? "Não foi possível registrar a entrada.");
+  async function afterEntrySaved(item: StockComponent) {
     setOpenEntryId(null);
-    setEntryPacks("");
-    setEntryPurchaseCost("");
-    setEntrySupplierId("");
-    setEntryExpiresOn("");
     if (openLotsId === item.id) await loadLots(item);
     await load();
   }
@@ -740,13 +709,28 @@ function ComponentStockTab(props: {
         </SectionCard>
       )}
 
+      {items.some((item) => item.is_theoretical) && (
+        <button
+          type="button"
+          onClick={() => setOnlyTheoretical((value) => !value)}
+          aria-pressed={onlyTheoretical}
+          className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors ${
+            onlyTheoretical
+              ? "border-amber-500 bg-amber-500/15 text-amber-700 dark:text-amber-400"
+              : "border-border text-muted-foreground hover:text-foreground"
+          }`}
+        >
+          Só teóricos ({items.filter((item) => item.is_theoretical).length}) — falta lançar
+        </button>
+      )}
+
       {items.length === 0 ? (
         <p className="rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
           Nada cadastrado ainda.
         </p>
       ) : (
         <ul className="space-y-3">
-          {items.map((item) => {
+          {items.filter((item) => !onlyTheoretical || item.is_theoretical).map((item) => {
             const low = item.current_stock < item.min_stock;
             const isOpen = openEntryId === item.id;
             const isEditing = openEditId === item.id;
@@ -776,10 +760,12 @@ function ComponentStockTab(props: {
                         </span>
                       )}
                     </p>
-                    {Number(item.current_stock) === 0 && !item.purchase_unit && (
+                    {item.is_theoretical && (
                       <p className="mt-0.5 text-[11px] font-medium text-amber-600">
-                        Aguardando primeira entrada — veio de uma ficha técnica, configure a
-                        embalagem e dê entrada quando a mercadoria chegar.
+                        <span className="mr-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-semibold">
+                          Teórico
+                        </span>
+                        Ainda sem nenhuma entrada. Não vende até lançar o primeiro lote.
                       </p>
                     )}
                     <p className="text-xs text-muted-foreground">
@@ -811,11 +797,6 @@ function ComponentStockTab(props: {
                         setOpenEditId(null);
                         setDeletingId(null);
                         setOpenLossId(null);
-                        setEntryPacks("");
-                        setEntryPurchaseCost("");
-                        setEntrySupplierId("");
-                        setEntryExpiresOn("");
-                        setEntryError(null);
                       }}
                       className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                     >
@@ -1107,77 +1088,28 @@ function ComponentStockTab(props: {
                 )}
 
                 {isOpen && (
-                  <div className="mt-3 space-y-2">
-                    <div className="flex gap-2">
-                      <input
-                        type="number"
-                        inputMode="numeric"
-                        step={1}
-                        min={1}
-                        value={entryPacks}
-                        onChange={(event) => setEntryPacks(event.target.value)}
-                        placeholder={
-                          item.purchase_unit
-                            ? `Quantas ${item.purchase_unit}`
-                            : `Quantidade (${item.unit})`
-                        }
-                        autoFocus
-                        className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-                      />
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={entryPurchaseCost}
-                        onChange={(event) => setEntryPurchaseCost(event.target.value)}
-                        placeholder="Total pago (R$)"
-                        className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-                      />
-                    </div>
-                    {(() => {
-                      const packs = parseAmount(entryPacks);
-                      if (packs === null || packs <= 0) return null;
-                      const quantity = packs * item.units_per_pack * Number(item.content_amount);
-                      const cost = entryPurchaseCost.trim() ? parseAmount(entryPurchaseCost) : null;
-                      return (
-                        <p className="text-xs text-muted-foreground">
-                          Entra {quantity} {item.unit} no estoque
-                          {cost !== null && cost > 0 && quantity > 0
-                            ? ` · ${brl(cost / quantity)} por ${item.unit}`
-                            : ""}
-                        </p>
-                      );
-                    })()}
-                    {entryError && <p className="text-xs text-destructive">{entryError}</p>}
-                    <select
-                      value={entrySupplierId}
-                      onChange={(event) => setEntrySupplierId(event.target.value)}
-                      className="h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
-                    >
-                      <option value="">Sem fornecedor</option>
-                      {suppliers.map((supplier) => (
-                        <option key={supplier.id} value={supplier.id}>
-                          {supplier.name}
-                        </option>
-                      ))}
-                    </select>
-                    <label className="block">
-                      <span className="text-xs font-medium text-muted-foreground">
-                        Validade deste lote (opcional)
-                      </span>
-                      <input
-                        type="date"
-                        value={entryExpiresOn}
-                        onChange={(event) => setEntryExpiresOn(event.target.value)}
-                        className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
-                      />
-                    </label>
-                    <button
-                      onClick={() => submitEntry(item)}
-                      disabled={entryBusy || !entryPacks}
-                      className="h-11 w-full rounded-xl bg-primary text-sm font-semibold text-primary-foreground disabled:opacity-60"
-                    >
-                      {entryBusy ? "Salvando..." : "Confirmar entrada"}
-                    </button>
+                  <div className="mt-3">
+                    <LotEntryForm
+                      target={{
+                        kind: props.kind,
+                        id: item.id,
+                        name: item.name,
+                        unit: item.unit,
+                        purchase_unit: item.purchase_unit,
+                        units_per_pack: item.units_per_pack,
+                        content_amount: Number(item.content_amount),
+                      }}
+                      suppliers={suppliers}
+                      onSupplierCreated={(supplier) =>
+                        setSuppliers((current) =>
+                          [...current, { ...supplier, document: null, phone: null, active: true }].sort((a, b) =>
+                            a.name.localeCompare(b.name, "pt-BR"),
+                          ),
+                        )
+                      }
+                      onSaved={() => afterEntrySaved(item)}
+                      autoFocus
+                    />
                   </div>
                 )}
 

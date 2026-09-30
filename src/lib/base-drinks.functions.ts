@@ -194,6 +194,29 @@ export async function insertStockLot(params: {
 }
 
 /**
+ * Item de estoque "teórico": existe no cadastro (normalmente nasceu junto com um produto do
+ * cardápio) mas NUNCA recebeu mercadoria — nenhum lote registrado e saldo zerado. É diferente de
+ * "esgotado": esgotado já teve entrada e vendeu tudo. O saldo sozinho não distingue os dois (os
+ * dois estão em zero), por isso o critério é a existência de lote. Saldo positivo sem lote (entrada
+ * antiga, de antes do controle por lote) conta como real, nunca como teórico.
+ */
+export async function findTheoreticalComponentIds(
+  kind: "base_drink" | "ingredient",
+  items: Array<{ id: string; current_stock: number | string }>,
+): Promise<Set<string>> {
+  const { admin } = await import("./fastbar.server");
+  const candidates = items.filter((item) => Number(item.current_stock) <= 0).map((item) => item.id);
+  if (candidates.length === 0) return new Set();
+  const { data: lots } = await admin()
+    .from("fastbar_stock_lots")
+    .select("component_id")
+    .eq("component_kind", kind)
+    .in("component_id", candidates);
+  const withLot = new Set((lots ?? []).map((lot) => lot.component_id));
+  return new Set(candidates.filter((id) => !withLot.has(id)));
+}
+
+/**
  * Como o lote chegou: "pacote" usa a embalagem fixa cadastrada no item (caixa fechada, units por
  * pacote × conteúdo) — o comportamento padrão de sempre. "avulso" ignora essa config fixa e usa a
  * quantidade informada direto na unidade de venda — é a entrada de quem comprou fora do padrão
@@ -279,14 +302,20 @@ export const createSupplier = createServerFn({ method: "POST" })
     await assertRegisterAccess();
     const name = data.name.trim();
     if (name.length < 2) return { ok: false as const, message: "Nome do fornecedor inválido." };
-    const { error } = await admin().from("fastbar_suppliers").insert({
-      name,
-      document: data.document?.trim() || null,
-      phone: data.phone?.trim() || null,
-      email: data.email?.trim() || null,
-    });
-    if (error) return { ok: false as const, message: "Não foi possível salvar o fornecedor." };
-    return { ok: true as const };
+    // Devolve o id para quem cria o fornecedor no meio de outro formulário (lançamento de lote)
+    // poder já deixá-lo selecionado, sem a pessoa ter que procurar na lista o que acabou de criar.
+    const { data: created, error } = await admin()
+      .from("fastbar_suppliers")
+      .insert({
+        name,
+        document: data.document?.trim() || null,
+        phone: data.phone?.trim() || null,
+        email: data.email?.trim() || null,
+      })
+      .select("id")
+      .maybeSingle();
+    if (error || !created) return { ok: false as const, message: "Não foi possível salvar o fornecedor." };
+    return { ok: true as const, id: created.id };
   });
 
 // ============ INSUMOS (garrafas/pacotes) ============
@@ -1222,20 +1251,25 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
     admin()
       .from("fastbar_base_drinks")
       .select(
-        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount, depletion_rule",
+        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount, depletion_rule, image_url",
       )
       .eq("active", true)
       .order("name"),
     admin()
       .from("fastbar_drink_ingredients")
       .select(
-        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount, kind, depletion_rule",
+        "id, name, unit, current_stock, min_stock, average_cost, purchase_unit, units_per_pack, content_amount, kind, depletion_rule, image_url",
       )
       .eq("active", true)
       .order("name"),
     admin()
       .from("fastbar_recipe_items")
       .select("product_id, base_drink_id, ingredient_id, quantity, fastbar_products(name)"),
+  ]);
+
+  const [theoreticalDrinks, theoreticalIngredients] = await Promise.all([
+    findTheoreticalComponentIds("base_drink", baseDrinks ?? []),
+    findTheoreticalComponentIds("ingredient", ingredients ?? []),
   ]);
 
   const dosesByComponent = new Map<string, DoseInfo[]>();
@@ -1258,10 +1292,12 @@ export const getBaseDrinksOverview = createServerFn({ method: "POST" }).handler(
     baseDrinks: (baseDrinks ?? []).map((item) => ({
       ...item,
       doses: dosesByComponent.get(item.id) ?? [],
+      is_theoretical: theoreticalDrinks.has(item.id),
     })),
     ingredients: (ingredients ?? []).map((item) => ({
       ...item,
       doses: dosesByComponent.get(item.id) ?? [],
+      is_theoretical: theoreticalIngredients.has(item.id),
     })),
   };
 });
