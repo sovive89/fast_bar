@@ -6,6 +6,7 @@ import { NotaFiscalImport } from "@/components/stock/NotaFiscalImport";
 import { LotEntryForm } from "@/components/stock/LotEntryForm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl, parseAmount } from "@/lib/format";
+import { Package, UtensilsCrossed, Wine } from "lucide-react";
 import {
   addBaseDrinkEntry,
   addBaseDrinkLoss,
@@ -745,44 +746,57 @@ function ComponentStockTab(props: {
             return (
               <li key={item.id} className="rounded-2xl border border-border bg-card p-4">
                 <div className="flex items-center justify-between gap-4">
+                  {/* Mesmo formato do card do Cardápio (foto 10×10 ou ícone sobre fundo neutro, nome em
+                      destaque, uma linha de detalhe embaixo) — só que aqui o detalhe é estoque:
+                      custo, embalagem e em quais produtos o item entra. */}
                   <div className="flex min-w-0 items-center gap-3">
                     {item.image_url ? (
                       <img
                         src={item.image_url}
                         alt={item.name}
-                        className="h-11 w-11 shrink-0 rounded-lg border border-border object-cover"
+                        className="h-10 w-10 shrink-0 rounded-lg object-cover"
                       />
                     ) : (
-                      <div className="h-11 w-11 shrink-0 rounded-lg border border-dashed border-border" />
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
+                        {props.kind === "base_drink" ? (
+                          <Wine className="h-5 w-5 text-muted-foreground" />
+                        ) : item.kind === "cozinha" ? (
+                          <UtensilsCrossed className="h-5 w-5 text-muted-foreground" />
+                        ) : (
+                          <Package className="h-5 w-5 text-muted-foreground" />
+                        )}
+                      </div>
                     )}
                     <div className="min-w-0">
-                    <p className="truncate font-semibold">
-                      {item.name}
-                      {item.kind === "cozinha" && (
-                        <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 align-middle text-[10px] font-medium text-secondary-foreground">
-                          Cozinha
-                        </span>
+                      <p className="truncate font-semibold">
+                        {item.name}
+                        {item.kind === "cozinha" && (
+                          <span className="ml-1.5 rounded-full bg-secondary px-1.5 py-0.5 align-middle text-[10px] font-medium text-secondary-foreground">
+                            Cozinha
+                          </span>
+                        )}
+                        {item.is_theoretical && (
+                          <span
+                            title="Ainda sem nenhuma entrada — não vende até lançar o primeiro lote."
+                            className="ml-1.5 rounded-full bg-amber-500/15 px-1.5 py-0.5 align-middle text-[10px] font-semibold text-amber-600"
+                          >
+                            Teórico
+                          </span>
+                        )}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {item.is_theoretical
+                          ? "Sem entrada ainda — não vende até o primeiro lote"
+                          : `custo ${brl(item.average_cost)}/${item.unit}`}
+                        {item.purchase_unit
+                          ? ` · ${item.purchase_unit} (${item.units_per_pack} × ${item.content_amount}${item.unit})`
+                          : ""}
+                      </p>
+                      {item.doses.length > 0 && (
+                        <p className="truncate text-xs text-muted-foreground">
+                          Rende {item.doses.map((d) => `${d.doses}× ${d.productName}`).join(" · ")}
+                        </p>
                       )}
-                    </p>
-                    {item.is_theoretical && (
-                      <p className="mt-0.5 text-[11px] font-medium text-amber-600">
-                        <span className="mr-1 rounded-full bg-amber-500/15 px-1.5 py-0.5 font-semibold">
-                          Teórico
-                        </span>
-                        Ainda sem nenhuma entrada. Não vende até lançar o primeiro lote.
-                      </p>
-                    )}
-                    <p className="text-xs text-muted-foreground">
-                      Custo médio: {brl(item.average_cost)} / {item.unit}
-                      {item.purchase_unit
-                        ? ` · comprado em ${item.purchase_unit} (${item.units_per_pack} × ${item.content_amount}${item.unit})`
-                        : ""}
-                    </p>
-                    {item.doses.length > 0 && (
-                      <p className="mt-1 text-xs text-muted-foreground">
-                        {item.doses.map((d) => `${d.productName}: ${d.doses} doses`).join(" · ")}
-                      </p>
-                    )}
                     </div>
                   </div>
                   <div className="flex shrink-0 items-center gap-3">

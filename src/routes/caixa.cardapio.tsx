@@ -4,7 +4,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl } from "@/lib/format";
-import { addProductEntry, getStockOverview } from "@/lib/stock.functions";
+import { getStockOverview } from "@/lib/stock.functions";
 import { deactivateProduct, deleteProduct as deleteProductFn } from "@/lib/register.functions";
 import { categoryIcon } from "@/lib/category-icon";
 import {
@@ -56,7 +56,6 @@ type Product = {
   unlimited_stock: boolean;
 };
 
-const LOW_STOCK_THRESHOLD = 20;
 
 /** Insumo do estoque disponível para compor um item do cardápio. */
 type StockOption = {
@@ -355,15 +354,10 @@ function RecipeBuilder(props: {
 function CardapioPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [recipeProductIds, setRecipeProductIds] = useState<Set<string>>(new Set());
-  const [pendingProductIds, setPendingProductIds] = useState<Set<string>>(new Set());
   const [showForm, setShowForm] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
-  const [openRestockId, setOpenRestockId] = useState<string | null>(null);
-  const [restockAmount, setRestockAmount] = useState("");
-  const [restockCost, setRestockCost] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
-  const [restockError, setRestockError] = useState<string | null>(null);
 
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
@@ -451,7 +445,6 @@ function CardapioPage() {
   const toggleCategoryNeedsRecipe = useServerFn(setCategoryNeedsRecipe);
   const deleteCategory = useServerFn(deleteProductCategory);
   const renameCategory = useServerFn(updateProductCategory);
-  const productEntry = useServerFn(addProductEntry);
   const removeProduct = useServerFn(deactivateProduct);
   const deleteProduct = useServerFn(deleteProductFn);
   const uploadPhoto = useServerFn(uploadProductPhoto);
@@ -479,7 +472,6 @@ function CardapioPage() {
     setLoadError(null);
     setProducts(result.products as Product[]);
     setRecipeProductIds(new Set(result.recipeProductIds));
-    setPendingProductIds(new Set(result.pendingProductIds));
     setStockOptions([
       ...((stock.baseDrinks ?? []) as Array<Omit<StockOption, "kind">>).map((item) => ({
         ...item,
@@ -599,29 +591,6 @@ function CardapioPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function confirmRestock(productId: string) {
-    setRestockError(null);
-    const packs = Number(restockAmount);
-    if (!Number.isFinite(packs) || !Number.isInteger(packs) || packs <= 0) {
-      return setRestockError("Informe uma quantidade inteira maior que zero.");
-    }
-    let purchaseCost: number | undefined;
-    if (restockCost.trim()) {
-      const parsed = Number(restockCost.replace(",", "."));
-      if (!Number.isFinite(parsed) || parsed < 0) return setRestockError("Valor pago inválido.");
-      purchaseCost = parsed;
-    }
-    setBusyId(productId);
-    const result = await productEntry({ data: { productId, packs, purchaseCost } });
-    setBusyId(null);
-    // Falha silenciosa aqui faria a equipe achar que deu entrada quando não deu.
-    if (!result.ok) return setRestockError(result.message ?? "Não foi possível registrar a entrada.");
-    setOpenRestockId(null);
-    setRestockAmount("");
-    setRestockCost("");
-    await load();
-  }
-
   async function confirmDelete(productId: string, password: string) {
     const result = await removeProduct({ data: { productId, password } });
     if (result.ok) {
@@ -657,10 +626,8 @@ function CardapioPage() {
     );
     setEditProductPhotoFile(null);
     setEditProductError(null);
-    // Só um painel por produto — abrir editar fecha remover/entrada, e vice-versa (nos handlers
-    // deles), senão os formulários se misturam na mesma linha.
+    // Só um painel por produto — abrir editar fecha o de apagar, e vice-versa.
     setDeletingId(null);
-    setOpenRestockId(null);
 
     // Ficha técnica não vem junto no overview de produtos — busca à parte ao abrir o painel, pra
     // editar aqui mesmo em vez de mandar pra Estoque → Fichas técnicas.
@@ -1522,23 +1489,13 @@ function CardapioPage() {
                       // Produto com ficha técnica não tem estoque próprio: quem manda é o estoque
                       // dos componentes. Mostrar "0 un" em vermelho e oferecer "+ Repor" aqui
                       // sugeriria um problema que não existe e um botão que não resolve nada.
-                      const hasRecipe = recipeProductIds.has(product.id);
-                      // Ilimitado (ficha de sinuca, taxa de serviço...) nunca fica pendente e nunca
-                      // aparece com saldo baixo — ele não passa por checagem de estoque nenhuma.
-                      const isPending = !product.unlimited_stock && pendingProductIds.has(product.id);
-                      const low =
-                        !hasRecipe && !product.unlimited_stock && product.stock_quantity < LOW_STOCK_THRESHOLD;
-                      const isOpen = openRestockId === product.id;
+                      // Card do cardápio é só vitrine: nome, preço, editar e apagar. Saldo, entrada,
+                      // custo e pendência de estoque moram no card do Estoque — aqui misturavam
+                      // "o que se vende" com "o que se tem guardado".
                       const isDeleting = deletingId === product.id;
                       const isEditing = editingProductId === product.id;
                       return (
                         <li key={product.id} className="rounded-2xl border border-border bg-card p-4">
-                          {isPending && (
-                            <p className="mb-2 text-xs font-medium text-destructive">
-                              ⚠ Configuração de estoque pendente — vincule uma ficha técnica ou dê
-                              a primeira entrada para liberar a venda.
-                            </p>
-                          )}
                           <div className="flex items-center justify-between gap-4">
                             <div className="flex min-w-0 items-center gap-3">
                               {product.image_url ? (
@@ -1558,54 +1515,10 @@ function CardapioPage() {
                                   {brl(product.price)}
                                   {product.package_type ? ` · ${product.package_type}` : ""}
                                   {product.unit ? ` (${product.unit})` : ""}
-                                  {!hasRecipe && !product.unlimited_stock && product.average_cost > 0
-                                    ? ` · custo ${brl(product.average_cost)}`
-                                    : ""}
                                 </p>
                               </div>
                             </div>
-                            <div className="flex items-center gap-3">
-                              <span
-                                className={`text-sm font-bold ${low ? "text-destructive" : ""} ${product.unlimited_stock ? "text-primary" : ""}`}
-                              >
-                                {product.unlimited_stock
-                                  ? "∞ ilimitado"
-                                  : hasRecipe
-                                    ? "ficha técnica"
-                                    : `${product.stock_quantity} un`}
-                              </span>
-                              {!hasRecipe && !product.unlimited_stock && (
-                                <button
-                                  onClick={() => {
-                                    setOpenRestockId(isOpen ? null : product.id);
-                                    setRestockAmount("");
-                                    setRestockCost("");
-                                    setDeletingId(null);
-                                    setEditingProductId(null);
-                                    // Sem isso, o erro de uma linha reaparece no formulário da
-                                    // próxima que for aberta.
-                                    setRestockError(null);
-                                  }}
-                                  // Uma entrada por vez: o formulário é compartilhado, então
-                                  // abrir outro no meio de um envio mistura as duas linhas.
-                                  disabled={busyId !== null && busyId !== product.id}
-                                  className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-                                >
-                                  {isOpen ? "Cancelar" : "+ Entrada"}
-                                </button>
-                              )}
-                              <button
-                                onClick={() => void handleToggleUnlimited(product)}
-                                disabled={busyId !== null && busyId !== product.id}
-                                title="Item que nunca esgota (ex.: ficha de sinuca, taxa de serviço) — pula estoque e ficha técnica."
-                                className={`rounded-full border px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-60 ${
-                                  product.unlimited_stock
-                                    ? "border-primary/50 text-primary hover:bg-primary/5"
-                                    : "border-border text-muted-foreground hover:text-foreground"
-                                }`}
-                              >
-                                {product.unlimited_stock ? "∞ Ilimitado" : "Tornar ilimitado"}
-                              </button>
+                            <div className="flex shrink-0 items-center gap-3">
                               <button
                                 onClick={() => (isEditing ? setEditingProductId(null) : openEditProduct(product))}
                                 className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
@@ -1615,13 +1528,11 @@ function CardapioPage() {
                               <button
                                 onClick={() => {
                                   setDeletingId(isDeleting ? null : product.id);
-                                  setOpenRestockId(null);
                                   setEditingProductId(null);
-                                  setRestockError(null);
                                 }}
-                                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
                               >
-                                Remover
+                                {isDeleting ? "Cancelar" : "Apagar"}
                               </button>
                             </div>
                           </div>
@@ -1714,6 +1625,16 @@ function CardapioPage() {
                                   className="mt-1 block w-full text-sm text-muted-foreground file:mr-3 file:rounded-lg file:border-0 file:bg-secondary file:px-3 file:py-2 file:text-xs file:font-medium"
                                 />
                               </label>
+                              <label className="flex items-center gap-2 text-xs text-muted-foreground">
+                                <input
+                                  type="checkbox"
+                                  checked={product.unlimited_stock}
+                                  disabled={busyId !== null}
+                                  onChange={() => void handleToggleUnlimited(product)}
+                                  className="h-4 w-4 rounded border-border"
+                                />
+                                Nunca esgota (ficha de sinuca, taxa) — vende sem checar estoque
+                              </label>
                               {editProductError && (
                                 <p className="text-xs text-destructive">{editProductError}</p>
                               )}
@@ -1757,61 +1678,6 @@ function CardapioPage() {
                             </div>
                           )}
 
-                          {isOpen && (
-                            <div className="mt-3">
-                              <div className="flex gap-2">
-                                <input
-                                  type="number"
-                                  inputMode="numeric"
-                                  min={1}
-                                  value={restockAmount}
-                                  onChange={(event) => setRestockAmount(event.target.value)}
-                                  placeholder={
-                                    product.purchase_unit
-                                      ? `Quantas ${product.purchase_unit}`
-                                      : "Quantidade"
-                                  }
-                                  autoFocus
-                                  className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-                                />
-                                <input
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={restockCost}
-                                  onChange={(event) => setRestockCost(event.target.value)}
-                                  placeholder="Total pago (R$)"
-                                  className="h-11 flex-1 rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-                                />
-                              </div>
-                              {Number(restockAmount) > 0 && (
-                                <p className="mt-2 text-xs text-muted-foreground">
-                                  Entram{" "}
-                                  {Number(restockAmount) *
-                                    product.units_per_pack *
-                                    Number(product.content_amount)}{" "}
-                                  un no estoque
-                                  {Number(restockCost.replace(",", ".")) > 0
-                                    ? ` · ${brl(
-                                        Number(restockCost.replace(",", ".")) /
-                                          (Number(restockAmount) *
-                                            product.units_per_pack *
-                                            Number(product.content_amount)),
-                                      )} por un`
-                                    : ""}
-                                </p>
-                              )}
-                              <button
-                                onClick={() => confirmRestock(product.id)}
-                                disabled={busyId === product.id || !restockAmount}
-                                className="mt-2 h-11 w-full rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-                              >
-                                {busyId === product.id ? "Salvando..." : "Confirmar entrada"}
-                              </button>
-                              {restockError && (
-                                <p className="mt-2 text-xs text-destructive">{restockError}</p>
-                              )}
-                            </div>
-                          )}
                         </li>
                       );
                     })}
