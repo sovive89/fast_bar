@@ -15,7 +15,7 @@ import {
   confirmSession,
   refundMachineCharge,
   registerPayment,
-  removeTabItem,
+  removeTabItems,
   reopenSession,
   setSessionServiceFee,
   startMachineCharge,
@@ -55,7 +55,7 @@ function RegisterTabDetail() {
   const [machineConfigured, setMachineConfigured] = useState(false);
 
   const add = useServerFn(addTabItem);
-  const remove = useServerFn(removeTabItem);
+  const removeMany = useServerFn(removeTabItems);
   const close = useServerFn(closeSession);
   const pay = useServerFn(registerPayment);
   const reopen = useServerFn(reopenSession);
@@ -226,9 +226,16 @@ function RegisterTabDetail() {
             items={items}
             {...(isOpen
               ? {
-                  onRemove: async (itemId: string, password: string) => {
-                    const result = await remove({ data: { itemId, password } });
-                    if (result.ok) await reload();
+                  onAddOne: async (productId: string) => {
+                    const result = await add({ data: { sessionId: session.id, productId } });
+                    await reload();
+                    return result;
+                  },
+                  onRemoveMany: async (itemIds: string[], password: string) => {
+                    const result = await removeMany({
+                      data: { sessionId: session.id, itemIds, password },
+                    });
+                    if (result.ok || result.removed > 0) await reload();
                     return result;
                   },
                 }

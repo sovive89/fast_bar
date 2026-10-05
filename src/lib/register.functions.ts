@@ -327,6 +327,62 @@ export const removeTabItem = createServerFn({ method: "POST" })
   });
 
 /**
+ * Remove vários lançamentos de uma vez (seleção em massa ou "−" na linha agrupada), pedindo a senha
+ * da equipe UMA vez. Cada item passa pela mesma RPC do remover individual, então o estoque volta
+ * item a item exatamente como antes.
+ *
+ * Só aceita itens que são DESTA comanda: os ids vêm do navegador, e sem esse filtro uma chamada
+ * forjada poderia apagar lançamentos de outra comanda aberta.
+ *
+ * Não é atômico: se um item falhar no meio (ex.: a comanda foi fechada por outro caixa), os
+ * anteriores já saíram. Por isso a resposta diz quantos foram removidos.
+ */
+export const removeTabItems = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string; itemIds: string[]; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    await assertRegisterAccess();
+    if (!(await teamPasswordMatches(data.password))) {
+      return { ok: false as const, removed: 0, message: "Senha incorreta." };
+    }
+
+    const requested = [...new Set(data.itemIds)].slice(0, 500);
+    if (requested.length === 0) {
+      return { ok: false as const, removed: 0, message: "Nenhum item selecionado." };
+    }
+
+    const { data: rows, error: readError } = await admin()
+      .from("fastbar_tab_items")
+      .select("id")
+      .eq("session_id", data.sessionId)
+      .in("id", requested);
+    if (readError) {
+      return { ok: false as const, removed: 0, message: "Não foi possível ler os itens da comanda." };
+    }
+
+    let removed = 0;
+    for (const row of rows ?? []) {
+      const { data: result, error } = await admin().rpc("fastbar_remove_tab_item", {
+        p_item_id: row.id,
+      });
+      const outcome = fromRpc(result as RpcResult | null, error, "Não foi possível remover o item.");
+      if (!outcome.ok) {
+        return {
+          ok: false as const,
+          removed,
+          message:
+            removed > 0
+              ? `${removed} ${removed === 1 ? "item removido" : "itens removidos"}, mas o resto parou: ${outcome.message}`
+              : outcome.message,
+        };
+      }
+      removed += 1;
+    }
+    return { ok: true as const, removed };
+  });
+
+/**
  * Desfaz o último lançamento da comanda — atalho pro erro mais comum no balcão. Só em comanda
  * aberta. Exige senha como as demais remoções: sem isso, bastaria clicar aqui repetidamente para
  * apagar lançamento por lançamento sem senha nenhuma, anulando a proteção de removeTabItem.

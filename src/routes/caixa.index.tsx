@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
+import { TabItemList } from "@/components/shared/TabItemList";
 import { brl, digits, elapsed, formatCpf, formatIdentifier, formatPhone, hhmm } from "@/lib/format";
 import { useServerFn } from "@tanstack/react-start";
 import { getRegisterOverview } from "@/lib/tab-reads.functions";
@@ -13,7 +14,7 @@ import {
   lookupCustomerByDocument,
   openSessionByTeam,
   openWalkInSession,
-  removeTabItem,
+  removeTabItems,
   unarchiveSession,
   undoLastTabItem,
 } from "@/lib/register.functions";
@@ -88,7 +89,7 @@ function RegisterList() {
   const navigate = useNavigate();
   const loadOverview = useServerFn(getRegisterOverview);
   const undoLast = useServerFn(undoLastTabItem);
-  const removeItem = useServerFn(removeTabItem);
+  const removeItems = useServerFn(removeTabItems);
   const clearItems = useServerFn(clearTabItems);
   const cancelOne = useServerFn(cancelSession);
   const archiveOne = useServerFn(archiveSession);
@@ -553,56 +554,23 @@ function RegisterList() {
                       {sessionItems.length === 0 ? (
                         <p className="text-sm text-muted-foreground">Nenhum lançamento ainda.</p>
                       ) : (
-                        <ul className="space-y-2">
-                          {sessionItems.map((item) => (
-                            <li key={item.id} className="text-sm">
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="truncate">
-                                  {item.quantity}× {item.name}
-                                </span>
-                                <span className="flex shrink-0 items-center gap-3">
-                                  <span className="font-semibold">
-                                    {brl(Number(item.unit_price) * item.quantity)}
-                                  </span>
-                                  {isOpen && (
-                                    <button
-                                      onClick={() =>
-                                        setConfirming({
-                                          kind: "removeItem",
-                                          sessionId: session.id,
-                                          itemId: item.id,
-                                        })
-                                      }
-                                      className="text-xs text-muted-foreground transition-colors hover:text-destructive"
-                                      title="Cancelar este lançamento"
-                                    >
-                                      Cancelar
-                                    </button>
-                                  )}
-                                </span>
-                              </div>
-                              {confirming?.kind === "removeItem" && confirming.itemId === item.id && (
-                                <div className="mt-2">
-                                  <PasswordConfirm
-                                    message={`Remover "${item.name}" da comanda? Confirme com a senha da equipe.`}
-                                    confirmLabel="Remover"
-                                    onCancel={() => setConfirming(null)}
-                                    onConfirm={async (password) => {
-                                      const result = await removeItem({
-                                        data: { itemId: item.id, password },
-                                      });
-                                      if (result.ok) {
-                                        setConfirming(null);
-                                        await load();
-                                      }
-                                      return result;
-                                    }}
-                                  />
-                                </div>
-                              )}
-                            </li>
-                          ))}
-                        </ul>
+                        // Mesma lista agrupada da tela da comanda: itens iguais numa linha só,
+                        // "−" e seleção pra remover vários com uma senha. Sem "+" aqui (o resumo não
+                        // carrega o produto); lançar é na tela da comanda.
+                        <TabItemList
+                          items={sessionItems.map((item) => ({ ...item, product_id: null }))}
+                          {...(isOpen
+                            ? {
+                                onRemoveMany: async (itemIds: string[], password: string) => {
+                                  const result = await removeItems({
+                                    data: { sessionId: session.id, itemIds, password },
+                                  });
+                                  if (result.ok || result.removed > 0) await load();
+                                  return result;
+                                },
+                              }
+                            : {})}
+                        />
                       )}
 
                       {confirming?.kind === "clear" && confirming.sessionId === session.id && (
