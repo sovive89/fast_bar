@@ -6,12 +6,12 @@ import { unlockBarPanel } from "@/lib/bar-gate.functions";
 export const Route = createFileRoute("/equipe")({
   head: () => ({
     meta: [
-      { title: "Acesso do caixa | Pop9Bar" },
+      { title: "Acesso do caixa | FastBar" },
       {
         name: "description",
-        content: "Área restrita: informe a senha da equipe para abrir o caixa do Pop9Bar.",
+        content: "Área restrita: informe a senha da equipe para abrir o caixa do FastBar.",
       },
-      { property: "og:title", content: "Acesso do caixa | Pop9Bar" },
+      { property: "og:title", content: "Acesso do caixa | FastBar" },
       {
         property: "og:description",
         content: "Informe a senha da equipe para acessar o caixa e as comandas.",

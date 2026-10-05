@@ -3,7 +3,7 @@ import type { TenantBranding } from "./types";
 export const DEFAULT_BRAND_NAME = "Bar";
 
 /** Branding padrão FastBar — usado enquanto a config carrega e quando o tenant não configurou
- * nada ainda. Nunca mostra o nome do software (Pop9Bar) pro cliente final, só um genérico neutro. */
+ * nada ainda. Nunca mostra o nome do software (FastBar) pro cliente final, só um genérico neutro. */
 export const DEFAULT_BRANDING: TenantBranding = {
   brandName: DEFAULT_BRAND_NAME,
   logoUrl: null,

@@ -247,7 +247,7 @@ function RegisterLayout() {
               FB
             </span>
             <span className="text-sm font-semibold text-sidebar-foreground group-data-[collapsible=icon]:hidden">
-              Pop9Bar
+              FastBar
             </span>
           </div>
         </SidebarHeader>

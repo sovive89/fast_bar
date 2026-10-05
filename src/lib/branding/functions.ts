@@ -8,7 +8,7 @@ import type { TenantBranding } from "./types";
  * /c/{sessionId}) — por isso não passa por assertRegisterAccess. Só devolve nome/logo/cor, nunca
  * as outras integrações (tokens/ids ficam só no card de admin em Conexões). Sem config salva, cai
  * pro nome genérico "Bar" e sem cor customizada — a tela nunca fica sem marca nenhuma, mas também
- * nunca mostra o nome do software (Pop9Bar) pro cliente final, só a identidade do estabelecimento.
+ * nunca mostra o nome do software (FastBar) pro cliente final, só a identidade do estabelecimento.
  */
 export const getPublicBranding = createServerFn({ method: "GET" }).handler(
   async (): Promise<TenantBranding> => {

@@ -2,7 +2,7 @@ import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-r
 
 export const Route = createFileRoute("/caixa/crm")({
   head: () => ({
-    meta: [{ title: "CRM | Pop9Bar" }],
+    meta: [{ title: "CRM | FastBar" }],
   }),
   component: CrmLayout,
 });

@@ -14,12 +14,15 @@
 
 export type Theme = "light" | "dark";
 
-export const THEME_STORAGE_KEY = "pop9bar:theme";
+export const THEME_STORAGE_KEY = "fastbar:theme";
+/** Chave antiga (quando o app se chamava Pop9Bar). Lida só pra não perder a preferência de quem já tinha escolhido. */
+const LEGACY_THEME_STORAGE_KEY = "pop9bar:theme";
 
 /** Lê a preferência salva; sem nada salvo, segue o tema do sistema operacional. */
 export function readStoredTheme(): Theme {
   try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    const stored =
+      localStorage.getItem(THEME_STORAGE_KEY) ?? localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
     if (stored === "dark" || stored === "light") return stored;
   } catch {
     // Navegador com armazenamento bloqueado (aba anônima, política de privacidade): não é erro,
@@ -50,7 +53,7 @@ export function storeTheme(theme: Theme) {
  */
 export const THEME_INIT_SCRIPT = `(function(){try{
 if(!location.pathname.startsWith('/caixa'))return;
-var s=localStorage.getItem('${THEME_STORAGE_KEY}');
+var s=localStorage.getItem('${THEME_STORAGE_KEY}')||localStorage.getItem('${LEGACY_THEME_STORAGE_KEY}');
 var d=s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches);
 if(d)document.documentElement.classList.add('dark');
 }catch(e){}})();`;

@@ -71,8 +71,8 @@
   --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui;
   --font-body: "DM Sans", ui-sans-serif, system-ui;
 
-  /* Identidade Pop9Bar: preto neutro + laranja vívido como cor de ação (mesma família visual do
-     app irmão Pop9 — ícone chama, "PØP9"). Estrutura/layout não mudam, só a paleta. */
+  /* Identidade FastBar: preto neutro + laranja vívido como cor de ação. Estrutura/layout não
+     mudam, só a paleta. */
   --background: oklch(0.15 0.004 260);
   --foreground: oklch(0.96 0.003 260);
   --card: oklch(0.2 0.005 260);
@@ -157,7 +157,7 @@
     font-family: var(--font-body);
   }
 
-  /* Marca d'água discreta do Pop9Bar (o software) — só nas telas da equipe/admin. Nas telas do
+  /* Marca d'água discreta do FastBar (o software) — só nas telas da equipe/admin. Nas telas do
      cliente (abrir comanda, acompanhamento) quem aparece é a identidade do estabelecimento, nunca
      a do software, então essa classe não entra lá. */
   .app-watermark {

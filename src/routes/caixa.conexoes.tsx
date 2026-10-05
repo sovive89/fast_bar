@@ -21,7 +21,7 @@ import type { PointTerminal } from "@/lib/mercadopago/types";
 
 export const Route = createFileRoute("/caixa/conexoes")({
   head: () => ({
-    meta: [{ title: "Conexões | Pop9Bar" }],
+    meta: [{ title: "Conexões | FastBar" }],
   }),
   component: ConnectionsPage,
 });
