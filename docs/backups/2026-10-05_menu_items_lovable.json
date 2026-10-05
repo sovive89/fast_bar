@@ -1,0 +1,12 @@
+[
+ {"id":"94d869fd-7c99-4398-93b1-ae2986aaad44","name":"Chopp 300ml","price":12,"category":"Chopp","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"21a42b03-e5cc-461e-ba11-279682f91a28","name":"Chopp 500ml","price":18,"category":"Chopp","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"6e1296bd-7363-4a5e-bd76-ea74777e83c9","name":"Cerveja Long Neck","price":10,"category":"Cerveja","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"2d8d9006-f50d-4ab0-bde9-9102f59df432","name":"Cerveja 600ml","price":16,"category":"Cerveja","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"f127f4cf-74a5-4f1a-96ab-050260d9e69c","name":"Caipirinha","price":22,"category":"Drinks","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"9adfcd1f-00e1-43a0-90a2-5db941f33b88","name":"Gin Tônica","price":28,"category":"Drinks","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"0714396f-fc00-4563-b6ea-76550ee89603","name":"Dose de Whisky","price":25,"category":"Destilados","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"759180f0-26ca-4b7d-839d-45a03f21ba2d","name":"Refrigerante","price":8,"category":"Sem álcool","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"a1a1ae6c-6d84-432c-a315-9ac884616eff","name":"Água mineral","price":5,"category":"Sem álcool","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"},
+ {"id":"3b156d7b-7253-4481-b1a1-9ab9995f8733","name":"Porção de batata","price":30,"category":"Petiscos","is_active":true,"created_at":"2026-08-11T22:49:33.597432+00:00"}
+]
