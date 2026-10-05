@@ -69,7 +69,7 @@ function CustomerTabViewContent({ loading, session, items, now }: CustomerTabVie
       <main className="mx-auto max-w-md p-6">
         <h1 className="text-2xl font-bold">Confirme seu celular</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Falta confirmar o código enviado por WhatsApp pra ver sua comanda.
+          Falta confirmar o código enviado por SMS pra ver sua comanda.
         </p>
         <Link
           to="/c/$sessionId/verificar"

@@ -28,7 +28,10 @@ export const openClientSession = createServerFn({ method: "POST" })
     const { requestPhoneVerification, isVerificationConfigured } = await import(
       "./verification/service.server"
     );
-    const channel = data.channel === "sms" ? "sms" : "whatsapp";
+    // Só SMS por enquanto (decisão de 05/10/2026). O WhatsApp no Twilio Verify exige um número
+    // de WhatsApp Business próprio, cadastrado na Twilio e na Meta, e o bar ainda não tem. O tipo
+    // aceita "whatsapp" para quando esse número existir, mas hoje o envio é sempre por SMS.
+    const channel = "sms" as const;
     const verificationOn = await isVerificationConfigured();
 
     const name = sanitizeName(data.name);
@@ -212,11 +215,8 @@ export const resendVerificationCode = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Comanda não encontrada ou já verificada." };
     }
 
-    // Reenvio pode trocar de canal: quem não recebeu no WhatsApp costuma querer tentar por SMS.
-    const sendResult = await requestPhoneVerification(
-      session.phone,
-      data.channel === "sms" ? "sms" : "whatsapp",
-    );
+    // Só SMS por enquanto (ver openClientSession).
+    const sendResult = await requestPhoneVerification(session.phone, "sms");
     if (!sendResult.ok) return { ok: false as const, message: sendResult.message };
 
     return { ok: true as const };
