@@ -152,8 +152,8 @@ export const verifyClientCode = createServerFn({ method: "POST" })
     const { checkPhoneVerification } = await import("./verification/service.server");
 
     const code = data.code.replace(/\D/g, "");
-    if (code.length < 4) {
-      return { ok: false as const, message: "Digite o código recebido." };
+    if (code.length !== 6) {
+      return { ok: false as const, message: "Digite o código de 6 dígitos recebido." };
     }
 
     const { data: session } = await admin()
