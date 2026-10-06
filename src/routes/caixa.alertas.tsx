@@ -8,7 +8,7 @@ import { SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
 
 export const Route = createFileRoute("/caixa/alertas")({
   head: () => ({
-    meta: [{ title: "Alertas | Pop9Bar" }],
+    meta: [{ title: "Alertas | FastBar" }],
   }),
   component: AlertsPage,
 });

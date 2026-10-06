@@ -21,7 +21,7 @@ type Customer = {
 
 export const Route = createFileRoute("/caixa/crm/")({
   head: () => ({
-    meta: [{ title: "CRM | Pop9Bar" }],
+    meta: [{ title: "CRM | FastBar" }],
   }),
   component: CrmOverview,
 });

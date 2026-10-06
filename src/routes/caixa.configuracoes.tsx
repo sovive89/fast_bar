@@ -14,7 +14,7 @@ import { BrandingModule } from "@/components/settings/BrandingModule";
 import { applyTheme, readStoredTheme, storeTheme, type Theme } from "@/lib/theme";
 
 export const Route = createFileRoute("/caixa/configuracoes")({
-  head: () => ({ meta: [{ title: "Configurações | Pop9Bar" }] }),
+  head: () => ({ meta: [{ title: "Configurações | FastBar" }] }),
   component: SettingsPage,
 });
 

@@ -43,7 +43,7 @@ function VerifyCodeContent() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || code.length !== 4) return;
+    if (busy || code.length < 4) return;
     setBusy(true);
     setError(null);
     try {
@@ -64,15 +64,15 @@ function VerifyCodeContent() {
     }
   }
 
-  // O reenvio pode trocar de canal: quem não recebeu no WhatsApp normalmente quer tentar por
-  // SMS (ou o contrário), e obrigar a recomeçar a comanda só pra mudar isso seria absurdo.
-  async function handleResend(channel: "whatsapp" | "sms") {
+  // Só SMS por enquanto: o envio por WhatsApp no Twilio Verify exige um número de WhatsApp
+  // Business próprio, que o bar ainda não tem.
+  async function handleResend() {
     if (resending || cooldown > 0) return;
     setResending(true);
     setError(null);
     let result: { ok: boolean; message?: string };
     try {
-      result = await resend({ data: { sessionId, channel } });
+      result = await resend({ data: { sessionId, channel: "sms" } });
     } catch {
       setResending(false);
       setError("Não foi possível reenviar o código. Atualize a página e tente de novo.");
@@ -99,7 +99,7 @@ function VerifyCodeContent() {
       </p>
       <h1 className="mt-2 text-2xl font-bold">Confirme seu celular</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Mandamos um código de 4 dígitos pro número que você informou. Digite abaixo pra continuar.
+        Mandamos um código por SMS pro número que você informou. Digite abaixo pra continuar.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -107,16 +107,17 @@ function VerifyCodeContent() {
           type="text"
           inputMode="numeric"
           autoFocus
-          maxLength={4}
+          autoComplete="one-time-code"
+          maxLength={8}
           value={code}
-          onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 4))}
-          placeholder="0000"
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 8))}
+          placeholder="000000"
           className="h-16 w-full rounded-xl border border-border bg-card text-center text-3xl font-bold tracking-[0.5em] outline-none focus:border-ring"
         />
         {error && <p className="text-sm text-destructive">{error}</p>}
         <button
           type="submit"
-          disabled={busy || code.length !== 4}
+          disabled={busy || code.length < 4}
           className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
         >
           {busy ? "Confirmando..." : "Confirmar"}
@@ -131,21 +132,14 @@ function VerifyCodeContent() {
             Reenviar código em {cooldown}s
           </p>
         ) : (
-          <div className="flex items-center justify-center gap-4">
-            <span className="text-xs text-muted-foreground">Não chegou? Reenviar por</span>
+          <div className="flex items-center justify-center gap-2">
+            <span className="text-xs text-muted-foreground">Não chegou?</span>
             <button
               type="button"
-              onClick={() => void handleResend("whatsapp")}
-              className="text-xs font-semibold text-primary underline underline-offset-2"
+              onClick={() => void handleResend()}
+              className="min-h-11 px-2 text-xs font-semibold text-primary underline underline-offset-2"
             >
-              WhatsApp
-            </button>
-            <button
-              type="button"
-              onClick={() => void handleResend("sms")}
-              className="text-xs font-semibold text-primary underline underline-offset-2"
-            >
-              SMS
+              Reenviar SMS
             </button>
           </div>
         )}

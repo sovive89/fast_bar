@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { useEffect, useMemo, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
@@ -31,7 +32,7 @@ import {
 export const Route = createFileRoute("/caixa/estoque")({
   head: () => ({
     meta: [
-      { title: "Estoque | Pop9Bar" },
+      { title: "Estoque | FastBar" },
       {
         name: "description",
         content: "Bebidas, ingredientes e fornecedores.",
@@ -901,11 +902,10 @@ function ComponentStockTab(props: {
                                     </option>
                                   ))}
                                 </select>
-                                <input
-                                  type="date"
+                                <DatePickerField
                                   value={lotExpiresOn}
-                                  onChange={(event) => setLotExpiresOn(event.target.value)}
-                                  className="h-10 w-full rounded-lg border border-border bg-background px-3 text-sm outline-none focus:border-ring"
+                                  onChange={setLotExpiresOn}
+                                  placeholder="Validade (opcional)"
                                 />
                                 <input
                                   type="text"

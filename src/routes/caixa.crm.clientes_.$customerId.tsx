@@ -9,7 +9,7 @@ import type { SessionStatus } from "@/types/fastbar";
 
 export const Route = createFileRoute("/caixa/crm/clientes_/$customerId")({
   head: () => ({
-    meta: [{ title: "Cliente | Pop9Bar" }],
+    meta: [{ title: "Cliente | FastBar" }],
   }),
   component: CustomerDetail,
 });

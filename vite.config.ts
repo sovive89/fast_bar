@@ -28,8 +28,8 @@ export default defineConfig({
         registerType: "autoUpdate",
         includeAssets: ["favicon.svg", "favicon.ico", "robots.txt"],
         manifest: {
-          name: "Pop9Bar",
-          short_name: "PØP9 BAR",
+          name: "FastBar",
+          short_name: "FastBar",
           start_url: "/equipe",
           display: "standalone",
           theme_color: "#f97316",

@@ -21,7 +21,7 @@ import type { PointTerminal } from "@/lib/mercadopago/types";
 
 export const Route = createFileRoute("/caixa/conexoes")({
   head: () => ({
-    meta: [{ title: "Conexões | Pop9Bar" }],
+    meta: [{ title: "Conexões | FastBar" }],
   }),
   component: ConnectionsPage,
 });
@@ -258,8 +258,7 @@ function TwilioVerificationModule({
               )}
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Confirma o celular do cliente (WhatsApp ou SMS, o cliente escolhe) antes de abrir a
-              comanda pelo QR code. Pegue essas três informações no Console da Twilio
+              Confirma o celular do cliente por SMS antes de abrir a comanda pelo QR code. Pegue essas três informações no Console da Twilio
               (twilio.com/console) — Account SID e Auth Token na página inicial, e o Verify Service
               SID em Verify → Services (crie um serviço se ainda não tiver).
             </p>

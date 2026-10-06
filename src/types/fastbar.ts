@@ -1,6 +1,6 @@
 export type SessionStatus = "unverified" | "pending" | "open" | "closed" | "paid" | "cancelled";
 
-/** Public (client-safe) shape of a bar_sessions row — never includes verification_code. */
+/** Public (client-safe) shape of a fastbar_sessions row — never includes verification_code. */
 export type BarSession = {
   id: string;
   customer_name: string;

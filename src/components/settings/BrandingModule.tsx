@@ -191,7 +191,7 @@ export function BrandingModule({
               <input
                 type="text"
                 value={primaryColor}
-                placeholder="#f97316 (padrão do Pop9Bar se deixar em branco)"
+                placeholder="#f97316 (padrão do FastBar se deixar em branco)"
                 onChange={(e) => setPrimaryColor(e.target.value)}
                 className="w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
               />

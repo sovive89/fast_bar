@@ -80,15 +80,15 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
-      { title: "Pop9Bar | Comanda digital para bares" },
+      { title: "FastBar | Comanda digital para bares" },
       {
         name: "description",
-        content: "Pop9Bar: abra a comanda pelo QR code e acompanhe o consumo em tempo real.",
+        content: "FastBar: abra a comanda pelo QR code e acompanhe o consumo em tempo real.",
       },
-      { property: "og:title", content: "Pop9Bar | Comanda digital para bares" },
+      { property: "og:title", content: "FastBar | Comanda digital para bares" },
       {
         property: "og:description",
-        content: "Pop9Bar: abra a comanda pelo QR code e acompanhe o consumo em tempo real.",
+        content: "FastBar: abra a comanda pelo QR code e acompanhe o consumo em tempo real.",
       },
       { property: "og:type", content: "website" },
       { name: "twitter:card", content: "summary_large_image" },
@@ -97,7 +97,7 @@ export const Route = createRootRouteWithContext<{ queryClient: QueryClient }>()(
       { name: "mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-capable", content: "yes" },
       { name: "apple-mobile-web-app-status-bar-style", content: "black-translucent" },
-      { name: "apple-mobile-web-app-title", content: "PØP9 BAR" },
+      { name: "apple-mobile-web-app-title", content: "FastBar" },
     ],
     links: [
       { rel: "preconnect", href: "https://fonts.googleapis.com" },

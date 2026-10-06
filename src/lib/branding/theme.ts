@@ -4,7 +4,7 @@ import type { TenantBranding } from "./types";
 
 /**
  * Gera os tokens CSS da marca a partir do branding do tenant — sobrescreve --primary/--ring só na
- * árvore onde é aplicado (nunca o :root global, que continua sendo o laranja do Pop9Bar nas telas
+ * árvore onde é aplicado (nunca o :root global, que continua sendo o laranja do FastBar nas telas
  * da equipe). Sem cor configurada, a árvore herda o --primary padrão normalmente.
  */
 export function brandingStyle(

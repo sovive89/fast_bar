@@ -32,12 +32,12 @@ type OverviewItem = {
 export const Route = createFileRoute("/caixa/")({
   head: () => ({
     meta: [
-      { title: "Caixa | Comandas do Pop9Bar" },
+      { title: "Caixa | Comandas do FastBar" },
       {
         name: "description",
         content: "Localize comandas por nome ou celular, lance bebidas e feche a conta.",
       },
-      { property: "og:title", content: "Caixa | Comandas do Pop9Bar" },
+      { property: "og:title", content: "Caixa | Comandas do FastBar" },
       {
         property: "og:description",
         content: "Comandas abertas, busca rápida e fechamento pelo caixa.",

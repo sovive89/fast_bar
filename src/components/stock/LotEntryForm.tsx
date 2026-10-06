@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { brl, parseAmount } from "@/lib/format";
+import { DatePickerField } from "@/components/ui/date-picker-field";
 import { addBaseDrinkEntry, addIngredientEntry, createSupplier } from "@/lib/base-drinks.functions";
 
 /**
@@ -320,11 +321,11 @@ export function LotEntryForm(props: {
 
       <label className="block">
         <span className="text-xs font-medium text-muted-foreground">Validade deste lote (opcional)</span>
-        <input
-          type="date"
+        <DatePickerField
           value={expiresOn}
-          onChange={(event) => setExpiresOn(event.target.value)}
-          className={`mt-1 ${inputClass}`}
+          onChange={setExpiresOn}
+          placeholder="Sem validade"
+          className="mt-1"
         />
       </label>
       <input

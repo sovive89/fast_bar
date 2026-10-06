@@ -57,7 +57,7 @@ export function toE164BR(phone: string): string {
  */
 export async function requestPhoneVerification(
   phone: string,
-  channel: VerificationChannel = "whatsapp",
+  channel: VerificationChannel = "sms",
 ) {
   const config = await loadTwilioConfig();
   if (!config) {
