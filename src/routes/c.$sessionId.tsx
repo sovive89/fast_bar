@@ -22,7 +22,15 @@ export const Route = createFileRoute("/c/$sessionId")({
 
 function CustomerTab() {
   const { sessionId } = Route.useParams();
-  const { session, items, loading, now } = useLiveTab(sessionId);
+  const { session, items, loading, loadFailed, now } = useLiveTab(sessionId);
 
-  return <CustomerTabView loading={loading} session={session} items={items} now={now} />;
+  return (
+    <CustomerTabView
+      loading={loading}
+      loadFailed={loadFailed}
+      session={session}
+      items={items}
+      now={now}
+    />
+  );
 }

@@ -8,9 +8,10 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
+import { getServerBuildId } from "@/lib/app-version.functions";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -37,12 +38,50 @@ function NotFoundComponent() {
   );
 }
 
+/** Aba aberta antes de um deploy tenta baixar um arquivo JS que não existe mais na versão nova. */
+function isStaleChunkError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|error loading dynamically/i.test(
+    message,
+  );
+}
+
 function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
+  const staleChunk = isStaleChunkError(error);
+  // O texto técnico do erro é pra equipe (caixa/equipe). A tela do cliente (QR da comanda) fica
+  // com a mensagem genérica, sem URLs de arquivos internos da build.
+  const [showDetail, setShowDetail] = useState(import.meta.env.DEV);
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith("/caixa") || path.startsWith("/equipe")) setShowDetail(true);
+  }, []);
+
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+    if (!staleChunk) return;
+    // Só recarrega quando o servidor confirma que está numa versão diferente da desta aba. Uma
+    // oscilação de rede também derruba um import dinâmico, e recarregar nesse caso só faria a
+    // pessoa perder o que estava fazendo.
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { buildId } = await getServerBuildId();
+        if (cancelled || !buildId || buildId === __BUILD_ID__) return;
+        // Uma tentativa por versão do app: um deploy futuro ainda se recupera sozinho, mas
+        // falhas repetidas na MESMA versão não entram em loop.
+        if (sessionStorage.getItem("fastbar-chunk-reload") === __BUILD_ID__) return;
+        sessionStorage.setItem("fastbar-chunk-reload", __BUILD_ID__);
+        window.location.reload();
+      } catch {
+        // Sem rede ou sem storage: não recarrega; o botão "Try again" continua disponível.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [error, staleChunk]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -53,6 +92,11 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
         <p className="mt-2 text-sm text-muted-foreground">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
+        {showDetail && error instanceof Error && error.message ? (
+          <p className="mt-3 break-words rounded-md bg-muted px-3 py-2 text-left font-mono text-xs text-muted-foreground">
+            {error.message}
+          </p>
+        ) : null}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {

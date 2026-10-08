@@ -9,6 +9,8 @@ import type { BarSession, BarTabItem } from "@/types/fastbar";
 
 export interface CustomerTabViewProps {
   loading: boolean;
+  /** Primeiro carregamento falhou (rede/servidor) — diferente de "comanda não existe". */
+  loadFailed?: boolean;
   session: BarSession | null;
   items: BarTabItem[];
   now: string | number | Date;
@@ -46,8 +48,22 @@ export function CustomerTabView(props: CustomerTabViewProps) {
   );
 }
 
-function CustomerTabViewContent({ loading, session, items, now }: CustomerTabViewProps) {
+function CustomerTabViewContent({
+  loading,
+  loadFailed,
+  session,
+  items,
+  now,
+}: CustomerTabViewProps) {
   const { branding, style } = useBranding();
+
+  if (loadFailed && !session) {
+    return (
+      <p className="p-6 text-sm text-muted-foreground">
+        Não foi possível carregar a comanda agora. Vamos tentar de novo em instantes.
+      </p>
+    );
+  }
 
   if (loading) {
     return <p className="p-6 text-sm text-muted-foreground">Carregando comanda...</p>;
@@ -116,7 +132,9 @@ function CustomerTabViewContent({ loading, session, items, now }: CustomerTabVie
         <p className="text-xs uppercase tracking-widest text-muted-foreground">Total consumido</p>
         {session.discount_percent ? (
           <>
-            <p className="mt-1 text-sm text-muted-foreground line-through">{brl(tabTotal(items))}</p>
+            <p className="mt-1 text-sm text-muted-foreground line-through">
+              {brl(tabTotal(items))}
+            </p>
             <p className="text-4xl font-bold">
               {brl(tabTotalWithDiscount(items, session.discount_percent))}
             </p>
@@ -135,7 +153,11 @@ function CustomerTabViewContent({ loading, session, items, now }: CustomerTabVie
           <div>
             <p className="text-muted-foreground">Tempo no bar</p>
             <p className="font-medium">
-              {elapsed(session.started_at, session.closed_at ?? session.paid_at, new Date(now).getTime())}
+              {elapsed(
+                session.started_at,
+                session.closed_at ?? session.paid_at,
+                new Date(now).getTime(),
+              )}
             </p>
           </div>
         </div>
