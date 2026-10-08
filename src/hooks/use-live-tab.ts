@@ -14,10 +14,16 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
   const load = useServerFn(scope === "register" ? getRegisterTab : getCustomerTab);
 
   const reload = useCallback(async () => {
-    const result = await load({ data: { sessionId } });
-    setSession((result.session as BarSession | null) ?? null);
-    setItems((result.items as BarTabItem[] | null) ?? []);
-    setLoading(false);
+    try {
+      const result = await load({ data: { sessionId } });
+      setSession((result.session as BarSession | null) ?? null);
+      setItems((result.items as BarTabItem[] | null) ?? []);
+    } catch (error) {
+      // Falha de rede/servidor num refresh não pode derrubar a tela: mantém o que já estava aí.
+      console.error("[useLiveTab] falha ao carregar a comanda", error);
+    } finally {
+      setLoading(false);
+    }
   }, [sessionId, load]);
 
   useEffect(() => {

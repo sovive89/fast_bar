@@ -37,12 +37,32 @@ function NotFoundComponent() {
   );
 }
 
+/** Aba aberta antes de um deploy tenta baixar um arquivo JS que não existe mais na versão nova. */
+function isStaleChunkError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return /dynamically imported module|Importing a module script failed|Loading chunk|ChunkLoadError|error loading dynamically/i.test(
+    message,
+  );
+}
+
 function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
+  const staleChunk = isStaleChunkError(error);
+
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-  }, [error]);
+    // Versão velha da aba: recarregar resolve. Só tenta uma vez por sessão do navegador pra não
+    // entrar em loop caso o problema seja outro.
+    if (!staleChunk) return;
+    try {
+      if (sessionStorage.getItem("fastbar-chunk-reload") === "1") return;
+      sessionStorage.setItem("fastbar-chunk-reload", "1");
+    } catch {
+      return;
+    }
+    window.location.reload();
+  }, [error, staleChunk]);
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background px-4">
@@ -53,6 +73,11 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
         <p className="mt-2 text-sm text-muted-foreground">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
+        {error instanceof Error && error.message ? (
+          <p className="mt-3 break-words rounded-md bg-muted px-3 py-2 text-left font-mono text-xs text-muted-foreground">
+            {error.message}
+          </p>
+        ) : null}
         <div className="mt-6 flex flex-wrap justify-center gap-2">
           <button
             onClick={() => {
