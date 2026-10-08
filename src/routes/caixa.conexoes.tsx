@@ -581,6 +581,28 @@ function ConnectionsPage() {
         <p className="mt-6 text-sm text-muted-foreground">Carregando...</p>
       ) : (
         <div className="mt-6 space-y-3">
+          <section className="rounded-2xl border border-border bg-card p-4" aria-label="IA Normalizadora de Documentos">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Printer className="h-4 w-4" />
+              </span>
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <p className="text-sm font-semibold">IA Normalizadora de Documentos</p>
+                  <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Planejada</span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Leitura de notas fiscais, recibos e comprovantes por câmera ou upload.
+                  Extrai itens, sugere produtos do cadastro, normaliza embalagens, unidades e custos
+                  e prepara lotes para revisão antes de qualquer lançamento no estoque.
+                </p>
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Provedores em avaliação: Mindee, Google Document AI e Azure Document Intelligence.
+                  Captura e processamento ainda não disponíveis. Nenhum documento é lançado automaticamente.
+                </p>
+              </div>
+            </div>
+          </section>
           <TwilioVerificationModule row={rows.find((r) => r.key === "twilio")} onSave={handleSave} />
           <MercadoPagoModule row={rows.find((r) => r.key === "mercado_pago")} onSave={handleSave} />
           {CARDS.map((card) => (
