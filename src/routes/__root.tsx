@@ -8,7 +8,7 @@ import {
   Scripts,
   type ErrorComponentProps,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
 
@@ -49,6 +49,13 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
   console.error(error);
   const router = useRouter();
   const staleChunk = isStaleChunkError(error);
+  // O texto técnico do erro é pra equipe (caixa/equipe). A tela do cliente (QR da comanda) fica
+  // com a mensagem genérica, sem URLs de arquivos internos da build.
+  const [showDetail, setShowDetail] = useState(import.meta.env.DEV);
+  useEffect(() => {
+    const path = window.location.pathname;
+    if (path.startsWith("/caixa") || path.startsWith("/equipe")) setShowDetail(true);
+  }, []);
 
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
@@ -56,8 +63,10 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
     // entrar em loop caso o problema seja outro.
     if (!staleChunk) return;
     try {
-      if (sessionStorage.getItem("fastbar-chunk-reload") === "1") return;
-      sessionStorage.setItem("fastbar-chunk-reload", "1");
+      // Uma tentativa por versão do app: um deploy novo, mais adiante no turno, ainda pode se
+      // recuperar sozinho, mas falhas repetidas na MESMA versão não entram em loop.
+      if (sessionStorage.getItem("fastbar-chunk-reload") === __BUILD_ID__) return;
+      sessionStorage.setItem("fastbar-chunk-reload", __BUILD_ID__);
     } catch {
       return;
     }
@@ -73,7 +82,7 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
         <p className="mt-2 text-sm text-muted-foreground">
           Something went wrong on our end. You can try refreshing or head back home.
         </p>
-        {error instanceof Error && error.message ? (
+        {showDetail && error instanceof Error && error.message ? (
           <p className="mt-3 break-words rounded-md bg-muted px-3 py-2 text-left font-mono text-xs text-muted-foreground">
             {error.message}
           </p>
