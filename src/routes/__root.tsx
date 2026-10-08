@@ -11,6 +11,7 @@ import {
 import { useEffect, useState, type ReactNode } from "react";
 import { Analytics } from "@vercel/analytics/react";
 import { THEME_INIT_SCRIPT } from "@/lib/theme";
+import { getServerBuildId } from "@/lib/app-version.functions";
 
 import appCss from "../styles.css?url";
 import { reportLovableError } from "../lib/lovable-error-reporting";
@@ -59,18 +60,27 @@ function ErrorComponent({ error, reset }: ErrorComponentProps) {
 
   useEffect(() => {
     reportLovableError(error, { boundary: "tanstack_root_error_component" });
-    // Versão velha da aba: recarregar resolve. Só tenta uma vez por sessão do navegador pra não
-    // entrar em loop caso o problema seja outro.
     if (!staleChunk) return;
-    try {
-      // Uma tentativa por versão do app: um deploy novo, mais adiante no turno, ainda pode se
-      // recuperar sozinho, mas falhas repetidas na MESMA versão não entram em loop.
-      if (sessionStorage.getItem("fastbar-chunk-reload") === __BUILD_ID__) return;
-      sessionStorage.setItem("fastbar-chunk-reload", __BUILD_ID__);
-    } catch {
-      return;
-    }
-    window.location.reload();
+    // Só recarrega quando o servidor confirma que está numa versão diferente da desta aba. Uma
+    // oscilação de rede também derruba um import dinâmico, e recarregar nesse caso só faria a
+    // pessoa perder o que estava fazendo.
+    let cancelled = false;
+    void (async () => {
+      try {
+        const { buildId } = await getServerBuildId();
+        if (cancelled || !buildId || buildId === __BUILD_ID__) return;
+        // Uma tentativa por versão do app: um deploy futuro ainda se recupera sozinho, mas
+        // falhas repetidas na MESMA versão não entram em loop.
+        if (sessionStorage.getItem("fastbar-chunk-reload") === __BUILD_ID__) return;
+        sessionStorage.setItem("fastbar-chunk-reload", __BUILD_ID__);
+        window.location.reload();
+      } catch {
+        // Sem rede ou sem storage: não recarrega; o botão "Try again" continua disponível.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
   }, [error, staleChunk]);
 
   return (

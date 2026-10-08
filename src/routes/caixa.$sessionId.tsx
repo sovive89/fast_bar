@@ -46,7 +46,7 @@ export const Route = createFileRoute("/caixa/$sessionId")({
 function RegisterTabDetail() {
   const { sessionId } = Route.useParams();
   const navigate = useNavigate();
-  const { session, items, loading, loadFailed, now, reload } = useLiveTab(sessionId, "register");
+  const { session, items, loading, loadFailed, loadError, now, reload } = useLiveTab(sessionId, "register");
   const [products, setProducts] = useState<BarProduct[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -112,8 +112,13 @@ function RegisterTabDetail() {
       <main className="mx-auto max-w-2xl p-6">
         <h1 className="text-2xl font-bold">Não foi possível carregar a comanda</h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          Falha de conexão ou do servidor. Vamos tentar de novo sozinhos a cada poucos segundos.
+          Vamos tentar de novo sozinhos a cada poucos segundos.
         </p>
+        {loadError && (
+          <p className="mt-2 break-words rounded-md bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">
+            {loadError}
+          </p>
+        )}
         <button
           type="button"
           onClick={() => void reload()}
