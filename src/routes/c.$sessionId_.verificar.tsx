@@ -43,7 +43,7 @@ function VerifyCodeContent() {
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (busy || code.length < 4) return;
+    if (busy || code.length !== 6) return;
     setBusy(true);
     setError(null);
     try {
@@ -99,7 +99,7 @@ function VerifyCodeContent() {
       </p>
       <h1 className="mt-2 text-2xl font-bold">Confirme seu celular</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Mandamos um código por SMS pro número que você informou. Digite abaixo pra continuar.
+        Mandamos um código de 6 dígitos por SMS pro número que você informou. Digite abaixo pra continuar.
       </p>
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
@@ -107,17 +107,20 @@ function VerifyCodeContent() {
           type="text"
           inputMode="numeric"
           autoFocus
-          autoComplete="one-time-code"
-          maxLength={8}
+          maxLength={6}
           value={code}
-          onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 8))}
+          onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
           placeholder="000000"
+          autoComplete="one-time-code"
+          aria-label="Código de confirmação de 6 dígitos"
+          pattern="[0-9]{6}"
+          required
           className="h-16 w-full rounded-xl border border-border bg-card text-center text-3xl font-bold tracking-[0.5em] outline-none focus:border-ring"
         />
         {error && <p className="text-sm text-destructive">{error}</p>}
         <button
           type="submit"
-          disabled={busy || code.length < 4}
+          disabled={busy || code.length !== 6}
           className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
         >
           {busy ? "Confirmando..." : "Confirmar"}
