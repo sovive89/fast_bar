@@ -104,7 +104,7 @@ const CARDS: CardDef[] = [
       {
         key: "endpoint",
         label: "Endpoint compatível (opcional)",
-        placeholder: "https://.../v1/chat/completions",
+        placeholder: "https://api.openai.com/v1/responses",
       },
       {
         key: "apiKey",

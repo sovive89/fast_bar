@@ -154,7 +154,7 @@ async function chamarIA(data: {
   }
 
   return requestOCR({
-    endpoint: "https://ai-gateway.vercel.sh/v1/chat/completions",
+    endpoint: "https://ai-gateway.vercel.sh/v1/responses",
     apiKey: gatewayToken,
     model,
     fallbackModel,
