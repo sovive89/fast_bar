@@ -58,7 +58,11 @@ export const getIntegrations = createServerFn({ method: "POST" }).handler(async 
 
 export const updateIntegration = createServerFn({ method: "POST" })
   .inputValidator(
-    (data: { key: IntegrationKey; enabled?: boolean | undefined; config?: IntegrationConfig | undefined }) => data,
+    (data: {
+      key: IntegrationKey;
+      enabled?: boolean | undefined;
+      config?: IntegrationConfig | undefined;
+    }) => data,
   )
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
@@ -70,6 +74,19 @@ export const updateIntegration = createServerFn({ method: "POST" })
     if (data.enabled !== undefined) patch.enabled = data.enabled;
     if (data.config !== undefined) {
       if (data.key === "ocr_ai") {
+        const { validateOCRModelName } = await import("./ocr-model");
+        try {
+          for (const key of ["model", "fallbackModel"] as const) {
+            const value = data.config[key]?.trim();
+            if (value) validateOCRModelName(value);
+          }
+        } catch (error) {
+          return {
+            ok: false as const,
+            error: error instanceof Error ? error.message : "Modelo OCR inválido.",
+          };
+        }
+
         const { getDefaultTenantId } = await import("./fastbar.server");
         const tenantId = await getDefaultTenantId();
         const { data: current } = await admin()
