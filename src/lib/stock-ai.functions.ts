@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { normalizeOCRPayload, parseOCRText } from "./ocr-contract";
 import type { OCRItem } from "./ocr-contract";
-import { documentPart } from "./stock-ocr";
+import { createOCRRequest, DEFAULT_OCR_MODEL, isDirectOpenAI } from "./ocr-model";
 import { normalizeProductPhoto, PRODUCT_PHOTO_PROMPT } from "./stock-photo";
 
 type AIResult = {
@@ -25,26 +25,8 @@ type AIResult = {
   avisoDuplicidade?: string | null;
 };
 
-/**
- * Modelo usado na leitura. Trocável por variável de ambiente (FASTBAR_OCR_MODEL) porque "qual
- * modelo lê melhor" só se responde testando contra nota de verdade do fornecedor do bar — cupom
- * amassado, impressão fraca, foto torta — e não contra benchmark de blog.
- *
- * Alternativas já verificadas no catálogo do gateway, da mais barata pra mais cara:
- *   google/gemini-3.8-flash      $0,75/M entrada  (padrão — geração mais nova do mesmo modelo)
- *   openai/gpt-5                 $1,25/M
- *   google/gemini-3.1-pro-preview $2,00/M
- *   anthropic/claude-sonnet-5    $2,00/M
- *
- * A diferença de custo entre elas é irrelevante aqui: uma nota gasta ~2 mil tokens de entrada, o
- * que dá menos de dois centavos por documento no mais caro da lista. Num bar que recebe 20 notas
- * por mês, escolher pelo preço é otimizar o que não custa — escolha por acerto.
- *
- * (Declarando o óbvio: quem escreveu este comentário é o Claude, então tome a menção ao
- * claude-sonnet-5 com o desconto devido e teste você mesmo.)
- */
-const MODELO_PADRAO = "google/gemini-3.8-flash";
-
+// O modelo pode ser definido em Conexões ou FASTBAR_OCR_MODEL.
+// O padrão OpenAI aceita fotos e PDFs; a revisão humana continua obrigatória.
 const PROMPT = `Você é o normalizador de documentos de entrada de estoque de um bar brasileiro.
 Leia a imagem ou documento e retorne SOMENTE JSON válido, sem markdown, com este formato:
 {
@@ -152,10 +134,20 @@ async function chamarIA(data: {
   }
   const customSecret =
     config["apiKey"]?.trim() ||
+    (isDirectOpenAI(customEndpoint) ? process.env["OPENAI_API_KEY"] : undefined) ||
     (!configuredEndpoint ? process.env["FASTBAR_AI_NORMALIZER_SECRET"] : undefined);
   const configuredModel = config["model"]?.trim();
+  const requestBody = createOCRRequest({
+    model: configuredModel || process.env["FASTBAR_OCR_MODEL"] || DEFAULT_OCR_MODEL,
+    endpoint: customEndpoint,
+    prompt,
+    data,
+  });
 
   if (customEndpoint) {
+    if (isDirectOpenAI(customEndpoint) && !customSecret) {
+      throw new Error("Configure a chave OpenAI em Conexões ou OPENAI_API_KEY no servidor.");
+    }
     const response = await fetch(customEndpoint, {
       method: "POST",
       headers: {
@@ -163,17 +155,7 @@ async function chamarIA(data: {
         ...(customSecret ? { Authorization: `Bearer ${customSecret}` } : {}),
       },
       signal: AbortSignal.timeout(60_000),
-      body: JSON.stringify({
-        model: configuredModel || process.env["FASTBAR_OCR_MODEL"] || MODELO_PADRAO,
-        messages: [
-          {
-            role: "user",
-            content: [{ type: "text", text: prompt }, documentPart(data)],
-          },
-        ],
-        temperature: 0,
-        stream: false,
-      }),
+      body: JSON.stringify(requestBody),
     });
     if (!response.ok) throw new Error(`O serviço de IA respondeu HTTP ${response.status}.`);
     const payload = (await response.json()) as {
@@ -200,17 +182,7 @@ async function chamarIA(data: {
       Authorization: `Bearer ${gatewayToken}`,
     },
     signal: AbortSignal.timeout(60_000),
-    body: JSON.stringify({
-      model: configuredModel || process.env["FASTBAR_OCR_MODEL"] || MODELO_PADRAO,
-      messages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: prompt }, documentPart(data)],
-        },
-      ],
-      temperature: 0,
-      stream: false,
-    }),
+    body: JSON.stringify(requestBody),
   });
 
   if (!response.ok) {
