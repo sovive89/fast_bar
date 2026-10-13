@@ -10,6 +10,7 @@ import {
   parseSupplyFile,
 } from "@/lib/nota-fiscal.functions";
 import { normalizarDocumentoEstoque } from "@/lib/stock-normalizer.functions";
+import { preprocessDocumentImage } from "@/lib/ocr-image";
 
 type Kind = "base_drink" | "ingredient";
 type ComponentOption = { id: string; name: string; kind: Kind };
@@ -246,7 +247,18 @@ export function NotaFiscalImport(props: {
     setOrigin(ehImagem || /pdf$/i.test(file.type) ? "foto" : "arquivo");
     setMode("processing");
 
-    const base64 = await lerBase64(file);
+    let arquivoParaOCR = file;
+    if (ehImagem) {
+      try {
+        setInfo("Melhorando a foto para leitura: orientação, escala, contraste e ruído...");
+        arquivoParaOCR = await preprocessDocumentImage(file);
+      } catch {
+        // O OCR ainda pode tentar a foto original se o navegador não suportar a transformação.
+        setInfo("Não foi possível otimizar a foto neste navegador; tentando a imagem original.");
+      }
+    }
+
+    const base64 = await lerBase64(arquivoParaOCR);
     if (!base64) {
       setError("Não foi possível ler o arquivo.");
       setMode("choosing");
@@ -255,7 +267,13 @@ export function NotaFiscalImport(props: {
 
     try {
       const r = await normalizar({
-        data: { arquivo: { fileName: file.name, base64, mimeType: file.type || undefined } },
+        data: {
+          arquivo: {
+            fileName: file.name,
+            base64,
+            mimeType: arquivoParaOCR.type || file.type || undefined,
+          },
+        },
       });
       if (!r.ok) {
         setError(r.message);

@@ -5,6 +5,9 @@ type AIItem = {
   quantidade: number;
   unidade: string;
   valorUnitario: number;
+  lote?: string | null;
+  fabricacao?: string | null;
+  validade?: string | null;
 };
 
 type AIResult = {
@@ -13,6 +16,8 @@ type AIResult = {
   fornecedorNome?: string | null;
   fornecedorDocumento?: string | null;
   numeroNota?: string | null;
+  serie?: string | null;
+  documentoTipo?: "nfe" | "nfce" | "danfe" | "cupom" | "comprovante" | "outro" | null;
   chaveAcesso?: string | null;
   dataEmissao?: string | null;
   valorTotal?: number | null;
@@ -45,14 +50,16 @@ const MODELO_PADRAO = "google/gemini-3.8-flash";
 const PROMPT = `Você é o normalizador de documentos de entrada de estoque de um bar brasileiro.
 Leia a imagem ou documento e retorne SOMENTE JSON válido, sem markdown, com este formato:
 {
+  "documentoTipo": "nfe"|"nfce"|"danfe"|"cupom"|"comprovante"|"outro"|null,
   "fornecedorNome": string|null,
   "fornecedorDocumento": string|null,
   "numeroNota": string|null,
+  "serie": string|null,
   "chaveAcesso": string|null,
   "dataEmissao": string|null,
   "valorTotal": number|null,
   "confianca": number,
-  "itens": [{"descricao":string,"quantidade":number,"unidade":string,"valorUnitario":number}]
+  "itens": [{"descricao":string,"quantidade":number,"unidade":string,"valorUnitario":number,"lote":string|null,"fabricacao":string|null,"validade":string|null}]
 }
 
 REGRAS:
@@ -76,6 +83,13 @@ ITENS:
 - A descrição de um item pode quebrar em duas linhas no cupom — junte antes de devolver.
 - Ignore linhas que não são produto: subtotal, desconto, troco, forma de pagamento, tributos.
 - Preserve a unidade como está no papel (UN, CX, KG, FD, PC, L).
+- Procure lote, fabricação e validade na linha do produto, na embalagem ou em observações; não
+  invente e não aplique um lote de um item a outro. Converta datas para YYYY-MM-DD quando houver
+  dia, mês e ano; data parcial deve ser null.
+- Diferencie NF-e/XML, DANFE, NFC-e/cupom, recibo/comprovante e documento não fiscal. Um cupom
+  pode não ter chave de 44 dígitos; isso não é erro.
+- Se o arquivo for PDF, leia todas as páginas visíveis. Se for planilha ou tabela impressa, trate
+  cada linha de produto como item e ignore cabeçalhos, totais, descontos, impostos e pagamentos.
 
 O documento pode ser nota fiscal, cupom fiscal (NFC-e), DANFE, comprovante, etiqueta ou planilha
 impressa. Extraia somente o que está visível.`;
@@ -97,9 +111,34 @@ function parseAIText(text: string): Partial<AIResult> {
   }
 }
 
+function normalizarData(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const raw = value.trim();
+  if (!raw) return null;
+  const br = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
+  if (br) return `${br[3] ?? ""}-${(br[2] ?? "").padStart(2, "0")}-${(br[1] ?? "").padStart(2, "0")}`;
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
+}
+
+function normalizarTipo(value: unknown): AIResult["documentoTipo"] {
+  return ["nfe", "nfce", "danfe", "cupom", "comprovante", "outro"].includes(String(value))
+    ? (value as NonNullable<AIResult["documentoTipo"]>)
+    : null;
+}
+
 async function chamarIA(data: { base64: string; mimeType: string; fileName?: string | undefined }) {
-  const customEndpoint = process.env["FASTBAR_AI_NORMALIZER_URL"];
-  const customSecret = process.env["FASTBAR_AI_NORMALIZER_SECRET"];
+  const { admin, getDefaultTenantId } = await import("./fastbar.server");
+  const tenantId = await getDefaultTenantId();
+  const { data: integration } = await admin()
+    .from("fastbar_integrations")
+    .select("enabled, config")
+    .eq("tenant_id", tenantId)
+    .eq("key", "ocr_ai")
+    .maybeSingle();
+  const config = (integration?.enabled ? integration.config : {}) as Record<string, string>;
+  const customEndpoint = config["endpoint"]?.trim() || process.env["FASTBAR_AI_NORMALIZER_URL"];
+  const customSecret = config["apiKey"]?.trim() || process.env["FASTBAR_AI_NORMALIZER_SECRET"];
+  const configuredModel = config["model"]?.trim();
 
   if (customEndpoint) {
     const response = await fetch(customEndpoint, {
@@ -135,7 +174,7 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
       Authorization: `Bearer ${gatewayToken}`,
     },
     body: JSON.stringify({
-      model: process.env["FASTBAR_OCR_MODEL"] || MODELO_PADRAO,
+      model: configuredModel || process.env["FASTBAR_OCR_MODEL"] || MODELO_PADRAO,
       messages: [
         {
           role: "user",
@@ -183,13 +222,30 @@ export const normalizarDocumentoEstoqueComIA = createServerFn({ method: "POST" }
     try {
       const parsed = await chamarIA(data);
       const itens = Array.isArray(parsed.itens)
-        ? parsed.itens.filter(
-            (item): item is AIItem =>
-              !!item &&
-              typeof item === "object" &&
-              typeof (item as AIItem).descricao === "string" &&
-              Number.isFinite(Number((item as AIItem).quantidade)),
-          )
+        ? parsed.itens.flatMap((item) => {
+            if (
+              !item ||
+              typeof item !== "object" ||
+              typeof (item as AIItem).descricao !== "string" ||
+              !Number.isFinite(Number((item as AIItem).quantidade))
+            ) {
+              return [];
+            }
+            const candidate = item as AIItem;
+            return [
+              {
+                descricao: candidate.descricao.trim(),
+                quantidade: Number(candidate.quantidade),
+                unidade: candidate.unidade?.trim() || "un",
+                valorUnitario: Number.isFinite(Number(candidate.valorUnitario))
+                  ? Number(candidate.valorUnitario)
+                  : 0,
+                lote: typeof candidate.lote === "string" ? candidate.lote.trim() || null : null,
+                fabricacao: normalizarData(candidate.fabricacao),
+                validade: normalizarData(candidate.validade),
+              },
+            ];
+          })
         : [];
 
       const chave =
@@ -213,6 +269,8 @@ export const normalizarDocumentoEstoqueComIA = createServerFn({ method: "POST" }
         fornecedorNome: parsed.fornecedorNome ?? null,
         fornecedorDocumento: parsed.fornecedorDocumento ?? null,
         numeroNota: parsed.numeroNota ?? null,
+        serie: parsed.serie ?? null,
+        documentoTipo: normalizarTipo(parsed.documentoTipo) ?? null,
         chaveAcesso: chave,
         dataEmissao: parsed.dataEmissao ?? null,
         valorTotal: typeof parsed.valorTotal === "number" ? parsed.valorTotal : null,
