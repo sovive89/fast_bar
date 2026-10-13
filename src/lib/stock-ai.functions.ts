@@ -3,6 +3,7 @@ import { normalizeOCRPayload } from "./ocr-contract";
 import type { OCRItem } from "./ocr-contract";
 import { DEFAULT_OCR_MODEL, DEFAULT_OCR_FALLBACK_MODEL, isDirectOpenAI } from "./ocr-model";
 import { normalizeProductPhoto, PRODUCT_PHOTO_PROMPT } from "./stock-photo";
+import { resolveOCRConnection } from "./ocr-connection";
 
 type AIResult = {
   ok: boolean;
@@ -121,43 +122,34 @@ async function chamarIA(data: {
   if (configuredEndpoint && !customEndpoint) {
     throw new Error("O endpoint OCR precisa ser uma URL HTTPS pública e válida.");
   }
-  const customSecret =
-    config["apiKey"]?.trim() ||
-    (isDirectOpenAI(customEndpoint) ? process.env["OPENAI_API_KEY"] : undefined) ||
-    (!configuredEndpoint ? process.env["FASTBAR_AI_NORMALIZER_SECRET"] : undefined);
+  const connection = resolveOCRConnection({
+    endpoint: configuredEndpoint,
+    apiKey: config["apiKey"],
+    normalizerEndpoint: customEndpoint ?? undefined,
+    normalizerSecret: process.env["FASTBAR_AI_NORMALIZER_SECRET"],
+    openaiKey: process.env["OPENAI_API_KEY"],
+    gatewayKey: process.env["AI_GATEWAY_API_KEY"],
+    oidcToken: process.env["VERCEL_OIDC_TOKEN"],
+  });
   const configuredModel = config["model"]?.trim();
   const model = configuredModel || process.env["FASTBAR_OCR_MODEL"] || DEFAULT_OCR_MODEL;
   const fallbackModel = config["fallbackModel"]?.trim() || DEFAULT_OCR_FALLBACK_MODEL;
   const { requestOCR } = await import("./ocr-request.server");
 
-  if (customEndpoint) {
-    if (isDirectOpenAI(customEndpoint) && !customSecret) {
-      throw new Error("Configure a chave OpenAI em Conexões ou OPENAI_API_KEY no servidor.");
-    }
-    return requestOCR({
-      endpoint: customEndpoint,
-      apiKey: customSecret ?? "",
-      model,
-      fallbackModel: isDirectOpenAI(customEndpoint) ? fallbackModel : undefined,
-      prompt,
-      data,
-    });
+  if (isDirectOpenAI(connection.endpoint) && !connection.apiKey) {
+    throw new Error("Configure a chave OpenAI em Conexões ou OPENAI_API_KEY no servidor.");
   }
-
-  // Em Vercel, VERCEL_OIDC_TOKEN é disponibilizado automaticamente para funções implantadas.
-  // Assim o FastBar não precisa de um endpoint de IA próprio nem de segredo exposto no navegador.
-  const gatewayToken = process.env["AI_GATEWAY_API_KEY"] || process.env["VERCEL_OIDC_TOKEN"];
-  if (!gatewayToken) {
+  if (connection.endpoint === "https://ai-gateway.vercel.sh/v1/responses" && !connection.apiKey) {
     throw new Error(
       "A IA não está autenticada. No Vercel, habilite o AI Gateway/OIDC ou configure AI_GATEWAY_API_KEY.",
     );
   }
 
   return requestOCR({
-    endpoint: "https://ai-gateway.vercel.sh/v1/responses",
-    apiKey: gatewayToken,
+    endpoint: connection.endpoint,
+    apiKey: connection.apiKey,
     model,
-    fallbackModel,
+    fallbackModel: connection.fallback ? fallbackModel : undefined,
     prompt,
     data,
   });
