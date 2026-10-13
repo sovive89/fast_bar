@@ -23,6 +23,7 @@ export type IntegrationRow = {
   enabled: boolean;
   config: IntegrationConfig;
   updated_at: string;
+  hasApiKey?: boolean;
 };
 
 /**
@@ -51,7 +52,7 @@ export const getIntegrations = createServerFn({ method: "POST" }).handler(async 
     // A chave do provedor nunca volta para o navegador. O update abaixo preserva o segredo
     // quando o formulário é salvo com o campo vazio ou mascarado.
     const { apiKey: _apiKey, ...safeConfig } = row.config;
-    return { ...row, config: safeConfig };
+    return { ...row, config: safeConfig, hasApiKey: Boolean(_apiKey?.trim()) };
   });
   return { integrations };
 });
@@ -89,12 +90,17 @@ export const updateIntegration = createServerFn({ method: "POST" })
 
         const { getDefaultTenantId } = await import("./fastbar.server");
         const tenantId = await getDefaultTenantId();
-        const { data: current } = await admin()
+        const { data: current, error: readError } = await admin()
           .from("fastbar_integrations")
           .select("config")
           .eq("tenant_id", tenantId)
           .eq("key", data.key)
           .maybeSingle();
+        if (readError)
+          return {
+            ok: false as const,
+            error: "Não foi possível ler a configuração salva. Tente novamente.",
+          };
         const incoming = { ...data.config };
         if (!incoming["apiKey"]?.trim()) delete incoming["apiKey"];
         patch.config = { ...((current?.config ?? {}) as IntegrationConfig), ...incoming };

@@ -135,13 +135,23 @@ function ConnectionCard({
     return initial;
   });
   const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saved, setSaved] = useState(false);
   const enabled = row?.enabled ?? false;
   const Icon = card.icon;
 
   async function handleToggle(next: boolean) {
     setSaving(true);
+    setSaveError(null);
+    setSaved(false);
     try {
       await onSave(card.key, next, values);
+      setSaved(true);
+      if (card.key === "ocr_ai") setValues((prev) => ({ ...prev, apiKey: "" }));
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "Não foi possível salvar. Tente novamente.",
+      );
     } finally {
       setSaving(false);
     }
@@ -149,8 +159,16 @@ function ConnectionCard({
 
   async function handleSaveConfig() {
     setSaving(true);
+    setSaveError(null);
+    setSaved(false);
     try {
       await onSave(card.key, enabled, values);
+      setSaved(true);
+      if (card.key === "ocr_ai") setValues((prev) => ({ ...prev, apiKey: "" }));
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : "Não foi possível salvar. Tente novamente.",
+      );
     } finally {
       setSaving(false);
     }
@@ -208,6 +226,11 @@ function ConnectionCard({
               onChange={(e) => setValues((prev) => ({ ...prev, [field.key]: e.target.value }))}
               className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-primary"
             />
+            {card.key === "ocr_ai" && field.key === "apiKey" && row?.hasApiKey && (
+              <p className="mt-1 text-xs text-muted-foreground">
+                Chave salva. Deixe vazio para mantê-la.
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -222,6 +245,17 @@ function ConnectionCard({
           {saving ? "Salvando..." : "Salvar configuração"}
         </button>
       </div>
+
+      {saveError && (
+        <p role="alert" className="mt-3 text-xs text-destructive">
+          {saveError}
+        </p>
+      )}
+      {saved && (
+        <p role="status" className="mt-3 text-xs text-emerald-500">
+          Configuração salva.
+        </p>
+      )}
     </div>
   );
 }
@@ -608,14 +642,10 @@ function ConnectionsPage() {
   }, []);
 
   async function handleSave(key: IntegrationKey, enabled: boolean, config: Record<string, string>) {
-    await save({ data: { key, enabled, config } });
-    setRows((prev) =>
-      prev
-        ? prev.map((r) =>
-            r.key === key ? { ...r, enabled, config, updated_at: new Date().toISOString() } : r,
-          )
-        : prev,
-    );
+    const result = await save({ data: { key, enabled, config } });
+    if (!result.ok) throw new Error(result.error);
+    const refreshed = await load();
+    setRows(refreshed.integrations);
   }
 
   return (
