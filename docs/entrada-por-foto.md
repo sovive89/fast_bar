@@ -1,0 +1,37 @@
+# Entrada de estoque por foto
+
+No estoque, abra **Dar entrada no estoque** e escolha **Fotografar produtos ou
+geladeira** ou **Escolher foto dos produtos**. Também são aceitos engradados,
+caixas fechadas, latas e garrafas avulsas.
+
+A leitura usa a conexão OCR já configurada em **Conexões**. Não instala um modelo
+no celular e precisa de internet. Fotos são redimensionadas preservando as cores
+dos rótulos; o arquivo enviado deve ter até 3 MB.
+
+## Conferência obrigatória
+
+1. Confira marca, variante e volume contra a prévia da foto.
+2. Associe cada produto ao item correto do estoque.
+3. Marque apenas a mercadoria recém-colocada. Todos os itens da foto começam
+   desmarcados para evitar a entrada de estoque anterior.
+4. Informe **Embalagens novas (conferidas)** conforme a embalagem configurada no
+   cadastro. A contagem visível não preenche esse campo automaticamente.
+5. Confirme a entrada para gravar os movimentos.
+
+Se já havia unidades do mesmo produto na geladeira, informe somente as adicionadas,
+não o total visível. A imagem não distingue a idade das unidades. Produtos escondidos
+precisam ser conferidos manualmente. Uma caixa fechada continua sendo uma caixa;
+a IA não presume quantas latas ou garrafas existem dentro dela.
+
+Preço, fornecedor, lote e validade não são inferidos pela foto. Campos opcionais
+podem ser preenchidos pelo operador. A origem da entrada fica registrada como foto
+de produtos / geladeira revisada.
+
+## Validação
+
+`npm run test:stock-photo` executa os testes da normalização, seleção da mercadoria
+nova, contagens inválidas, preservação de cor e formato de envio de PDF. Usa Node.js
+24, compatível com o runtime do projeto.
+
+Esses testes usam respostas simuladas. A precisão visual ainda precisa ser avaliada
+com fotos reais dos produtos e da geladeira do estabelecimento.

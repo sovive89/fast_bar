@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { PrimaryButton, TextField } from "@/components/stock/SharedFormFields";
+import { photoLinesForEntry } from "@/lib/stock-entry-review";
 import { parseAmount } from "@/lib/format";
 import {
   confirmarEntradaEstoque,
@@ -17,14 +18,15 @@ type ComponentOption = { id: string; name: string; kind: Kind };
 type Alias = { rawTextNormalized: string | null; kind: Kind; componentId: string };
 type ReadItem = {
   descricao: string;
-  quantidade: number;
+  quantidade: number | null;
   unidade: string;
-  valorUnitario: number;
+  valorUnitario: number | null;
   lote?: string | null;
   fabricacao?: string | null;
   validade?: string | null;
 };
 type Line = {
+  included: boolean;
   key: string;
   descricaoOriginal: string;
   quantidadeNota: string;
@@ -39,7 +41,12 @@ type Line = {
 
 type Mode = "choosing" | "camera" | "scanning" | "processing" | "confirming" | "done";
 
-function suggest(descricao: string, components: ComponentOption[], aliases: Alias[]) {
+function suggest(
+  descricao: string,
+  components: ComponentOption[],
+  aliases: Alias[],
+  allowPartial = true,
+) {
   const alvo = descricao.trim().toLowerCase();
   if (!alvo) return null;
   const alias = aliases.find((a) => a.rawTextNormalized === alvo);
@@ -47,24 +54,40 @@ function suggest(descricao: string, components: ComponentOption[], aliases: Alia
     const found = components.find((c) => c.id === alias.componentId && c.kind === alias.kind);
     if (found) return found;
   }
+  if (!allowPartial) return components.find((c) => c.name.trim().toLowerCase() === alvo) ?? null;
   return (
     components.find((c) => c.name.trim().toLowerCase() === alvo) ??
-    components.find((c) => alvo.includes(c.name.trim().toLowerCase()) || c.name.trim().toLowerCase().includes(alvo)) ??
+    components.find(
+      (c) =>
+        alvo.includes(c.name.trim().toLowerCase()) || c.name.trim().toLowerCase().includes(alvo),
+    ) ??
     null
   );
 }
 
-function makeLines(items: ReadItem[], components: ComponentOption[], aliases: Alias[], prefix: string): Line[] {
+function makeLines(
+  items: ReadItem[],
+  components: ComponentOption[],
+  aliases: Alias[],
+  prefix: string,
+): Line[] {
   return items.map((item, index) => {
-    const match = suggest(item.descricao, components, aliases);
+    const match = suggest(item.descricao, components, aliases, prefix !== "produtos");
     return {
+      included: prefix !== "produtos",
       key: `${prefix}-${index}-${Date.now()}`,
       descricaoOriginal: item.descricao,
-      quantidadeNota: `${item.quantidade} ${item.unidade}`,
+      quantidadeNota:
+        item.quantidade === null
+          ? "Quantidade não identificada"
+          : `${item.quantidade} ${item.unidade}`,
       kind: match?.kind ?? "base_drink",
       componentId: match?.id ?? "",
       packs: "",
-      purchaseCost: item.valorUnitario > 0 ? String(item.valorUnitario * item.quantidade).replace(".", ",") : "",
+      purchaseCost:
+        item.valorUnitario !== null && item.valorUnitario > 0 && item.quantidade !== null
+          ? String(item.valorUnitario * item.quantidade).replace(".", ",")
+          : "",
       lote: item.lote ?? "",
       fabricacao: item.fabricacao ?? "",
       validade: item.validade ?? "",
@@ -83,7 +106,10 @@ export function NotaFiscalImport(props: {
     ...props.ingredients.map((x) => ({ ...x, kind: "ingredient" as const })),
   ];
   const [mode, setMode] = useState<Mode>("choosing");
-  const [origin, setOrigin] = useState<"qr" | "arquivo" | "foto" | null>(null);
+  const [origin, setOrigin] = useState<"qr" | "arquivo" | "foto" | "produtos" | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [readMode, setReadMode] = useState<"documento" | "produtos">("documento");
+  const productPhotoRef = useRef<HTMLInputElement | null>(null);
   const [fileName, setFileName] = useState("");
   const [aliases, setAliases] = useState<Alias[]>([]);
   const [lines, setLines] = useState<Line[]>([]);
@@ -121,7 +147,9 @@ export function NotaFiscalImport(props: {
   const normalizar = useServerFn(normalizarDocumentoEstoque);
 
   useEffect(() => {
-    loadAliases().then((r) => setAliases(r.aliases)).catch(() => undefined);
+    loadAliases()
+      .then((r) => setAliases(r.aliases))
+      .catch(() => undefined);
   }, [loadAliases]);
 
   function stopCamera() {
@@ -136,7 +164,9 @@ export function NotaFiscalImport(props: {
     stoppedRef.current = false;
     async function start() {
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: "environment", width: { ideal: 2560 }, height: { ideal: 1440 } },
+        });
         if (stoppedRef.current) return stream.getTracks().forEach((track) => track.stop());
         streamRef.current = stream;
         if (videoRef.current) {
@@ -209,7 +239,7 @@ export function NotaFiscalImport(props: {
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onload = () =>
-        resolve(typeof reader.result === "string" ? reader.result.split(",")[1] ?? null : null);
+        resolve(typeof reader.result === "string" ? (reader.result.split(",")[1] ?? null) : null);
       reader.onerror = () => resolve(null);
       reader.readAsDataURL(file);
     });
@@ -245,7 +275,10 @@ export function NotaFiscalImport(props: {
    * normalizador do servidor, que detecta o formato pelo CONTEÚDO e devolve sempre a mesma
    * estrutura. A tela não precisa mais saber qual função chamar pra cada tipo.
    */
-  async function selectFile(file: File) {
+  async function selectFile(file: File, modoLeitura: "documento" | "produtos" = "documento") {
+    setReadMode(modoLeitura);
+    setPhotoPreview(null);
+    setMode("processing");
     setError(null);
     setInfo(null);
     setFileName(file.name);
@@ -253,29 +286,48 @@ export function NotaFiscalImport(props: {
     const ehImagem = /^image\//.test(file.type);
 
     // Atalho: imagem com QR code vira consulta oficial, não leitura por IA.
-    if (ehImagem) {
+    if (ehImagem && modoLeitura !== "produtos") {
       const qr = await acharQRNaImagem(file);
       if (qr) {
-        setInfo("QR code encontrado na foto — consultando a nota na SEFAZ em vez de interpretar a imagem.");
+        setInfo(
+          "QR code encontrado na foto — consultando a nota na SEFAZ em vez de interpretar a imagem.",
+        );
         await decodeQR(qr);
         return;
       }
     }
 
-    setOrigin(ehImagem || /pdf$/i.test(file.type) ? "foto" : "arquivo");
+    setOrigin(
+      modoLeitura === "produtos"
+        ? "produtos"
+        : ehImagem || /pdf$/i.test(file.type)
+          ? "foto"
+          : "arquivo",
+    );
     setMode("processing");
 
     let arquivoParaOCR = file;
     if (ehImagem) {
       try {
-        setInfo("Melhorando a foto para leitura: orientação, escala, contraste e ruído...");
-        arquivoParaOCR = await preprocessDocumentImage(file);
+        setInfo(
+          modoLeitura === "produtos"
+            ? "Preparando a foto dos produtos e preservando as cores dos rótulos..."
+            : "Melhorando a foto para leitura: orientação, escala e contraste...",
+        );
+        arquivoParaOCR = await preprocessDocumentImage(file, {
+          preserveColor: modoLeitura === "produtos",
+        });
       } catch {
         // O OCR ainda pode tentar a foto original se o navegador não suportar a transformação.
         setInfo("Não foi possível otimizar a foto neste navegador; tentando a imagem original.");
       }
     }
 
+    if (arquivoParaOCR.size > 3 * 1024 * 1024) {
+      setError("O arquivo deve ter até 3 MB. Envie uma foto mais próxima ou um PDF menor.");
+      setMode("choosing");
+      return;
+    }
     const base64 = await lerBase64(arquivoParaOCR);
     if (!base64) {
       setError("Não foi possível ler o arquivo.");
@@ -283,9 +335,11 @@ export function NotaFiscalImport(props: {
       return;
     }
 
+    if (modoLeitura === "produtos") setPhotoPreview(`data:${arquivoParaOCR.type};base64,${base64}`);
     try {
       const r = await normalizar({
         data: {
+          modoLeitura,
           arquivo: {
             fileName: file.name,
             base64,
@@ -310,12 +364,17 @@ export function NotaFiscalImport(props: {
       setConfidence(r.confianca);
       setDuplicate(r.duplicada);
       setDuplicateWarning(r.avisoDuplicidade);
-      setLines(makeLines(r.itens, components, aliases, r.fonte));
+      setLines(
+        makeLines(r.itens, components, aliases, modoLeitura === "produtos" ? "produtos" : r.fonte),
+      );
 
       // Avisos do normalizador incluem a conferência aritmética (soma dos itens × total da nota),
       // que é o que pega dígito lido errado sem depender da IA se dar conta do próprio erro.
       const avisos = [...r.avisos];
-      if (r.duplicada) avisos.unshift("Documento identificado como possível duplicata. A confirmação ficará bloqueada.");
+      if (r.duplicada)
+        avisos.unshift(
+          "Documento identificado como possível duplicata. A confirmação ficará bloqueada.",
+        );
       setInfo(avisos.length > 0 ? avisos.join(" ") : null);
       setMode("confirming");
     } catch {
@@ -337,9 +396,11 @@ export function NotaFiscalImport(props: {
     if (!ctx) return;
     ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
     stopCamera();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.86));
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", 0.86),
+    );
     if (!blob) return;
-    await selectFile(new File([blob], `nota-${Date.now()}.jpg`, { type: "image/jpeg" }));
+    await selectFile(new File([blob], `foto-${Date.now()}.jpg`, { type: "image/jpeg" }), readMode);
   }
 
   function updateLine(key: string, patch: Partial<Line>) {
@@ -350,6 +411,7 @@ export function NotaFiscalImport(props: {
     setLines((current) => [
       ...current,
       {
+        included: true,
         key: `manual-${Date.now()}`,
         descricaoOriginal: "",
         quantidadeNota: "",
@@ -380,11 +442,20 @@ export function NotaFiscalImport(props: {
       fabricacao?: string;
       validade?: string;
     }>;
-    for (const line of lines) {
+    let reviewed = lines;
+    try {
+      if (origin === "produtos") reviewed = photoLinesForEntry(lines);
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Revise os produtos selecionados.");
+      return;
+    }
+    for (const line of reviewed) {
       if (!line.componentId) continue;
       const packs = Number(line.packs);
       if (!Number.isInteger(packs) || packs <= 0) {
-        setError(`Informe uma quantidade válida de embalagens para "${line.descricaoOriginal || "item manual"}".`);
+        setError(
+          `Informe uma quantidade válida de embalagens para "${line.descricaoOriginal || "item manual"}".`,
+        );
         return;
       }
       const cost = line.purchaseCost.trim() ? parseAmount(line.purchaseCost) : null;
@@ -397,7 +468,9 @@ export function NotaFiscalImport(props: {
         componentId: line.componentId,
         packs,
         ...(cost !== null ? { purchaseCost: cost } : {}),
-        ...(line.descricaoOriginal.trim() ? { descricaoOriginal: line.descricaoOriginal.trim() } : {}),
+        ...(line.descricaoOriginal.trim()
+          ? { descricaoOriginal: line.descricaoOriginal.trim() }
+          : {}),
         ...(line.lote.trim() ? { lote: line.lote.trim() } : {}),
         ...(line.fabricacao.trim() ? { fabricacao: line.fabricacao.trim() } : {}),
         ...(line.validade.trim() ? { validade: line.validade.trim() } : {}),
@@ -410,13 +483,54 @@ export function NotaFiscalImport(props: {
     setBusy(true);
     try {
       if (origin === "qr" && chave) {
-        const r = await confirmNF({ data: { chave, uf: uf ?? undefined, emitenteNome: emitente ?? undefined, emitenteDocumento: documento ?? undefined, valorTotal: valorTotal ?? undefined, documentoTipo: documentoTipo as "nfe" | "nfce" | "danfe" | "cupom" | "comprovante" | "entrada_manual" | "outro" | undefined, documentoNumero: documentoNumero ?? undefined, documentoSerie: documentoSerie ?? undefined, documentoEmissao: documentoEmissao ?? undefined, itens: items } });
+        const r = await confirmNF({
+          data: {
+            chave,
+            uf: uf ?? undefined,
+            emitenteNome: emitente ?? undefined,
+            emitenteDocumento: documento ?? undefined,
+            valorTotal: valorTotal ?? undefined,
+            documentoTipo: documentoTipo as
+              | "nfe"
+              | "nfce"
+              | "danfe"
+              | "cupom"
+              | "comprovante"
+              | "entrada_manual"
+              | "outro"
+              | undefined,
+            documentoNumero: documentoNumero ?? undefined,
+            documentoSerie: documentoSerie ?? undefined,
+            documentoEmissao: documentoEmissao ?? undefined,
+            itens: items,
+          },
+        });
         if (!r.ok) {
           setError(r.message ?? "Não foi possível confirmar a entrada.");
           return;
         }
       } else {
-        const r = await confirmFile({ data: { origem: `${origin === "foto" ? "foto IA" : "arquivo"}: ${fileName || "documento"}`, fornecedorNome: emitente ?? undefined, fornecedorDocumento: documento ?? undefined, documentoTipo: documentoTipo as "nfe" | "nfce" | "danfe" | "cupom" | "comprovante" | "entrada_manual" | "outro" | undefined, documentoNumero: documentoNumero ?? undefined, documentoSerie: documentoSerie ?? undefined, documentoEmissao: documentoEmissao ?? undefined, chaveAcesso: chave || undefined, itens: items } });
+        const r = await confirmFile({
+          data: {
+            origem: `${origin === "produtos" ? "foto de produtos / geladeira revisada" : origin === "foto" ? "foto IA" : "arquivo"}: ${fileName || "documento"}`,
+            fornecedorNome: emitente ?? undefined,
+            fornecedorDocumento: documento ?? undefined,
+            documentoTipo: documentoTipo as
+              | "nfe"
+              | "nfce"
+              | "danfe"
+              | "cupom"
+              | "comprovante"
+              | "entrada_manual"
+              | "outro"
+              | undefined,
+            documentoNumero: documentoNumero ?? undefined,
+            documentoSerie: documentoSerie ?? undefined,
+            documentoEmissao: documentoEmissao ?? undefined,
+            chaveAcesso: chave || undefined,
+            itens: items,
+          },
+        });
         if (!r.ok) {
           setError(r.message ?? "Não foi possível confirmar a entrada.");
           return;
@@ -437,70 +551,324 @@ export function NotaFiscalImport(props: {
       <div className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-border bg-card p-4">
         <div className="mb-3 flex items-center justify-between">
           <p className="text-sm font-semibold">Dar entrada no estoque</p>
-          <button onClick={props.onClose} className="text-xs text-muted-foreground underline">Fechar</button>
+          <button onClick={props.onClose} className="text-xs text-muted-foreground underline">
+            Fechar
+          </button>
         </div>
 
         {mode === "choosing" && (
           <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Foto, QR, PDF ou planilha. Tudo passa pela mesma etapa de conferência antes de alterar o estoque.</p>
-            <button onClick={() => { setCameraError(null); setMode("camera"); }} className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary">
+            <p className="text-xs text-muted-foreground">
+              Foto, QR, PDF ou planilha. Tudo passa pela mesma etapa de conferência antes de alterar
+              o estoque.
+            </p>
+            <button
+              onClick={() => {
+                setReadMode("documento");
+                setCameraError(null);
+                setMode("camera");
+              }}
+              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+            >
               <p className="text-xs font-semibold">Tirar foto da nota</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Abre a câmera do celular com botão de disparo. A IA interpreta a nota e preenche os campos.</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Abre a câmera do celular com botão de disparo. A IA interpreta a nota e preenche os
+                campos.
+              </p>
             </button>
-            <button onClick={() => photoRef.current?.click()} className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary">
+            <button
+              onClick={() => {
+                setReadMode("produtos");
+                setCameraError(null);
+                setMode("camera");
+              }}
+              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+            >
+              <p className="text-xs font-semibold">Fotografar produtos ou geladeira</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Geladeira, engradado, caixas, latas e garrafas. Revise e selecione só a mercadoria
+                recém-colocada.
+              </p>
+            </button>
+            <button
+              onClick={() => productPhotoRef.current?.click()}
+              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+            >
+              <p className="text-xs font-semibold">Escolher foto dos produtos</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Enviar uma foto da galeria para conferir marca, volume e quantidade.
+              </p>
+            </button>
+            <input
+              ref={productPhotoRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                e.target.value = "";
+                if (file) void selectFile(file, "produtos");
+              }}
+            />
+            <button
+              onClick={() => photoRef.current?.click()}
+              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+            >
               <p className="text-xs font-semibold">Escolher foto ou PDF</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Use uma foto já tirada, PDF da nota ou outro documento compatível.</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Use uma foto já tirada, PDF da nota ou outro documento compatível.
+              </p>
             </button>
-            <input ref={photoRef} type="file" accept="image/*,.pdf,application/pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void selectFile(f); }} />
-            <button onClick={() => setMode("scanning")} className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary">
+            <input
+              ref={photoRef}
+              type="file"
+              accept="image/*,.pdf,application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void selectFile(f);
+              }}
+            />
+            <button
+              onClick={() => setMode("scanning")}
+              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+            >
               <p className="text-xs font-semibold">Ler QR code da nota fiscal</p>
-              <p className="mt-0.5 text-[11px] text-muted-foreground">Consulta a nota diretamente no portal oficial da SEFAZ.</p>
+              <p className="mt-0.5 text-[11px] text-muted-foreground">
+                Consulta a nota diretamente no portal oficial da SEFAZ.
+              </p>
             </button>
-            <button onClick={() => fileRef.current?.click()} className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary">
+            <button
+              onClick={() => fileRef.current?.click()}
+              className="w-full rounded-xl border border-dashed border-border p-3 text-left hover:border-primary"
+            >
               <p className="text-xs font-semibold">Subir planilha do fornecedor</p>
               <p className="mt-0.5 text-[11px] text-muted-foreground">.xlsx, .xls ou .csv.</p>
             </button>
-            <input ref={fileRef} type="file" accept=".csv,.xlsx,.xls,.xml,text/xml,application/xml" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void selectFile(f); }} />
+            <input
+              ref={fileRef}
+              type="file"
+              accept=".csv,.xlsx,.xls,.xml,text/xml,application/xml"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                e.target.value = "";
+                if (f) void selectFile(f);
+              }}
+            />
             {error && <p className="text-xs text-destructive">{error}</p>}
           </div>
         )}
 
         {(mode === "camera" || mode === "scanning") && (
           <div className="space-y-2">
-            <button onClick={() => { stopCamera(); setMode("choosing"); }} className="text-[11px] font-medium text-muted-foreground underline">← voltar</button>
-            <p className="text-xs text-muted-foreground">{mode === "camera" ? "Enquadre a nota e toque em Disparar." : "Aponte para o QR code da nota."}</p>
-            {cameraError ? <p className="rounded-lg border border-dashed border-border p-3 text-xs text-destructive">{cameraError}</p> : <div className="relative overflow-hidden rounded-xl border border-border bg-black"><video ref={videoRef} className="w-full" muted playsInline /><div className="pointer-events-none absolute inset-x-8 top-8 bottom-20 rounded-xl border-2 border-white/70" />{mode === "camera" && <button onClick={() => void capturePhoto()} className="absolute bottom-3 left-1/2 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full border-4 border-white bg-white/20" aria-label="Disparar foto"><span className="h-10 w-10 rounded-full bg-white" /></button>}</div>}
+            <button
+              onClick={() => {
+                stopCamera();
+                setMode("choosing");
+              }}
+              className="text-[11px] font-medium text-muted-foreground underline"
+            >
+              ← voltar
+            </button>
+            <p className="text-xs text-muted-foreground">
+              {mode === "camera"
+                ? "Enquadre a nota e toque em Disparar."
+                : "Aponte para o QR code da nota."}
+            </p>
+            {cameraError ? (
+              <p className="rounded-lg border border-dashed border-border p-3 text-xs text-destructive">
+                {cameraError}
+              </p>
+            ) : (
+              <div className="relative overflow-hidden rounded-xl border border-border bg-black">
+                <video ref={videoRef} className="w-full" muted playsInline />
+                <div className="pointer-events-none absolute inset-x-8 top-8 bottom-20 rounded-xl border-2 border-white/70" />
+                {mode === "camera" && (
+                  <button
+                    onClick={() => void capturePhoto()}
+                    className="absolute bottom-3 left-1/2 flex h-16 w-16 -translate-x-1/2 items-center justify-center rounded-full border-4 border-white bg-white/20"
+                    aria-label="Disparar foto"
+                  >
+                    <span className="h-10 w-10 rounded-full bg-white" />
+                  </button>
+                )}
+              </div>
+            )}
             <canvas ref={canvasRef} className="hidden" />
           </div>
         )}
 
-        {mode === "processing" && <p className="py-10 text-center text-sm text-muted-foreground">{info || "Interpretando o documento e preparando os campos..."}</p>}
+        {mode === "processing" && (
+          <p className="py-10 text-center text-sm text-muted-foreground">
+            {info || "Interpretando o documento e preparando os campos..."}
+          </p>
+        )}
 
         {mode === "confirming" && (
           <div className="space-y-3">
+            {origin === "produtos" && photoPreview && (
+              <img
+                src={photoPreview}
+                alt="Foto enviada para conferir a mercadoria nova"
+                className="max-h-64 w-full rounded-xl object-contain"
+              />
+            )}
             <div className="rounded-xl border border-border p-3 text-xs text-muted-foreground">
-              {origin === "qr" ? <><p>Chave: {chave || "não disponível"}</p>{uf && <p>UF: {uf}</p>}</> : <p>Origem: {origin === "foto" ? "Foto lida por IA" : `Arquivo: ${fileName}`}</p>}
+              {origin === "qr" ? (
+                <>
+                  <p>Chave: {chave || "não disponível"}</p>
+                  {uf && <p>UF: {uf}</p>}
+                </>
+              ) : (
+                <p>
+                  Origem:{" "}
+                  {origin === "produtos"
+                    ? "Foto de produtos / geladeira"
+                    : origin === "foto"
+                      ? "Foto lida por IA"
+                      : `Arquivo: ${fileName}`}
+                </p>
+              )}
               {emitente && <p>Fornecedor: {emitente}</p>}
               {documento && <p>CNPJ/Documento: {documento}</p>}
               {valorTotal != null && <p>Valor total: {valorTotal.toFixed(2).replace(".", ",")}</p>}
-              {confidence != null && <p>Confiança da IA: {Math.round(confidence <= 1 ? confidence * 100 : confidence)}%</p>}
+              {confidence != null && (
+                <p>
+                  Confiança da IA: {Math.round(confidence <= 1 ? confidence * 100 : confidence)}%
+                </p>
+              )}
             </div>
-            {duplicateWarning && <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">{duplicateWarning}</p>}
-            {info && <p className="rounded-lg border border-border p-3 text-xs text-muted-foreground">{info}</p>}
+            {duplicateWarning && (
+              <p className="rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-xs text-destructive">
+                {duplicateWarning}
+              </p>
+            )}
+            {info && (
+              <p className="rounded-lg border border-border p-3 text-xs text-muted-foreground">
+                {info}
+              </p>
+            )}
             {error && <p className="text-xs text-destructive">{error}</p>}
-            <p className="text-[11px] text-muted-foreground">{confidence != null ? "A IA apenas sugere — confira item por item. " : "Leitura exata (documento oficial), mas confira mesmo assim. "}Nenhuma entrada é gravada até você revisar e confirmar. Campos faltantes podem ser preenchidos manualmente.</p>
+            <p className="text-[11px] text-muted-foreground">
+              {origin === "produtos" || origin === "foto"
+                ? "A IA apenas sugere — confira item por item. "
+                : "Leitura exata (documento oficial), mas confira mesmo assim. "}
+              Nenhuma entrada é gravada até você revisar e confirmar. Campos faltantes podem ser
+              preenchidos manualmente.
+            </p>
             <div className="space-y-2">
               {lines.map((line) => {
                 const options = line.kind === "base_drink" ? props.baseDrinks : props.ingredients;
-                return <div key={line.key} className="rounded-xl border border-border p-3"><p className="mb-2 truncate text-xs font-medium text-muted-foreground">{line.descricaoOriginal || "Item manual"}{line.quantidadeNota && ` · ${line.quantidadeNota}`}</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><label className="block"><span className="text-xs font-medium text-muted-foreground">Tipo</span><select value={line.kind} onChange={(e) => updateLine(line.key, { kind: e.target.value as Kind, componentId: "" })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="base_drink">Bebida base</option><option value="ingredient">Ingrediente</option></select></label><label className="block"><span className="text-xs font-medium text-muted-foreground">Item</span><select value={line.componentId} onChange={(e) => updateLine(line.key, { componentId: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="">Ignorar</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label><TextField label="Embalagens" value={line.packs} onChange={(value) => updateLine(line.key, { packs: value })} type="number" placeholder={line.quantidadeNota ? `Nota: ${line.quantidadeNota}` : ""} /><TextField label="Valor pago (opcional)" value={line.purchaseCost} onChange={(value) => updateLine(line.key, { purchaseCost: value })} type="text" /><TextField label="Lote (opcional)" value={line.lote} onChange={(value) => updateLine(line.key, { lote: value })} type="text" /><TextField label="Validade (AAAA-MM-DD)" value={line.validade} onChange={(value) => updateLine(line.key, { validade: value })} type="text" /></div></div>;
+                return (
+                  <div key={line.key} className="rounded-xl border border-border p-3">
+                    {origin === "produtos" && (
+                      <label className="mb-2 flex items-center gap-2 text-xs font-medium">
+                        <input
+                          type="checkbox"
+                          checked={line.included}
+                          onChange={(e) => updateLine(line.key, { included: e.target.checked })}
+                        />
+                        Incluir esta mercadoria nova
+                      </label>
+                    )}
+                    <p className="mb-2 truncate text-xs font-medium text-muted-foreground">
+                      {line.descricaoOriginal || "Item manual"}
+                      {line.quantidadeNota && ` · ${line.quantidadeNota}`}
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <label className="block">
+                        <span className="text-xs font-medium text-muted-foreground">Tipo</span>
+                        <select
+                          value={line.kind}
+                          onChange={(e) =>
+                            updateLine(line.key, { kind: e.target.value as Kind, componentId: "" })
+                          }
+                          className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                        >
+                          <option value="base_drink">Bebida base</option>
+                          <option value="ingredient">Ingrediente</option>
+                        </select>
+                      </label>
+                      <label className="block">
+                        <span className="text-xs font-medium text-muted-foreground">Item</span>
+                        <select
+                          value={line.componentId}
+                          onChange={(e) => updateLine(line.key, { componentId: e.target.value })}
+                          className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"
+                        >
+                          <option value="">Ignorar</option>
+                          {options.map((o) => (
+                            <option key={o.id} value={o.id}>
+                              {o.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <TextField
+                        label={
+                          origin === "produtos" ? "Embalagens novas (conferidas)" : "Embalagens"
+                        }
+                        value={line.packs}
+                        onChange={(value) => updateLine(line.key, { packs: value })}
+                        type="number"
+                        placeholder={
+                          line.quantidadeNota
+                            ? `${origin === "produtos" ? "Visível" : "Nota"}: ${line.quantidadeNota}`
+                            : ""
+                        }
+                      />
+                      <TextField
+                        label="Valor pago (opcional)"
+                        value={line.purchaseCost}
+                        onChange={(value) => updateLine(line.key, { purchaseCost: value })}
+                        type="text"
+                      />
+                      <TextField
+                        label="Lote (opcional)"
+                        value={line.lote}
+                        onChange={(value) => updateLine(line.key, { lote: value })}
+                        type="text"
+                      />
+                      <TextField
+                        label="Validade (AAAA-MM-DD)"
+                        value={line.validade}
+                        onChange={(value) => updateLine(line.key, { validade: value })}
+                        type="text"
+                      />
+                    </div>
+                  </div>
+                );
               })}
             </div>
-            <button onClick={addManual} className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground">+ Adicionar item manualmente</button>
-            <PrimaryButton onClick={() => void confirm()} disabled={busy || duplicate}>{busy ? "Lançando..." : duplicate ? "Documento já importado" : "Confirmar entrada no estoque"}</PrimaryButton>
+            <button
+              onClick={addManual}
+              className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground"
+            >
+              + Adicionar item manualmente
+            </button>
+            <PrimaryButton
+              onClick={() => void confirm()}
+              disabled={
+                busy || duplicate || (origin === "produtos" && !lines.some((line) => line.included))
+              }
+            >
+              {busy
+                ? "Lançando..."
+                : duplicate
+                  ? "Documento já importado"
+                  : "Confirmar entrada no estoque"}
+            </PrimaryButton>
           </div>
         )}
 
-        {mode === "done" && <div className="space-y-3 py-4 text-center"><p className="text-sm font-semibold text-primary">{result}</p><PrimaryButton onClick={props.onClose}>Fechar</PrimaryButton></div>}
+        {mode === "done" && (
+          <div className="space-y-3 py-4 text-center">
+            <p className="text-sm font-semibold text-primary">{result}</p>
+            <PrimaryButton onClick={props.onClose}>Fechar</PrimaryButton>
+          </div>
+        )}
       </div>
     </div>
   );

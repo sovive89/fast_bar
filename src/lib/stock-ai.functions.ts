@@ -1,6 +1,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { normalizeOCRPayload, parseOCRText } from "./ocr-contract";
 import type { OCRItem } from "./ocr-contract";
+import { documentPart } from "./stock-ocr";
+import { normalizeProductPhoto, PRODUCT_PHOTO_PROMPT } from "./stock-photo";
 
 type AIResult = {
   ok: boolean;
@@ -13,7 +15,11 @@ type AIResult = {
   chaveAcesso?: string | null;
   dataEmissao?: string | null;
   valorTotal?: number | null;
-  itens: OCRItem[];
+  itens: (Omit<OCRItem, "quantidade" | "valorUnitario"> & {
+    quantidade: number | null;
+    valorUnitario: number | null;
+  })[];
+  avisos?: string[];
   confianca?: number | null;
   duplicada?: boolean;
   avisoDuplicidade?: string | null;
@@ -118,35 +124,13 @@ function extrairConteudo(payload: {
   return Array.isArray(content) ? content.map((part) => part.text ?? "").join("") : content;
 }
 
-function validarEndpoint(value: string): string | null {
-  try {
-    const url = new URL(value);
-    const host = url.hostname.toLowerCase();
-    const privado =
-      host === "localhost" ||
-      host === "metadata.google.internal" ||
-      host === "0.0.0.0" ||
-      host === "::1" ||
-      host.startsWith("127.") ||
-      host.startsWith("10.") ||
-      host.startsWith("192.168.") ||
-      host.startsWith("169.254.") ||
-      /^172\.(1[6-9]|2\d|3[01])\./.test(host);
-    if (url.protocol !== "https:" || privado) return null;
-    return url.toString();
-  } catch {
-    return null;
-  }
-}
-
-function extrairConteudo(payload: {
-  choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+async function chamarIA(data: {
+  base64: string;
+  mimeType: string;
+  fileName?: string | undefined;
+  modoLeitura?: "documento" | "produtos" | undefined;
 }) {
-  const content = payload.choices?.[0]?.message?.content;
-  return Array.isArray(content) ? content.map((part) => part.text ?? "").join("") : content;
-}
-
-async function chamarIA(data: { base64: string; mimeType: string; fileName?: string | undefined }) {
+  const prompt = data.modoLeitura === "produtos" ? PRODUCT_PHOTO_PROMPT : PROMPT;
   const { admin, getDefaultTenantId } = await import("./fastbar.server");
   const tenantId = await getDefaultTenantId();
   const { data: integration } = await admin()
@@ -166,7 +150,8 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
   if (configuredEndpoint && !customEndpoint) {
     throw new Error("O endpoint OCR precisa ser uma URL HTTPS pública e válida.");
   }
-  const customSecret = config["apiKey"]?.trim() ||
+  const customSecret =
+    config["apiKey"]?.trim() ||
     (!configuredEndpoint ? process.env["FASTBAR_AI_NORMALIZER_SECRET"] : undefined);
   const configuredModel = config["model"]?.trim();
 
@@ -177,15 +162,13 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
         "Content-Type": "application/json",
         ...(customSecret ? { Authorization: `Bearer ${customSecret}` } : {}),
       },
+      signal: AbortSignal.timeout(60_000),
       body: JSON.stringify({
         model: configuredModel || process.env["FASTBAR_OCR_MODEL"] || MODELO_PADRAO,
         messages: [
           {
             role: "user",
-            content: [
-              { type: "text", text: PROMPT },
-              { type: "image_url", image_url: { url: `data:${data.mimeType};base64,${data.base64}`, detail: "high" } },
-            ],
+            content: [{ type: "text", text: prompt }, documentPart(data)],
           },
         ],
         temperature: 0,
@@ -216,21 +199,13 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
       "Content-Type": "application/json",
       Authorization: `Bearer ${gatewayToken}`,
     },
+    signal: AbortSignal.timeout(60_000),
     body: JSON.stringify({
       model: configuredModel || process.env["FASTBAR_OCR_MODEL"] || MODELO_PADRAO,
       messages: [
         {
           role: "user",
-          content: [
-            { type: "text", text: PROMPT },
-            {
-              type: "image_url",
-              image_url: {
-                url: `data:${data.mimeType};base64,${data.base64}`,
-                detail: "high",
-              },
-            },
-          ],
+          content: [{ type: "text", text: prompt }, documentPart(data)],
         },
       ],
       temperature: 0,
@@ -240,23 +215,36 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
 
   if (!response.ok) {
     const body = await response.text().catch(() => "");
-    throw new Error(`O Vercel AI Gateway respondeu HTTP ${response.status}${body ? `: ${body.slice(0, 240)}` : "."}`);
+    throw new Error(
+      `O Vercel AI Gateway respondeu HTTP ${response.status}${body ? `: ${body.slice(0, 240)}` : "."}`,
+    );
   }
 
   const payload = (await response.json()) as {
     choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
   };
   const content = payload.choices?.[0]?.message?.content;
-  const text = Array.isArray(content)
-    ? content.map((part) => part.text ?? "").join("")
-    : content;
+  const text = Array.isArray(content) ? content.map((part) => part.text ?? "").join("") : content;
   if (!text) throw new Error("A IA não retornou conteúdo para o documento.");
   return parseAIText(text);
 }
 
 export const normalizarDocumentoEstoqueComIA = createServerFn({ method: "POST" })
   .inputValidator(
-    (data: { base64: string; mimeType: string; fileName?: string | undefined }) => data,
+    (data: {
+      base64: string;
+      mimeType: string;
+      fileName?: string | undefined;
+      modoLeitura?: "documento" | "produtos" | undefined;
+    }) => {
+      if (data.modoLeitura !== undefined && !["documento", "produtos"].includes(data.modoLeitura))
+        throw new Error("Modo de leitura inválido.");
+      if (typeof data.base64 !== "string" || data.base64.length > 4 * 1024 * 1024)
+        throw new Error("Envie um arquivo de até 3 MB.");
+      if (data.modoLeitura === "produtos" && !/^image\/(jpeg|png|webp)$/.test(data.mimeType))
+        throw new Error("Envie uma foto JPEG, PNG ou WebP para identificar produtos.");
+      return data;
+    },
   )
   .handler(async ({ data }): Promise<AIResult> => {
     const { assertRegisterAccess, admin } = await import("./fastbar.server");
@@ -264,7 +252,10 @@ export const normalizarDocumentoEstoqueComIA = createServerFn({ method: "POST" }
 
     try {
       const parsed = await chamarIA(data);
-      const normalized = normalizeOCRPayload(parsed);
+      const normalized =
+        data.modoLeitura === "produtos"
+          ? normalizeProductPhoto(parsed)
+          : normalizeOCRPayload(parsed);
       const itens = normalized.itens;
 
       const chave = normalized.chaveAcesso;
@@ -294,6 +285,7 @@ export const normalizarDocumentoEstoqueComIA = createServerFn({ method: "POST" }
         valorTotal: normalized.valorTotal,
         confianca: normalized.confianca,
         itens,
+        avisos: "avisos" in normalized ? normalized.avisos : [],
         duplicada,
         avisoDuplicidade,
       };
