@@ -1,0 +1,12 @@
+{
+  "documentoTipo": "cupom",
+  "fornecedorNome": "Mercadinho Central",
+  "dataEmissao": "13/10/26",
+  "valorTotal": "ilegível",
+  "confianca": 1.4,
+  "itens": [
+    { "descricao": "Água tônica", "quantidade": "12", "unidade": "UN", "valorUnitario": "7.50", "validade": "2026-12-01" },
+    { "descricao": "", "quantidade": 1, "valorUnitario": 2 },
+    { "descricao": "Troco", "quantidade": -1, "valorUnitario": 10 }
+  ]
+}
