@@ -88,7 +88,7 @@ const CARDS: CardDef[] = [
     key: "ocr_ai",
     name: "OCR inteligente para estoque",
     description:
-      "Usa OpenAI por padrão para ler notas, PDFs e fotos de produtos ou geladeira. Revise os itens antes de lançar no estoque.",
+      "Com uma chave OpenAI, deixe o endpoint vazio para conectar automaticamente. Sem chave OpenAI, usa o Gateway da Vercel. Revise os itens antes de lançar no estoque.",
     icon: Sparkles,
     fields: [
       {

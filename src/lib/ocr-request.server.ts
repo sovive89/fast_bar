@@ -67,7 +67,17 @@ export async function requestOCR(params: {
         throw new OCRRequestError(
           quotaExceeded
             ? "A conta da IA está sem créditos ou atingiu o limite de uso. Confira o faturamento."
-            : `O serviço OCR respondeu HTTP ${response.status}.${requestId ? ` ID: ${requestId}` : ""}`,
+            : `${
+                response.status === 401
+                  ? "A chave da IA foi recusada. Confira a chave salva em Conexões."
+                  : response.status === 403
+                    ? "A conta da IA não tem permissão para usar este serviço ou modelo."
+                    : response.status === 404
+                      ? `O modelo ${body.model} ou o endpoint não está disponível para esta conta. Confira Conexões.`
+                      : response.status === 400
+                        ? "A IA recusou o formato da leitura. Confira o modelo e o endpoint em Conexões."
+                        : "O serviço OCR não conseguiu concluir a leitura."
+              } (HTTP ${response.status})${requestId ? ` ID: ${requestId}` : ""}`,
           !quotaExceeded &&
             (response.status === 408 || response.status === 429 || response.status >= 500),
         );

@@ -43,9 +43,9 @@ resposta JSON. Em **Conexões → OCR inteligente para estoque**, deixe o modelo
 vazio para usar o padrão ou informe `openai/gpt-6-astra`. Uma configuração explícita
 anterior continua prevalecendo; troque-a nesse campo se estava usando outro modelo.
 
-- **AI Gateway:** deixe o endpoint vazio. A autenticação usa
+- **AI Gateway:** deixe o endpoint e a chave da conexão vazios, sem `OPENAI_API_KEY` no servidor. A autenticação usa
   `AI_GATEWAY_API_KEY` ou o OIDC da Vercel, conforme a configuração existente.
-- **OpenAI direta:** use `https://api.openai.com/v1/responses` no endpoint e
+- **OpenAI direta:** com uma chave OpenAI salva (ou `OPENAI_API_KEY` no servidor), o endpoint vazio conecta automaticamente à OpenAI. Também pode usar `https://api.openai.com/v1/responses` no endpoint e
   configure a chave no campo protegido da conexão ou em `OPENAI_API_KEY` no servidor.
   O aplicativo envia `gpt-6-astra` para essa API, removendo o prefixo `openai/`.
 
