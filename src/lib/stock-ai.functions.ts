@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
-import { normalizeOCRPayload, parseOCRText } from "./ocr-contract";
+import { normalizeOCRPayload } from "./ocr-contract";
 import type { OCRItem } from "./ocr-contract";
-import { createOCRRequest, DEFAULT_OCR_MODEL, isDirectOpenAI } from "./ocr-model";
+import { DEFAULT_OCR_MODEL, DEFAULT_OCR_FALLBACK_MODEL, isDirectOpenAI } from "./ocr-model";
 import { normalizeProductPhoto, PRODUCT_PHOTO_PROMPT } from "./stock-photo";
 
 type AIResult = {
@@ -74,10 +74,6 @@ ITENS:
 O documento pode ser nota fiscal, cupom fiscal (NFC-e), DANFE, comprovante, etiqueta ou planilha
 impressa. Extraia somente o que está visível.`;
 
-function parseAIText(text: string): Partial<AIResult> {
-  return parseOCRText(text);
-}
-
 function validarEndpoint(value: string): string | null {
   try {
     const url = new URL(value);
@@ -97,13 +93,6 @@ function validarEndpoint(value: string): string | null {
   } catch {
     return null;
   }
-}
-
-function extrairConteudo(payload: {
-  choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
-}) {
-  const content = payload.choices?.[0]?.message?.content;
-  return Array.isArray(content) ? content.map((part) => part.text ?? "").join("") : content;
 }
 
 async function chamarIA(data: {
@@ -137,33 +126,22 @@ async function chamarIA(data: {
     (isDirectOpenAI(customEndpoint) ? process.env["OPENAI_API_KEY"] : undefined) ||
     (!configuredEndpoint ? process.env["FASTBAR_AI_NORMALIZER_SECRET"] : undefined);
   const configuredModel = config["model"]?.trim();
-  const requestBody = createOCRRequest({
-    model: configuredModel || process.env["FASTBAR_OCR_MODEL"] || DEFAULT_OCR_MODEL,
-    endpoint: customEndpoint,
-    prompt,
-    data,
-  });
+  const model = configuredModel || process.env["FASTBAR_OCR_MODEL"] || DEFAULT_OCR_MODEL;
+  const fallbackModel = config["fallbackModel"]?.trim() || DEFAULT_OCR_FALLBACK_MODEL;
+  const { requestOCR } = await import("./ocr-request.server");
 
   if (customEndpoint) {
     if (isDirectOpenAI(customEndpoint) && !customSecret) {
       throw new Error("Configure a chave OpenAI em Conexões ou OPENAI_API_KEY no servidor.");
     }
-    const response = await fetch(customEndpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        ...(customSecret ? { Authorization: `Bearer ${customSecret}` } : {}),
-      },
-      signal: AbortSignal.timeout(60_000),
-      body: JSON.stringify(requestBody),
+    return requestOCR({
+      endpoint: customEndpoint,
+      apiKey: customSecret ?? "",
+      model,
+      fallbackModel: isDirectOpenAI(customEndpoint) ? fallbackModel : undefined,
+      prompt,
+      data,
     });
-    if (!response.ok) throw new Error(`O serviço de IA respondeu HTTP ${response.status}.`);
-    const payload = (await response.json()) as {
-      choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
-    };
-    const text = extrairConteudo(payload);
-    if (!text) throw new Error("O endpoint OCR não retornou conteúdo.");
-    return parseAIText(text);
   }
 
   // Em Vercel, VERCEL_OIDC_TOKEN é disponibilizado automaticamente para funções implantadas.
@@ -175,30 +153,14 @@ async function chamarIA(data: {
     );
   }
 
-  const response = await fetch("https://ai-gateway.vercel.sh/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${gatewayToken}`,
-    },
-    signal: AbortSignal.timeout(60_000),
-    body: JSON.stringify(requestBody),
+  return requestOCR({
+    endpoint: "https://ai-gateway.vercel.sh/v1/chat/completions",
+    apiKey: gatewayToken,
+    model,
+    fallbackModel,
+    prompt,
+    data,
   });
-
-  if (!response.ok) {
-    const body = await response.text().catch(() => "");
-    throw new Error(
-      `O Vercel AI Gateway respondeu HTTP ${response.status}${body ? `: ${body.slice(0, 240)}` : "."}`,
-    );
-  }
-
-  const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
-  };
-  const content = payload.choices?.[0]?.message?.content;
-  const text = Array.isArray(content) ? content.map((part) => part.text ?? "").join("") : content;
-  if (!text) throw new Error("A IA não retornou conteúdo para o documento.");
-  return parseAIText(text);
 }
 
 export const normalizarDocumentoEstoqueComIA = createServerFn({ method: "POST" })

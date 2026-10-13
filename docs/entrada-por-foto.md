@@ -38,19 +38,35 @@ com fotos reais dos produtos e da geladeira do estabelecimento.
 
 ## Modelo OpenAI
 
-O padrão do OCR é **GPT-4.1** (`openai/gpt-4.1`), com suporte a imagens, PDFs e
+O padrão do OCR é **GPT-5.4 mini** (`openai/gpt-5.4-mini`), com suporte a imagens, PDFs e
 resposta JSON. Em **Conexões → OCR inteligente para estoque**, deixe o modelo
-vazio para usar o padrão ou informe `openai/gpt-4.1`. Uma configuração explícita
+vazio para usar o padrão ou informe `openai/gpt-5.4-mini`. Uma configuração explícita
 anterior continua prevalecendo; troque-a nesse campo se estava usando outro modelo.
 
 - **AI Gateway:** deixe o endpoint vazio. A autenticação usa
   `AI_GATEWAY_API_KEY` ou o OIDC da Vercel, conforme a configuração existente.
 - **OpenAI direta:** use `https://api.openai.com/v1/chat/completions` no endpoint e
   configure a chave no campo protegido da conexão ou em `OPENAI_API_KEY` no servidor.
-  O aplicativo envia `gpt-4.1` para essa API, removendo o prefixo `openai/`.
+  O aplicativo envia `gpt-5.4-mini` para essa API, removendo o prefixo `openai/`.
 
-As chamadas à IA acontecem no servidor. O GPT-4.1 é o padrão escolhido pelo suporte
+As chamadas à IA acontecem no servidor. O GPT-5.4 mini é o padrão escolhido pelo suporte
 a visão, PDF e JSON; sua precisão neste estoque ainda deve ser avaliada com fotos reais.
 
 `npm run test:ocr-model` valida a montagem das requisições OpenAI e Gateway sem
 chamadas pagas.
+
+### Modelo alternativo
+
+O motor principal é `openai/gpt-5.4-mini`. O alternativo é
+`openai/gpt-5.6-luna`, também configurável em Conexões. Em chamadas pelo Gateway
+ou diretamente à OpenAI, o alternativo é acionado uma única vez em falhas de
+rede, timeout, HTTP 408/429/5xx ou resposta sem uma lista JSON de itens válida.
+Cada tentativa tem timeout de 30 segundos. Erros de chave, permissão, créditos
+ou requisição inválida são apresentados ao operador sem troca de modelo.
+
+Endpoints personalizados de outros serviços continuam com uma única tentativa,
+pois não há garantia de que ofereçam o modelo alternativo.
+
+O GPT-5.4 mini usa esforço mínimo de raciocínio e o Luna usa esforço baixo,
+conforme os parâmetros verificados no catálogo. A troca de modelo não elimina
+a conferência humana e pode gerar o custo de uma segunda chamada.

@@ -1,7 +1,18 @@
 import { documentPart } from "./stock-ocr.ts";
 
 // Verified in the AI Gateway model catalog: image, PDF and structured-output support.
-export const DEFAULT_OCR_MODEL = "openai/gpt-4.1";
+export const DEFAULT_OCR_MODEL = "openai/gpt-5.4-mini";
+export const DEFAULT_OCR_FALLBACK_MODEL = "openai/gpt-5.6-luna";
+
+export function validateOCRModelName(model: string): string {
+  const value = model.trim();
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._:/-]*$/.test(value)) {
+    throw new Error(
+      "Informe o identificador do modelo, como gpt-5.4-mini, e não o nome da empresa.",
+    );
+  }
+  return value;
+}
 
 export function isDirectOpenAI(endpoint: string | null | undefined): boolean {
   if (!endpoint) return false;
@@ -19,10 +30,10 @@ export function createOCRRequest(params: {
   prompt: string;
   data: { base64: string; mimeType: string; fileName?: string | undefined };
 }) {
-  const selected = params.model?.trim() || DEFAULT_OCR_MODEL;
+  const selected = validateOCRModelName(params.model?.trim() || DEFAULT_OCR_MODEL);
   const direct = isDirectOpenAI(params.endpoint);
   if (direct && selected.includes("/") && !selected.startsWith("openai/")) {
-    throw new Error("Para o endpoint OpenAI, selecione um modelo OpenAI, como gpt-4.1.");
+    throw new Error("Para o endpoint OpenAI, selecione um modelo OpenAI, como gpt-5.4-mini.");
   }
   const model = direct
     ? selected.replace(/^openai\//, "")
@@ -39,6 +50,8 @@ export function createOCRRequest(params: {
       { role: "user", content: [{ type: "text", text: params.prompt }, documentPart(params.data)] },
     ],
     ...(reasoning ? {} : { temperature: 0 }),
+    ...(/^(?:openai\/)?gpt-5(?:\.4)?-mini$/.test(model) ? { reasoning_effort: "minimal" } : {}),
+    ...(/^(?:openai\/)?gpt-5\.6-luna$/.test(model) ? { reasoning_effort: "low" } : {}),
     ...(openAI ? { response_format: { type: "json_object" } } : {}),
     stream: false,
   };

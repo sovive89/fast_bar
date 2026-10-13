@@ -94,7 +94,12 @@ const CARDS: CardDef[] = [
       {
         key: "model",
         label: "Modelo",
-        placeholder: "Padrão: openai/gpt-4.1",
+        placeholder: "Padrão: openai/gpt-5.4-mini",
+      },
+      {
+        key: "fallbackModel",
+        label: "Modelo alternativo",
+        placeholder: "Padrão: openai/gpt-5.6-luna",
       },
       {
         key: "endpoint",
