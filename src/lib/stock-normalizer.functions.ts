@@ -507,7 +507,7 @@ async function normalizarComIA(
   },
   modoLeitura: "documento" | "produtos" = "documento",
 ): Promise<DocumentoNormalizado> {
-  const { normalizarDocumentoEstoqueComIA } = await import("./stock-ai.functions");
+  const { normalizarDocumentoEstoqueComIA } = await import("./stock-ai.server");
   const resultado = await normalizarDocumentoEstoqueComIA({
     data: {
       base64: arquivo.base64,
