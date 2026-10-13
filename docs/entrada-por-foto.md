@@ -45,7 +45,7 @@ anterior continua prevalecendo; troque-a nesse campo se estava usando outro mode
 
 - **AI Gateway:** deixe o endpoint vazio. A autenticação usa
   `AI_GATEWAY_API_KEY` ou o OIDC da Vercel, conforme a configuração existente.
-- **OpenAI direta:** use `https://api.openai.com/v1/chat/completions` no endpoint e
+- **OpenAI direta:** use `https://api.openai.com/v1/responses` no endpoint e
   configure a chave no campo protegido da conexão ou em `OPENAI_API_KEY` no servidor.
   O aplicativo envia `gpt-6-astra` para essa API, removendo o prefixo `openai/`.
 
@@ -77,5 +77,19 @@ Para Astra e Luna, a entrada de imagem usa `detail: original`, conforme a
 documentação de visão, para preservar detalhes de texto e rótulos. O limite de
 2400 pixels do upload continua para controlar o tamanho do pedido. A configuração
 não usa a ferramenta `image_generation`: o fluxo analisa as imagens enviadas e
-não gera novas imagens. A API Chat Completions existente continua sendo usada;
-a análise de imagens também é suportada pela Responses API mostrada na documentação.
+não gera novas imagens. A integração OpenAI/Gateway usa a Responses API, com entrada de imagem/PDF e
+saída JSON estruturada. Endpoints Chat personalizados de outros serviços continuam compatíveis.
+
+### Responses API
+
+A OpenAI recebe `input_image` para fotos e `input_file` para PDFs. O contrato JSON
+usa `text.format` com schema estrito; o raciocínio usa `reasoning.effort`.
+A configuração `store: false` evita o armazenamento da resposta pela API.
+
+Se o endpoint OpenAI salvo ainda termina em `/v1/chat/completions`, ele é convertido
+para `/v1/responses` ao enviar. Não é necessário redigitar a chave. Endpoints
+personalizados de terceiros mantêm o formato correspondente ao caminho configurado.
+
+Respostas incompletas não são tratadas como leituras bem-sucedidas; o alternativo é
+tentado antes de devolver um erro. Uma recusa do modelo interrompe a leitura.
+IDs de requisição são registrados nas falhas, sem fotos, prompts ou chaves nos logs.
