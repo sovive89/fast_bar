@@ -31,9 +31,9 @@ export type FonteDocumento = "qr" | "chave" | "xml" | "planilha" | "imagem";
 
 export type ItemNormalizado = {
   descricao: string;
-  quantidade: number;
+  quantidade: number | null;
   unidade: string;
-  valorUnitario: number;
+  valorUnitario: number | null;
   lote?: string | null;
   fabricacao?: string | null;
   validade?: string | null;
@@ -100,7 +100,9 @@ function decodificarTexto(buffer: Buffer): string {
 
 function ehXmlNfe(texto: string): boolean {
   const inicio = texto.slice(0, 2000);
-  return /<\?xml|<nfeProc|<NFe[\s>]/i.test(inicio) && /infNFe|<NFe[\s>]/i.test(texto.slice(0, 20000));
+  return (
+    /<\?xml|<nfeProc|<NFe[\s>]/i.test(inicio) && /infNFe|<NFe[\s>]/i.test(texto.slice(0, 20000))
+  );
 }
 
 function ehPlanilha(fileName: string, buffer: Buffer): boolean {
@@ -149,8 +151,8 @@ function lerXmlNfe(xml: string): {
 } {
   const blocoEmit = xml.match(/<emit>([\s\S]*?)<\/emit>/i)?.[1] ?? "";
   const fornecedorNome = extrairTag(blocoEmit, "xNome");
-  const fornecedorDocumento = (extrairTag(blocoEmit, "CNPJ") ?? extrairTag(blocoEmit, "CPF"))
-    ?.replace(/\D/g, "") ?? null;
+  const fornecedorDocumento =
+    (extrairTag(blocoEmit, "CNPJ") ?? extrairTag(blocoEmit, "CPF"))?.replace(/\D/g, "") ?? null;
 
   // A chave vive no atributo Id do infNFe, prefixada com "NFe".
   const chaveAcesso = xml.match(/Id=["']NFe(\d{44})["']/i)?.[1] ?? xml.match(/\d{44}/)?.[0] ?? null;
@@ -207,7 +209,12 @@ function lerXmlNfe(xml: string): {
 function conferirSomaDosItens(itens: ItemNormalizado[], valorTotal: number | null): string | null {
   if (!valorTotal || valorTotal <= 0 || itens.length === 0) return null;
 
-  const soma = itens.reduce((total, item) => total + item.quantidade * item.valorUnitario, 0);
+  if (itens.some((item) => item.quantidade === null || item.valorUnitario === null))
+    return "Há itens ilegíveis; confira quantidades e valores antes de confirmar.";
+  const soma = itens.reduce(
+    (total, item) => total + (item.quantidade ?? 0) * (item.valorUnitario ?? 0),
+    0,
+  );
   if (soma <= 0) return null;
 
   const diferenca = Math.abs(soma - valorTotal);
@@ -316,10 +323,9 @@ async function checarDuplicidade(
 export const normalizarDocumentoEstoque = createServerFn({ method: "POST" })
   .inputValidator(
     (data: {
+      modoLeitura?: "documento" | "produtos" | undefined;
       texto?: string | undefined;
-      arquivo?:
-        | { fileName: string; base64: string; mimeType?: string | undefined }
-        | undefined;
+      arquivo?: { fileName: string; base64: string; mimeType?: string | undefined } | undefined;
     }) => data,
   )
   .handler(async ({ data }): Promise<DocumentoNormalizado> => {
@@ -328,7 +334,10 @@ export const normalizarDocumentoEstoque = createServerFn({ method: "POST" })
 
     const texto = data.texto?.trim();
     if (texto) return normalizarTexto(texto);
-    if (data.arquivo) return normalizarArquivo(data.arquivo);
+    if (data.arquivo) {
+      if (data.modoLeitura === "produtos") return normalizarComIA(data.arquivo, "produtos");
+      return normalizarArquivo(data.arquivo);
+    }
 
     return { ok: false, fonte: null, message: "Nenhum documento informado." };
   });
@@ -490,17 +499,21 @@ async function normalizarPlanilha(arquivo: {
   };
 }
 
-async function normalizarComIA(arquivo: {
-  fileName: string;
-  base64: string;
-  mimeType?: string | undefined;
-}): Promise<DocumentoNormalizado> {
+async function normalizarComIA(
+  arquivo: {
+    fileName: string;
+    base64: string;
+    mimeType?: string | undefined;
+  },
+  modoLeitura: "documento" | "produtos" = "documento",
+): Promise<DocumentoNormalizado> {
   const { normalizarDocumentoEstoqueComIA } = await import("./stock-ai.functions");
   const resultado = await normalizarDocumentoEstoqueComIA({
     data: {
       base64: arquivo.base64,
       mimeType: arquivo.mimeType || "image/jpeg",
       fileName: arquivo.fileName,
+      modoLeitura,
     },
   });
 
@@ -517,7 +530,7 @@ async function normalizarComIA(arquivo: {
     resultado.fornecedorDocumento ?? null,
   );
 
-  const avisos: string[] = [];
+  const avisos: string[] = [...(resultado.avisos ?? [])];
   const somaIA = conferirSomaDosItens(resultado.itens, resultado.valorTotal ?? null);
   if (somaIA) avisos.push(somaIA);
   if (typeof resultado.confianca === "number" && resultado.confianca < 0.7) {

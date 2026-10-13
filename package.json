@@ -11,7 +11,8 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "ai:demo": "tsx index.ts",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:stock-photo": "node tests/run-stock-photo.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
