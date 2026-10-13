@@ -9,6 +9,7 @@ export type IntegrationKey =
   | "mercado_pago"
   | "twilio"
   | "printer"
+  | "ocr_ai"
   | "branding"
   | "acesso"
   | "operacao";
@@ -43,7 +44,14 @@ export const getIntegrations = createServerFn({ method: "POST" }).handler(async 
     // a página de Conexões só lê as chaves de integração, uma a uma, pelo nome.
     .neq("key", "acesso")
     .order("key");
-  return { integrations: (data ?? []) as IntegrationRow[] };
+  const integrations = ((data ?? []) as IntegrationRow[]).map((row) => {
+    if (row.key !== "ocr_ai") return row;
+    // A chave do provedor nunca volta para o navegador. O update abaixo preserva o segredo
+    // quando o formulário é salvo com o campo vazio ou mascarado.
+    const { apiKey: _apiKey, ...safeConfig } = row.config;
+    return { ...row, config: safeConfig };
+  });
+  return { integrations };
 });
 
 export const updateIntegration = createServerFn({ method: "POST" })
@@ -58,9 +66,29 @@ export const updateIntegration = createServerFn({ method: "POST" })
       updated_at: new Date().toISOString(),
     };
     if (data.enabled !== undefined) patch.enabled = data.enabled;
-    if (data.config !== undefined) patch.config = data.config;
+    if (data.config !== undefined) {
+      if (data.key === "ocr_ai") {
+        const { getDefaultTenantId } = await import("./fastbar.server");
+        const tenantId = await getDefaultTenantId();
+        const { data: current } = await admin()
+          .from("fastbar_integrations")
+          .select("config")
+          .eq("tenant_id", tenantId)
+          .eq("key", data.key)
+          .maybeSingle();
+        const incoming = { ...data.config };
+        if (!incoming["apiKey"]?.trim()) delete incoming["apiKey"];
+        patch.config = { ...((current?.config ?? {}) as IntegrationConfig), ...incoming };
+      } else {
+        patch.config = data.config;
+      }
+    }
 
-    const { error } = await admin().from("fastbar_integrations").update(patch).eq("key", data.key);
+    const { getDefaultTenantId } = await import("./fastbar.server");
+    const tenantId = await getDefaultTenantId();
+    const { error } = await admin()
+      .from("fastbar_integrations")
+      .upsert({ tenant_id: tenantId, key: data.key, ...patch }, { onConflict: "tenant_id,key" });
     if (error) return { ok: false as const, error: error.message };
     return { ok: true as const };
   });

@@ -294,12 +294,19 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
       emitenteDocumento?: string | undefined;
       valorTotal?: number | undefined;
       fornecedorId?: string | undefined;
+      documentoTipo?: LotTraceability["documentoTipo"];
+      documentoNumero?: string | undefined;
+      documentoSerie?: string | undefined;
+      documentoEmissao?: string | undefined;
       itens: Array<{
         kind: "base_drink" | "ingredient";
         componentId: string;
         packs: number;
         purchaseCost?: number | undefined;
         descricaoOriginal?: string | undefined;
+        lote?: string | undefined;
+        fabricacao?: string | undefined;
+        validade?: string | undefined;
       }>;
     }) => data,
   )
@@ -374,10 +381,15 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
       // observação em texto livre do movimento. É isso que deixa uma fiscalização, ou um
       // recolhimento de lote, encontrar a nota por trás de um saldo específico.
       const trace: LotTraceability = {
-        documentoTipo: "nfe",
+        documentoTipo: data.documentoTipo ?? "nfe",
         chaveAcesso: data.chave,
         fornecedorNome: data.emitenteNome,
         fornecedorDocumento: data.emitenteDocumento,
+        documentoNumero: data.documentoNumero,
+        documentoSerie: data.documentoSerie,
+        documentoEmissao: data.documentoEmissao,
+        lote: item.lote,
+        fabricacao: item.fabricacao,
       };
       const result =
         item.kind === "base_drink"
@@ -387,6 +399,7 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
                 packs: item.packs,
                 ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
                 ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
+                ...(item.validade ? { expiresOn: item.validade } : {}),
                 note: `Entrada via nota fiscal ${data.chave}`,
                 trace,
               },
@@ -397,6 +410,7 @@ export const confirmarNotaFiscal = createServerFn({ method: "POST" })
                 packs: item.packs,
                 ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
                 ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
+                ...(item.validade ? { expiresOn: item.validade } : {}),
                 note: `Entrada via nota fiscal ${data.chave}`,
                 trace,
               },

@@ -1,4 +1,5 @@
 import { createServerFn } from "@tanstack/react-start";
+import type { DocumentoTipo } from "./base-drinks.functions";
 
 /**
  * NORMALIZADOR ÚNICO DE DOCUMENTO DE ENTRADA DE ESTOQUE (parte 6 do escopo).
@@ -33,6 +34,9 @@ export type ItemNormalizado = {
   quantidade: number;
   unidade: string;
   valorUnitario: number;
+  lote?: string | null;
+  fabricacao?: string | null;
+  validade?: string | null;
 };
 
 /**
@@ -56,6 +60,8 @@ export type DocumentoNormalizado =
       fonte: FonteDocumento;
       fornecedor: FornecedorNormalizado;
       numeroNota: string | null;
+      serie?: string | null;
+      documentoTipo?: DocumentoTipo | null;
       chaveAcesso: string | null;
       dataEmissao: string | null;
       valorTotal: number | null;
@@ -98,9 +104,15 @@ function ehXmlNfe(texto: string): boolean {
 }
 
 function ehPlanilha(fileName: string, buffer: Buffer): boolean {
-  if (/\.(xlsx|xls|csv)$/i.test(fileName)) return true;
-  // .xlsx é um zip ("PK"), .xls antigo é um OLE2 (D0 CF 11 E0).
-  if (buffer[0] === 0x50 && buffer[1] === 0x4b) return true;
+  if (/\.(xlsx|xls|csv|ods)$/i.test(fileName)) return true;
+  // .xlsx/.ods são ZIP, mas DOCX também. Só aceite ZIP que contenha marcador de planilha.
+  if (buffer[0] === 0x50 && buffer[1] === 0x4b) {
+    const zipNames = buffer.toString("latin1");
+    return /xl\/workbook\.xml|content\.xml|mimetypeapplication\/vnd\.oasis\.opendocument\.spreadsheet/i.test(
+      zipNames,
+    );
+  }
+  // .xls antigo é um OLE2 (D0 CF 11 E0).
   if (buffer[0] === 0xd0 && buffer[1] === 0xcf) return true;
   return false;
 }
@@ -389,6 +401,9 @@ async function normalizarArquivo(arquivo: {
 }): Promise<DocumentoNormalizado> {
   let buffer: Buffer;
   try {
+    if (!arquivo.base64 || arquivo.base64.length > 16 * 1024 * 1024) {
+      return { ok: false, fonte: null, message: "Arquivo muito grande ou sem conteúdo." };
+    }
     buffer = Buffer.from(arquivo.base64, "base64");
   } catch {
     return { ok: false, fonte: null, message: "Arquivo inválido." };
@@ -430,6 +445,7 @@ async function normalizarXml(xml: string): Promise<DocumentoNormalizado> {
     fonte: "xml",
     fornecedor,
     numeroNota: lido.numeroNota,
+    documentoTipo: "nfe",
     chaveAcesso: lido.chaveAcesso,
     dataEmissao: lido.dataEmissao,
     valorTotal: lido.valorTotal,
@@ -459,6 +475,7 @@ async function normalizarPlanilha(arquivo: {
     fonte: "planilha",
     fornecedor: { nome: null, documento: null, supplierId: null, novo: false },
     numeroNota: null,
+    documentoTipo: null,
     chaveAcesso: null,
     dataEmissao: null,
     valorTotal: null,
@@ -514,6 +531,8 @@ async function normalizarComIA(arquivo: {
     fonte: "imagem",
     fornecedor,
     numeroNota: resultado.numeroNota ?? null,
+    serie: resultado.serie ?? null,
+    documentoTipo: resultado.documentoTipo ?? null,
     chaveAcesso: resultado.chaveAcesso ?? null,
     dataEmissao: resultado.dataEmissao ?? null,
     valorTotal: resultado.valorTotal ?? null,

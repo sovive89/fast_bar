@@ -8,6 +8,7 @@ import {
   CreditCard,
   Phone,
   Printer,
+  Sparkles,
 } from "lucide-react";
 import {
   getIntegrations,
@@ -72,6 +73,31 @@ const CARDS: CardDef[] = [
       { key: "ip", label: "IP / endereço", placeholder: "ex.: 192.168.0.50:9100" },
     ],
     comingSoon: true,
+  },
+  {
+    key: "ocr_ai",
+    name: "OCR inteligente para estoque",
+    description:
+      "Interpreta fotos, cupons, NF-e, DANFE, PDFs e tabelas para sugerir itens, valores, lotes e validade antes da conferência.",
+    icon: Sparkles,
+    fields: [
+      {
+        key: "model",
+        label: "Modelo",
+        placeholder: "ex.: google/gemini-3.8-flash",
+      },
+      {
+        key: "endpoint",
+        label: "Endpoint compatível (opcional)",
+        placeholder: "https://.../v1/chat/completions",
+      },
+      {
+        key: "apiKey",
+        label: "Chave da IA (opcional)",
+        placeholder: "deixe vazio para preservar a chave salva",
+        secret: true,
+      },
+    ],
   },
 ];
 
