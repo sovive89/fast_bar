@@ -35,3 +35,22 @@ nova, contagens inválidas, preservação de cor e formato de envio de PDF. Usa 
 
 Esses testes usam respostas simuladas. A precisão visual ainda precisa ser avaliada
 com fotos reais dos produtos e da geladeira do estabelecimento.
+
+## Modelo OpenAI
+
+O padrão do OCR é **GPT-4.1** (`openai/gpt-4.1`), com suporte a imagens, PDFs e
+resposta JSON. Em **Conexões → OCR inteligente para estoque**, deixe o modelo
+vazio para usar o padrão ou informe `openai/gpt-4.1`. Uma configuração explícita
+anterior continua prevalecendo; troque-a nesse campo se estava usando outro modelo.
+
+- **AI Gateway:** deixe o endpoint vazio. A autenticação usa
+  `AI_GATEWAY_API_KEY` ou o OIDC da Vercel, conforme a configuração existente.
+- **OpenAI direta:** use `https://api.openai.com/v1/chat/completions` no endpoint e
+  configure a chave no campo protegido da conexão ou em `OPENAI_API_KEY` no servidor.
+  O aplicativo envia `gpt-4.1` para essa API, removendo o prefixo `openai/`.
+
+As chamadas à IA acontecem no servidor. O GPT-4.1 é o padrão escolhido pelo suporte
+a visão, PDF e JSON; sua precisão neste estoque ainda deve ser avaliada com fotos reais.
+
+`npm run test:ocr-model` valida a montagem das requisições OpenAI e Gateway sem
+chamadas pagas.

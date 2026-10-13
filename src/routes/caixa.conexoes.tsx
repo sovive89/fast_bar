@@ -48,7 +48,12 @@ const CARDS: CardDef[] = [
     icon: MessageCircle,
     fields: [
       { key: "phoneNumberId", label: "Phone Number ID", placeholder: "ex.: 109876543210" },
-      { key: "accessToken", label: "Access Token", placeholder: "token da Cloud API (Meta)", secret: true },
+      {
+        key: "accessToken",
+        label: "Access Token",
+        placeholder: "token da Cloud API (Meta)",
+        secret: true,
+      },
     ],
     comingSoon: true,
   },
@@ -59,7 +64,12 @@ const CARDS: CardDef[] = [
     icon: Instagram,
     fields: [
       { key: "igUserId", label: "Instagram User ID", placeholder: "ex.: 17841400000000000" },
-      { key: "accessToken", label: "Access Token", placeholder: "token da Graph API (Meta)", secret: true },
+      {
+        key: "accessToken",
+        label: "Access Token",
+        placeholder: "token da Graph API (Meta)",
+        secret: true,
+      },
     ],
     comingSoon: true,
   },
@@ -78,13 +88,13 @@ const CARDS: CardDef[] = [
     key: "ocr_ai",
     name: "OCR inteligente para estoque",
     description:
-      "Interpreta fotos, cupons, NF-e, DANFE, PDFs e tabelas para sugerir itens, valores, lotes e validade antes da conferência.",
+      "Usa OpenAI por padrão para ler notas, PDFs e fotos de produtos ou geladeira. Revise os itens antes de lançar no estoque.",
     icon: Sparkles,
     fields: [
       {
         key: "model",
         label: "Modelo",
-        placeholder: "ex.: google/gemini-3.8-flash",
+        placeholder: "Padrão: openai/gpt-4.1",
       },
       {
         key: "endpoint",
@@ -179,7 +189,12 @@ function ConnectionCard({
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {card.fields.map((field) => (
           <div key={field.key}>
-            <label htmlFor={`connection-${card.key}-${field.key}`} className="text-xs font-medium text-muted-foreground">{field.label}</label>
+            <label
+              htmlFor={`connection-${card.key}-${field.key}`}
+              className="text-xs font-medium text-muted-foreground"
+            >
+              {field.label}
+            </label>
             <input
               id={`connection-${card.key}-${field.key}`}
               type={field.secret ? "password" : "text"}
@@ -285,9 +300,10 @@ function TwilioVerificationModule({
               )}
             </div>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Confirma o celular do cliente por SMS antes de abrir a comanda pelo QR code. Pegue essas três informações no Console da Twilio
-              (twilio.com/console) — Account SID e Auth Token na página inicial, e o Verify Service
-              SID em Verify → Services (crie um serviço se ainda não tiver).
+              Confirma o celular do cliente por SMS antes de abrir a comanda pelo QR code. Pegue
+              essas três informações no Console da Twilio (twilio.com/console) — Account SID e Auth
+              Token na página inicial, e o Verify Service SID em Verify → Services (crie um serviço
+              se ainda não tiver).
             </p>
           </div>
         </div>
@@ -396,7 +412,9 @@ function MercadoPagoModule({
       }
       setTerminals(result.terminals);
       if (result.terminals.length === 0) {
-        setSearchError("Nenhum terminal encontrado pra esse Access Token — confira se a maquininha já está pareada.");
+        setSearchError(
+          "Nenhum terminal encontrado pra esse Access Token — confira se a maquininha já está pareada.",
+        );
       }
     } finally {
       setSearching(false);
@@ -546,8 +564,8 @@ function MercadoPagoModule({
           </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
             Cole essa URL em Suas integrações → Webhooks no painel do Mercado Pago, marcando o
-            evento de pedidos (orders/Point) — é como o app fica sabendo que o pagamento no
-            terminal foi aprovado.
+            evento de pedidos (orders/Point) — é como o app fica sabendo que o pagamento no terminal
+            foi aprovado.
           </p>
         </div>
 
@@ -588,7 +606,9 @@ function ConnectionsPage() {
     await save({ data: { key, enabled, config } });
     setRows((prev) =>
       prev
-        ? prev.map((r) => (r.key === key ? { ...r, enabled, config, updated_at: new Date().toISOString() } : r))
+        ? prev.map((r) =>
+            r.key === key ? { ...r, enabled, config, updated_at: new Date().toISOString() } : r,
+          )
         : prev,
     );
   }
@@ -608,29 +628,37 @@ function ConnectionsPage() {
         <p className="mt-6 text-sm text-muted-foreground">Carregando...</p>
       ) : (
         <div className="mt-6 space-y-3">
-          <section className="rounded-2xl border border-border bg-card p-4" aria-label="IA Normalizadora de Documentos">
+          <section
+            className="rounded-2xl border border-border bg-card p-4"
+            aria-label="IA Normalizadora de Documentos"
+          >
             <div className="flex items-start gap-3">
-                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
                 <Sparkles className="h-4 w-4" />
               </span>
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold">IA Normalizadora de Documentos</p>
-                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">Disponível</span>
+                  <span className="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-500">
+                    Disponível
+                  </span>
                 </div>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  Leitura de notas fiscais, recibos e comprovantes por câmera ou upload.
-                  Extrai itens, sugere produtos do cadastro, normaliza embalagens, unidades e custos
-                  e prepara lotes para revisão antes de qualquer lançamento no estoque.
+                  Leitura de notas fiscais, recibos e comprovantes por câmera ou upload. Extrai
+                  itens, sugere produtos do cadastro, normaliza embalagens, unidades e custos e
+                  prepara lotes para revisão antes de qualquer lançamento no estoque.
                 </p>
                 <p className="mt-2 text-xs text-muted-foreground">
-                  Configure o modelo, endpoint e chave no card abaixo. Nenhum documento é lançado automaticamente:
-                  tudo passa por revisão humana antes da entrada.
+                  Configure o modelo, endpoint e chave no card abaixo. Nenhum documento é lançado
+                  automaticamente: tudo passa por revisão humana antes da entrada.
                 </p>
               </div>
             </div>
           </section>
-          <TwilioVerificationModule row={rows.find((r) => r.key === "twilio")} onSave={handleSave} />
+          <TwilioVerificationModule
+            row={rows.find((r) => r.key === "twilio")}
+            onSave={handleSave}
+          />
           <MercadoPagoModule row={rows.find((r) => r.key === "mercado_pago")} onSave={handleSave} />
           {CARDS.map((card) => (
             <ConnectionCard
