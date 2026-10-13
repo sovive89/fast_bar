@@ -1,0 +1,16 @@
+{
+  "documentoTipo": "nfce",
+  "fornecedorNome": "BAR DISTRIBUIDORA LTDA",
+  "fornecedorDocumento": "12.345.678/0001-90",
+  "numeroNota": "1842",
+  "serie": "3",
+  "chaveAcesso": "35261012345678000190550030000018421012345678",
+  "dataEmissao": "13/10/2026",
+  "valorTotal": 1234.56,
+  "confianca": 0.94,
+  "itens": [
+    { "descricao": "Cerveja Pilsen 350ml", "quantidade": 48, "unidade": "UN", "valorUnitario": 4.99, "lote": "L2609A", "fabricacao": "01/09/2026", "validade": "01/09/2027" },
+    { "descricao": "Gin London Dry 750ml", "quantidade": 6, "unidade": "CX", "valorUnitario": 129.9, "lote": null, "fabricacao": null, "validade": null },
+    { "descricao": "Subtotal", "quantidade": 0, "unidade": "", "valorUnitario": 0 }
+  ]
+}

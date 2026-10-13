@@ -1,14 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
-
-type AIItem = {
-  descricao: string;
-  quantidade: number;
-  unidade: string;
-  valorUnitario: number;
-  lote?: string | null;
-  fabricacao?: string | null;
-  validade?: string | null;
-};
+import { normalizeOCRPayload, parseOCRText } from "./ocr-contract";
+import type { OCRItem } from "./ocr-contract";
 
 type AIResult = {
   ok: boolean;
@@ -21,7 +13,7 @@ type AIResult = {
   chaveAcesso?: string | null;
   dataEmissao?: string | null;
   valorTotal?: number | null;
-  itens: AIItem[];
+  itens: OCRItem[];
   confianca?: number | null;
   duplicada?: boolean;
   avisoDuplicidade?: string | null;
@@ -95,35 +87,7 @@ O documento pode ser nota fiscal, cupom fiscal (NFC-e), DANFE, comprovante, etiq
 impressa. Extraia somente o que está visível.`;
 
 function parseAIText(text: string): Partial<AIResult> {
-  const cleaned = text
-    .trim()
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "");
-  try {
-    return JSON.parse(cleaned) as Partial<AIResult>;
-  } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start >= 0 && end > start) {
-      return JSON.parse(cleaned.slice(start, end + 1)) as Partial<AIResult>;
-    }
-    throw new Error("Resposta da IA não contém JSON válido.");
-  }
-}
-
-function normalizarData(value: unknown): string | null {
-  if (typeof value !== "string") return null;
-  const raw = value.trim();
-  if (!raw) return null;
-  const br = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$/);
-  if (br) return `${br[3] ?? ""}-${(br[2] ?? "").padStart(2, "0")}-${(br[1] ?? "").padStart(2, "0")}`;
-  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
-}
-
-function normalizarTipo(value: unknown): AIResult["documentoTipo"] {
-  return ["nfe", "nfce", "danfe", "cupom", "comprovante", "outro"].includes(String(value))
-    ? (value as NonNullable<AIResult["documentoTipo"]>)
-    : null;
+  return parseOCRText(text);
 }
 
 function validarEndpoint(value: string): string | null {
@@ -272,35 +236,10 @@ export const normalizarDocumentoEstoqueComIA = createServerFn({ method: "POST" }
 
     try {
       const parsed = await chamarIA(data);
-      const itens = Array.isArray(parsed.itens)
-        ? parsed.itens.flatMap((item) => {
-            if (
-              !item ||
-              typeof item !== "object" ||
-              typeof (item as AIItem).descricao !== "string" ||
-              !Number.isFinite(Number((item as AIItem).quantidade))
-            ) {
-              return [];
-            }
-            const candidate = item as AIItem;
-            return [
-              {
-                descricao: candidate.descricao.trim(),
-                quantidade: Number(candidate.quantidade),
-                unidade: candidate.unidade?.trim() || "un",
-                valorUnitario: Number.isFinite(Number(candidate.valorUnitario))
-                  ? Number(candidate.valorUnitario)
-                  : 0,
-                lote: typeof candidate.lote === "string" ? candidate.lote.trim() || null : null,
-                fabricacao: normalizarData(candidate.fabricacao),
-                validade: normalizarData(candidate.validade),
-              },
-            ];
-          })
-        : [];
+      const normalized = normalizeOCRPayload(parsed);
+      const itens = normalized.itens;
 
-      const chave =
-        typeof parsed.chaveAcesso === "string" ? parsed.chaveAcesso.replace(/\D/g, "") : null;
+      const chave = normalized.chaveAcesso;
       let duplicada = false;
       let avisoDuplicidade: string | null = null;
       if (chave && /^\d{44}$/.test(chave)) {
@@ -317,15 +256,15 @@ export const normalizarDocumentoEstoqueComIA = createServerFn({ method: "POST" }
 
       return {
         ok: true,
-        fornecedorNome: parsed.fornecedorNome ?? null,
-        fornecedorDocumento: parsed.fornecedorDocumento ?? null,
-        numeroNota: parsed.numeroNota ?? null,
-        serie: parsed.serie ?? null,
-        documentoTipo: normalizarTipo(parsed.documentoTipo) ?? null,
+        fornecedorNome: normalized.fornecedorNome,
+        fornecedorDocumento: normalized.fornecedorDocumento,
+        numeroNota: normalized.numeroNota,
+        serie: normalized.serie,
+        documentoTipo: normalized.documentoTipo,
         chaveAcesso: chave,
-        dataEmissao: parsed.dataEmissao ?? null,
-        valorTotal: typeof parsed.valorTotal === "number" ? parsed.valorTotal : null,
-        confianca: typeof parsed.confianca === "number" ? parsed.confianca : null,
+        dataEmissao: normalized.dataEmissao,
+        valorTotal: normalized.valorTotal,
+        confianca: normalized.confianca,
         itens,
         duplicada,
         avisoDuplicidade,
