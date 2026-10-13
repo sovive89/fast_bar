@@ -141,6 +141,7 @@ function lerXmlNfe(xml: string): {
   fornecedorNome: string | null;
   fornecedorDocumento: string | null;
   numeroNota: string | null;
+  modelo: string | null;
   chaveAcesso: string | null;
   dataEmissao: string | null;
   valorTotal: number | null;
@@ -155,6 +156,7 @@ function lerXmlNfe(xml: string): {
   const chaveAcesso = xml.match(/Id=["']NFe(\d{44})["']/i)?.[1] ?? xml.match(/\d{44}/)?.[0] ?? null;
 
   const blocoIde = xml.match(/<ide>([\s\S]*?)<\/ide>/i)?.[1] ?? "";
+  const modelo = extrairTag(blocoIde, "mod");
   const numeroNota = extrairTag(blocoIde, "nNF");
   const dataEmissao = extrairTag(blocoIde, "dhEmi") ?? extrairTag(blocoIde, "dEmi");
 
@@ -180,6 +182,7 @@ function lerXmlNfe(xml: string): {
     fornecedorNome,
     fornecedorDocumento,
     numeroNota,
+    modelo,
     chaveAcesso,
     dataEmissao,
     valorTotal,
@@ -445,7 +448,7 @@ async function normalizarXml(xml: string): Promise<DocumentoNormalizado> {
     fonte: "xml",
     fornecedor,
     numeroNota: lido.numeroNota,
-    documentoTipo: "nfe",
+    documentoTipo: lido.modelo === "65" ? "nfce" : "nfe",
     chaveAcesso: lido.chaveAcesso,
     dataEmissao: lido.dataEmissao,
     valorTotal: lido.valorTotal,

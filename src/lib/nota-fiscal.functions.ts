@@ -470,12 +470,22 @@ export const confirmarEntradaEstoque = createServerFn({ method: "POST" })
     (data: {
       origem: string; // rótulo curto pra nota do movimento, ex.: "planilha: notas.xlsx"
       fornecedorId?: string | undefined;
+      fornecedorNome?: string | undefined;
+      fornecedorDocumento?: string | undefined;
+      documentoTipo?: LotTraceability["documentoTipo"];
+      documentoNumero?: string | undefined;
+      documentoSerie?: string | undefined;
+      documentoEmissao?: string | undefined;
+      chaveAcesso?: string | undefined;
       itens: Array<{
         kind: "base_drink" | "ingredient";
         componentId: string;
         packs: number;
         purchaseCost?: number | undefined;
         descricaoOriginal?: string | undefined;
+        lote?: string | undefined;
+        fabricacao?: string | undefined;
+        validade?: string | undefined;
       }>;
     }) => data,
   )
@@ -497,8 +507,16 @@ export const confirmarEntradaEstoque = createServerFn({ method: "POST" })
       // "entrada_manual" -- interno, nunca tratado como NF-e -- com a origem como motivo, pra
       // uma auditoria depois entender de onde saiu esse saldo sem documento fiscal.
       const trace: LotTraceability = {
-        documentoTipo: "entrada_manual",
+        documentoTipo: data.documentoTipo ?? "entrada_manual",
         motivo: `Entrada via ${data.origem}`,
+        fornecedorNome: data.fornecedorNome,
+        fornecedorDocumento: data.fornecedorDocumento,
+        documentoNumero: data.documentoNumero,
+        documentoSerie: data.documentoSerie,
+        documentoEmissao: data.documentoEmissao,
+        chaveAcesso: data.chaveAcesso,
+        lote: item.lote,
+        fabricacao: item.fabricacao,
       };
       const result =
         item.kind === "base_drink"
@@ -508,6 +526,7 @@ export const confirmarEntradaEstoque = createServerFn({ method: "POST" })
                 packs: item.packs,
                 ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
                 ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
+                ...(item.validade ? { expiresOn: item.validade } : {}),
                 note: `Entrada via ${data.origem}`,
                 trace,
               },
@@ -518,6 +537,7 @@ export const confirmarEntradaEstoque = createServerFn({ method: "POST" })
                 packs: item.packs,
                 ...(item.purchaseCost !== undefined ? { purchaseCost: item.purchaseCost } : {}),
                 ...(data.fornecedorId ? { supplierId: data.fornecedorId } : {}),
+                ...(item.validade ? { expiresOn: item.validade } : {}),
                 note: `Entrada via ${data.origem}`,
                 trace,
               },
