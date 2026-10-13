@@ -94,7 +94,7 @@ const CARDS: CardDef[] = [
       {
         key: "model",
         label: "Modelo",
-        placeholder: "Padrão: openai/gpt-5.4-mini",
+        placeholder: "Padrão: openai/gpt-6-astra",
       },
       {
         key: "fallbackModel",

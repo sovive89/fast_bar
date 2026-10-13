@@ -32,7 +32,7 @@ test("primary success makes only one request", async () => {
   const client = fake([success()]);
   const result = await requestOCR({ ...params, fetcher: client.fetcher });
   assert.equal(client.bodies.length, 1);
-  assert.equal(client.bodies[0]?.["model"], "gpt-5.4-mini");
+  assert.equal(client.bodies[0]?.["model"], "gpt-6-astra");
   assert.equal(result["itens"] instanceof Array, true);
 });
 
@@ -81,7 +81,7 @@ test("Gateway requests preserve provider-prefixed IDs on both attempts", async (
     endpoint: "https://ai-gateway.vercel.sh/v1/chat/completions",
     fetcher: client.fetcher,
   });
-  assert.equal(client.bodies[0]?.["model"], "openai/gpt-5.4-mini");
+  assert.equal(client.bodies[0]?.["model"], "openai/gpt-6-astra");
   assert.equal(client.bodies[1]?.["model"], "openai/gpt-5.6-luna");
 });
 

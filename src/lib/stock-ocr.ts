@@ -118,11 +118,14 @@ export function normalizeOCR(value: unknown, options: { readPrices?: boolean } =
 }
 
 /** Chat Completions uses file parts for PDF, never an image_url with application/pdf. */
-export function documentPart(data: {
-  base64: string;
-  mimeType: string;
-  fileName?: string | undefined;
-}) {
+export function documentPart(
+  data: {
+    base64: string;
+    mimeType: string;
+    fileName?: string | undefined;
+  },
+  detail: "high" | "original" = "high",
+) {
   if (data.mimeType === "application/pdf") {
     return {
       type: "file",
@@ -134,6 +137,6 @@ export function documentPart(data: {
   }
   return {
     type: "image_url",
-    image_url: { url: `data:${data.mimeType};base64,${data.base64}`, detail: "high" },
+    image_url: { url: `data:${data.mimeType};base64,${data.base64}`, detail },
   };
 }
