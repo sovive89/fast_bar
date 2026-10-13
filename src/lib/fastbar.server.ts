@@ -24,6 +24,8 @@ export async function getDefaultTenantId(): Promise<string> {
 }
 
 export async function assertRegisterAccess() {
+  // useSession é a API server-side do TanStack Start; neste contexto não é um Hook React de UI.
+  // eslint-disable-next-line react-hooks/rules-of-hooks
   const session = await useSession<GateSession>(sessionConfig());
   if (session.data.unlocked !== true) throw new Error("Acesso do caixa não autorizado.");
 }

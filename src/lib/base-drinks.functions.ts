@@ -1017,8 +1017,10 @@ export const createProduct = createServerFn({ method: "POST" })
       p_price: price,
       p_category: data.category.trim(),
       p_unit: unit,
-      p_package_type: data.packageType?.trim() || null,
-      p_image_url: data.imageUrl?.trim() || null,
+      // Os tipos gerados do Supabase descrevem esses argumentos como string, embora as RPCs
+      // aceitem NULL. O cast local preserva NULL no banco sem enfraquecer o restante do contrato.
+      p_package_type: (data.packageType?.trim() || null) as unknown as string,
+      p_image_url: (data.imageUrl?.trim() || null) as unknown as string,
       p_initial_stock: initialStock,
       p_tenant_id: await getDefaultTenantId(),
       // campo_estoque classifica produto SEM ficha técnica com lançamento próprio — nenhum produto
@@ -1102,8 +1104,8 @@ export const updateProduct = createServerFn({ method: "POST" })
       p_price: price,
       p_category: data.category.trim(),
       p_unit: unit,
-      p_package_type: data.packageType?.trim() || null,
-      p_image_url: newImageUrl,
+      p_package_type: (data.packageType?.trim() || null) as unknown as string,
+      p_image_url: newImageUrl as unknown as string,
       p_change_image: changeImage,
       p_campo_estoque: null as unknown as string,
       p_change_campo_estoque: false,
