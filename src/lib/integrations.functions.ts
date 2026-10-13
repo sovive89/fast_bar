@@ -33,8 +33,9 @@ export type IntegrationRow = {
  * em Estoque pra "Foto da nota".
  */
 export const getIntegrations = createServerFn({ method: "POST" }).handler(async () => {
-  const { admin, assertRegisterAccess } = await import("./fastbar.server");
+  const { admin, assertRegisterAccess, getDefaultTenantId } = await import("./fastbar.server");
   await assertRegisterAccess();
+  const tenantId = await getDefaultTenantId();
   const { data } = await admin()
     .from("fastbar_integrations")
     .select("key, enabled, config, updated_at")
@@ -42,6 +43,7 @@ export const getIntegrations = createServerFn({ method: "POST" }).handler(async 
     // pro navegador. Hash de senha curta se quebra em segundos numa tabela rainbow — devolver isso
     // pra tela seria entregar a senha do caixa a quem abrir o DevTools. Ninguém precisa dele aqui:
     // a página de Conexões só lê as chaves de integração, uma a uma, pelo nome.
+    .eq("tenant_id", tenantId)
     .neq("key", "acesso")
     .order("key");
   const integrations = ((data ?? []) as IntegrationRow[]).map((row) => {

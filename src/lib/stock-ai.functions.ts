@@ -126,6 +126,34 @@ function normalizarTipo(value: unknown): AIResult["documentoTipo"] {
     : null;
 }
 
+function validarEndpoint(value: string): string | null {
+  try {
+    const url = new URL(value);
+    const host = url.hostname.toLowerCase();
+    const privado =
+      host === "localhost" ||
+      host === "metadata.google.internal" ||
+      host === "0.0.0.0" ||
+      host === "::1" ||
+      host.startsWith("127.") ||
+      host.startsWith("10.") ||
+      host.startsWith("192.168.") ||
+      host.startsWith("169.254.") ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+    if (url.protocol !== "https:" || privado) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
+function extrairConteudo(payload: {
+  choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+}) {
+  const content = payload.choices?.[0]?.message?.content;
+  return Array.isArray(content) ? content.map((part) => part.text ?? "").join("") : content;
+}
+
 async function chamarIA(data: { base64: string; mimeType: string; fileName?: string | undefined }) {
   const { admin, getDefaultTenantId } = await import("./fastbar.server");
   const tenantId = await getDefaultTenantId();
@@ -135,9 +163,19 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
     .eq("tenant_id", tenantId)
     .eq("key", "ocr_ai")
     .maybeSingle();
-  const config = (integration?.enabled ? integration.config : {}) as Record<string, string>;
-  const customEndpoint = config["endpoint"]?.trim() || process.env["FASTBAR_AI_NORMALIZER_URL"];
-  const customSecret = config["apiKey"]?.trim() || process.env["FASTBAR_AI_NORMALIZER_SECRET"];
+  if (integration && !integration.enabled) {
+    throw new Error("A conexão OCR está desativada em Conexões.");
+  }
+  const config = (integration?.config ?? {}) as Record<string, string>;
+  const configuredEndpoint = config["endpoint"]?.trim();
+  const customEndpoint = configuredEndpoint
+    ? validarEndpoint(configuredEndpoint)
+    : process.env["FASTBAR_AI_NORMALIZER_URL"];
+  if (configuredEndpoint && !customEndpoint) {
+    throw new Error("O endpoint OCR precisa ser uma URL HTTPS pública e válida.");
+  }
+  const customSecret = config["apiKey"]?.trim() ||
+    (!configuredEndpoint ? process.env["FASTBAR_AI_NORMALIZER_SECRET"] : undefined);
   const configuredModel = config["model"]?.trim();
 
   if (customEndpoint) {
@@ -148,14 +186,27 @@ async function chamarIA(data: { base64: string; mimeType: string; fileName?: str
         ...(customSecret ? { Authorization: `Bearer ${customSecret}` } : {}),
       },
       body: JSON.stringify({
-        mimeType: data.mimeType,
-        base64: data.base64,
-        fileName: data.fileName ?? null,
-        prompt: PROMPT,
+        model: configuredModel || process.env["FASTBAR_OCR_MODEL"] || MODELO_PADRAO,
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: PROMPT },
+              { type: "image_url", image_url: { url: `data:${data.mimeType};base64,${data.base64}`, detail: "high" } },
+            ],
+          },
+        ],
+        temperature: 0,
+        stream: false,
       }),
     });
     if (!response.ok) throw new Error(`O serviço de IA respondeu HTTP ${response.status}.`);
-    return (await response.json()) as Partial<AIResult>;
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string | Array<{ type?: string; text?: string }> } }>;
+    };
+    const text = extrairConteudo(payload);
+    if (!text) throw new Error("O endpoint OCR não retornou conteúdo.");
+    return parseAIText(text);
   }
 
   // Em Vercel, VERCEL_OIDC_TOKEN é disponibilizado automaticamente para funções implantadas.

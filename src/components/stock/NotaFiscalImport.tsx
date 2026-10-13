@@ -15,7 +15,15 @@ import { preprocessDocumentImage } from "@/lib/ocr-image";
 type Kind = "base_drink" | "ingredient";
 type ComponentOption = { id: string; name: string; kind: Kind };
 type Alias = { rawTextNormalized: string | null; kind: Kind; componentId: string };
-type ReadItem = { descricao: string; quantidade: number; unidade: string; valorUnitario: number };
+type ReadItem = {
+  descricao: string;
+  quantidade: number;
+  unidade: string;
+  valorUnitario: number;
+  lote?: string | null;
+  fabricacao?: string | null;
+  validade?: string | null;
+};
 type Line = {
   key: string;
   descricaoOriginal: string;
@@ -24,6 +32,9 @@ type Line = {
   componentId: string;
   packs: string;
   purchaseCost: string;
+  lote: string;
+  fabricacao: string;
+  validade: string;
 };
 
 type Mode = "choosing" | "camera" | "scanning" | "processing" | "confirming" | "done";
@@ -54,6 +65,9 @@ function makeLines(items: ReadItem[], components: ComponentOption[], aliases: Al
       componentId: match?.id ?? "",
       packs: "",
       purchaseCost: item.valorUnitario > 0 ? String(item.valorUnitario * item.quantidade).replace(".", ",") : "",
+      lote: item.lote ?? "",
+      fabricacao: item.fabricacao ?? "",
+      validade: item.validade ?? "",
     };
   });
 }
@@ -80,6 +94,10 @@ export function NotaFiscalImport(props: {
   const [uf, setUf] = useState<string | null>(null);
   const [emitente, setEmitente] = useState<string | null>(null);
   const [documento, setDocumento] = useState<string | null>(null);
+  const [documentoNumero, setDocumentoNumero] = useState<string | null>(null);
+  const [documentoSerie, setDocumentoSerie] = useState<string | null>(null);
+  const [documentoTipo, setDocumentoTipo] = useState<string | null>(null);
+  const [documentoEmissao, setDocumentoEmissao] = useState<string | null>(null);
   const [valorTotal, setValorTotal] = useState<number | null>(null);
   const [confidence, setConfidence] = useState<number | null>(null);
   const [duplicate, setDuplicate] = useState(false);
@@ -283,6 +301,10 @@ export function NotaFiscalImport(props: {
 
       setEmitente(r.fornecedor.nome);
       setDocumento(r.fornecedor.documento);
+      setDocumentoNumero(r.numeroNota);
+      setDocumentoSerie(r.serie ?? null);
+      setDocumentoTipo(r.documentoTipo ?? null);
+      setDocumentoEmissao(r.dataEmissao);
       setChave(r.chaveAcesso ?? "");
       setValorTotal(r.valorTotal);
       setConfidence(r.confianca);
@@ -325,7 +347,21 @@ export function NotaFiscalImport(props: {
   }
 
   function addManual() {
-    setLines((current) => [...current, { key: `manual-${Date.now()}`, descricaoOriginal: "", quantidadeNota: "", kind: "base_drink", componentId: "", packs: "", purchaseCost: "" }]);
+    setLines((current) => [
+      ...current,
+      {
+        key: `manual-${Date.now()}`,
+        descricaoOriginal: "",
+        quantidadeNota: "",
+        kind: "base_drink",
+        componentId: "",
+        packs: "",
+        purchaseCost: "",
+        lote: "",
+        fabricacao: "",
+        validade: "",
+      },
+    ]);
   }
 
   async function confirm() {
@@ -334,7 +370,16 @@ export function NotaFiscalImport(props: {
       setError(duplicateWarning ?? "Esse documento já foi importado.");
       return;
     }
-    const items = [] as Array<{ kind: Kind; componentId: string; packs: number; purchaseCost?: number; descricaoOriginal?: string }>;
+    const items = [] as Array<{
+      kind: Kind;
+      componentId: string;
+      packs: number;
+      purchaseCost?: number;
+      descricaoOriginal?: string;
+      lote?: string;
+      fabricacao?: string;
+      validade?: string;
+    }>;
     for (const line of lines) {
       if (!line.componentId) continue;
       const packs = Number(line.packs);
@@ -347,7 +392,16 @@ export function NotaFiscalImport(props: {
         setError(`Valor inválido em "${line.descricaoOriginal || "item manual"}".`);
         return;
       }
-      items.push({ kind: line.kind, componentId: line.componentId, packs, ...(cost !== null ? { purchaseCost: cost } : {}), ...(line.descricaoOriginal.trim() ? { descricaoOriginal: line.descricaoOriginal.trim() } : {}) });
+      items.push({
+        kind: line.kind,
+        componentId: line.componentId,
+        packs,
+        ...(cost !== null ? { purchaseCost: cost } : {}),
+        ...(line.descricaoOriginal.trim() ? { descricaoOriginal: line.descricaoOriginal.trim() } : {}),
+        ...(line.lote.trim() ? { lote: line.lote.trim() } : {}),
+        ...(line.fabricacao.trim() ? { fabricacao: line.fabricacao.trim() } : {}),
+        ...(line.validade.trim() ? { validade: line.validade.trim() } : {}),
+      });
     }
     if (!items.length) {
       setError("Escolha pelo menos um item do estoque.");
@@ -356,13 +410,13 @@ export function NotaFiscalImport(props: {
     setBusy(true);
     try {
       if (origin === "qr" && chave) {
-        const r = await confirmNF({ data: { chave, uf: uf ?? undefined, emitenteNome: emitente ?? undefined, emitenteDocumento: documento ?? undefined, valorTotal: valorTotal ?? undefined, itens: items } });
+        const r = await confirmNF({ data: { chave, uf: uf ?? undefined, emitenteNome: emitente ?? undefined, emitenteDocumento: documento ?? undefined, valorTotal: valorTotal ?? undefined, documentoTipo: documentoTipo as "nfe" | "nfce" | "danfe" | "cupom" | "comprovante" | "entrada_manual" | "outro" | undefined, documentoNumero: documentoNumero ?? undefined, documentoSerie: documentoSerie ?? undefined, documentoEmissao: documentoEmissao ?? undefined, itens: items } });
         if (!r.ok) {
           setError(r.message ?? "Não foi possível confirmar a entrada.");
           return;
         }
       } else {
-        const r = await confirmFile({ data: { origem: `${origin === "foto" ? "foto IA" : "arquivo"}: ${fileName || "documento"}`, itens: items } });
+        const r = await confirmFile({ data: { origem: `${origin === "foto" ? "foto IA" : "arquivo"}: ${fileName || "documento"}`, fornecedorNome: emitente ?? undefined, fornecedorDocumento: documento ?? undefined, documentoTipo: documentoTipo as "nfe" | "nfce" | "danfe" | "cupom" | "comprovante" | "entrada_manual" | "outro" | undefined, documentoNumero: documentoNumero ?? undefined, documentoSerie: documentoSerie ?? undefined, documentoEmissao: documentoEmissao ?? undefined, chaveAcesso: chave || undefined, itens: items } });
         if (!r.ok) {
           setError(r.message ?? "Não foi possível confirmar a entrada.");
           return;
@@ -420,7 +474,7 @@ export function NotaFiscalImport(props: {
           </div>
         )}
 
-        {mode === "processing" && <p className="py-10 text-center text-sm text-muted-foreground">Interpretando o documento e preparando os campos...</p>}
+        {mode === "processing" && <p className="py-10 text-center text-sm text-muted-foreground">{info || "Interpretando o documento e preparando os campos..."}</p>}
 
         {mode === "confirming" && (
           <div className="space-y-3">
@@ -438,7 +492,7 @@ export function NotaFiscalImport(props: {
             <div className="space-y-2">
               {lines.map((line) => {
                 const options = line.kind === "base_drink" ? props.baseDrinks : props.ingredients;
-                return <div key={line.key} className="rounded-xl border border-border p-3"><p className="mb-2 truncate text-xs font-medium text-muted-foreground">{line.descricaoOriginal || "Item manual"}{line.quantidadeNota && ` · ${line.quantidadeNota}`}</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><label className="block"><span className="text-xs font-medium text-muted-foreground">Tipo</span><select value={line.kind} onChange={(e) => updateLine(line.key, { kind: e.target.value as Kind, componentId: "" })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="base_drink">Bebida base</option><option value="ingredient">Ingrediente</option></select></label><label className="block"><span className="text-xs font-medium text-muted-foreground">Item</span><select value={line.componentId} onChange={(e) => updateLine(line.key, { componentId: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="">Ignorar</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label><TextField label="Embalagens" value={line.packs} onChange={(value) => updateLine(line.key, { packs: value })} type="number" placeholder={line.quantidadeNota ? `Nota: ${line.quantidadeNota}` : ""} /><TextField label="Valor pago (opcional)" value={line.purchaseCost} onChange={(value) => updateLine(line.key, { purchaseCost: value })} type="text" /></div></div>;
+                return <div key={line.key} className="rounded-xl border border-border p-3"><p className="mb-2 truncate text-xs font-medium text-muted-foreground">{line.descricaoOriginal || "Item manual"}{line.quantidadeNota && ` · ${line.quantidadeNota}`}</p><div className="grid grid-cols-1 gap-2 sm:grid-cols-2"><label className="block"><span className="text-xs font-medium text-muted-foreground">Tipo</span><select value={line.kind} onChange={(e) => updateLine(line.key, { kind: e.target.value as Kind, componentId: "" })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="base_drink">Bebida base</option><option value="ingredient">Ingrediente</option></select></label><label className="block"><span className="text-xs font-medium text-muted-foreground">Item</span><select value={line.componentId} onChange={(e) => updateLine(line.key, { componentId: e.target.value })} className="mt-1 h-10 w-full rounded-xl border border-border bg-background px-3 text-sm"><option value="">Ignorar</option>{options.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}</select></label><TextField label="Embalagens" value={line.packs} onChange={(value) => updateLine(line.key, { packs: value })} type="number" placeholder={line.quantidadeNota ? `Nota: ${line.quantidadeNota}` : ""} /><TextField label="Valor pago (opcional)" value={line.purchaseCost} onChange={(value) => updateLine(line.key, { purchaseCost: value })} type="text" /><TextField label="Lote (opcional)" value={line.lote} onChange={(value) => updateLine(line.key, { lote: value })} type="text" /><TextField label="Validade (AAAA-MM-DD)" value={line.validade} onChange={(value) => updateLine(line.key, { validade: value })} type="text" /></div></div>;
               })}
             </div>
             <button onClick={addManual} className="w-full rounded-lg border border-dashed border-border py-2 text-xs font-medium text-muted-foreground">+ Adicionar item manualmente</button>
