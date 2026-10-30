@@ -6,7 +6,7 @@ import { NotaFiscalImport } from "@/components/stock/NotaFiscalImport";
 import { LotEntryForm } from "@/components/stock/LotEntryForm";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl, parseAmount } from "@/lib/format";
-import { Package, UtensilsCrossed, Wine } from "lucide-react";
+import { Factory, Package, UtensilsCrossed, Wine } from "lucide-react";
 import {
   addBaseDrinkEntry,
   addBaseDrinkLoss,
@@ -41,7 +41,7 @@ export const Route = createFileRoute("/caixa/estoque")({
   component: StockOverview,
 });
 
-type Tab = "bebidas" | "ingredientes" | "fornecedores" | "relatorios";
+type Tab = "bebidas" | "ingredientes" | "producao" | "fornecedores" | "relatorios";
 
 /**
  * Duas listas de estoque, divididas por COMPORTAMENTO, não por tabela do banco:
@@ -59,6 +59,7 @@ type Tab = "bebidas" | "ingredientes" | "fornecedores" | "relatorios";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "bebidas", label: "Bebidas" },
   { id: "ingredientes", label: "Ingredientes" },
+  { id: "producao", label: "Produção" },
   { id: "fornecedores", label: "Fornecedores" },
   { id: "relatorios", label: "Relatórios" },
 ];
@@ -128,6 +129,7 @@ function StockOverview() {
       <div className="mt-6">
         {tab === "bebidas" && <BebidasBaseTab />}
         {tab === "ingredientes" && <IngredientesTab />}
+        {tab === "producao" && <ProducaoTab />}
         {tab === "fornecedores" && <FornecedoresTab />}
         {tab === "relatorios" && <RelatoriosTab />}
       </div>
@@ -1267,6 +1269,107 @@ function IngredientesTab() {
         lossFn({ data: { ingredientId: input.data.id, quantity: input.data.quantity, note: input.data.note } })
       }
     />
+  );
+}
+
+// ============================================================
+// Aba: Produção
+// ============================================================
+
+type ProductionProduct = { id: string; name: string; category: string; is_active: boolean };
+type ProductionRecipeItem = {
+  id: string;
+  quantity: number;
+  base_drink: { name: string; unit: string } | null;
+  ingredient: { name: string; unit: string } | null;
+};
+
+/**
+ * A estrutura acompanha o módulo de Produção do Pop9: uma lista de fichas, a prévia dos
+ * componentes e a ação de produzir. Nesta primeira etapa os drinks continuam sendo preparados
+ * sob demanda (a baixa acontece ao lançar na comanda); por isso o botão abre a ficha no Cardápio
+ * em vez de criar artificialmente saldo de um drink pronto. Itens pré-preparados passam a usar a
+ * mesma tela quando a produção em lote for habilitada no banco.
+ */
+function ProducaoTab() {
+  const listProducts = useServerFn(listAllProducts);
+  const loadRecipe = useServerFn(getRecipeItems);
+  const [products, setProducts] = useState<ProductionProduct[]>([]);
+  const [recipes, setRecipes] = useState<Record<string, ProductionRecipeItem[]>>({});
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      const result = await listProducts();
+      const active = (result.products as ProductionProduct[]).filter((product) => product.is_active);
+      const entries = await Promise.all(
+        active.map(async (product) => [product.id, (await loadRecipe({ data: { productId: product.id } })).items] as const),
+      );
+      if (!cancelled) {
+        setProducts(active);
+        setRecipes(Object.fromEntries(entries) as Record<string, ProductionRecipeItem[]>);
+        setLoading(false);
+      }
+    }
+    void load();
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  if (loading) return <p className="text-sm text-muted-foreground">Carregando fichas técnicas...</p>;
+
+  const technicalSheets = products.filter((product) => (recipes[product.id] ?? []).length > 0);
+  return (
+    <div className="space-y-4">
+      <SectionCard title="Produção">
+        <p className="text-sm text-muted-foreground">
+          Drinks são preparados sob demanda e já baixam seus componentes ao entrar na comanda. Use
+          esta área para conferir a ficha e estruturar os itens produzidos em lote.
+        </p>
+        <Link
+          to="/caixa/cardapio"
+          className="mt-3 inline-flex h-10 items-center justify-center rounded-xl bg-primary px-4 text-sm font-semibold text-primary-foreground"
+        >
+          <Factory className="mr-2 h-4 w-4" /> Nova ficha técnica
+        </Link>
+      </SectionCard>
+
+      <div className="flex items-baseline justify-between">
+        <h2 className="text-sm font-semibold">Fichas técnicas ativas</h2>
+        <span className="text-xs text-muted-foreground">{technicalSheets.length} cadastrada(s)</span>
+      </div>
+      {technicalSheets.length === 0 ? (
+        <p className="rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
+          Nenhuma ficha técnica cadastrada. Crie uma no Cardápio para aparecer aqui.
+        </p>
+      ) : (
+        <ul className="space-y-3">
+          {technicalSheets.map((product) => {
+            const items = recipes[product.id] ?? [];
+            return (
+              <li key={product.id} className="rounded-2xl border border-border bg-card p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold">{product.name}</p>
+                    <p className="text-xs text-muted-foreground">{product.category} · {items.length} componente(s)</p>
+                  </div>
+                  <Link to="/caixa/cardapio" className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground hover:text-foreground">
+                    Editar ficha
+                  </Link>
+                </div>
+                <ul className="mt-3 space-y-1 border-t border-border pt-3 text-xs text-muted-foreground">
+                  {items.map((item) => {
+                    const component = item.base_drink ?? item.ingredient;
+                    return <li key={item.id}>{component?.name ?? "Componente removido"} · {item.quantity} {component?.unit ?? ""}</li>;
+                  })}
+                </ul>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

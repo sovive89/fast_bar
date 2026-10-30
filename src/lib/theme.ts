@@ -16,7 +16,9 @@ export type Theme = "light" | "dark";
 
 export const THEME_STORAGE_KEY = "pop9bar:theme";
 
-/** Lê a preferência salva; sem nada salvo, segue o tema do sistema operacional. */
+/** Lê a preferência salva; sem nada salvo, mantém o painel no escuro Pop9Bar.
+ * Não seguir o sistema evita que um agendamento de tema do aparelho troque a aparência do caixa
+ * durante o turno sem ação da equipe. */
 export function readStoredTheme(): Theme {
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
@@ -25,7 +27,7 @@ export function readStoredTheme(): Theme {
     // Navegador com armazenamento bloqueado (aba anônima, política de privacidade): não é erro,
     // só quer dizer que não há preferência salva.
   }
-  return window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "dark";
 }
 
 export function applyTheme(theme: Theme) {
@@ -51,6 +53,6 @@ export function storeTheme(theme: Theme) {
 export const THEME_INIT_SCRIPT = `(function(){try{
 if(!location.pathname.startsWith('/caixa'))return;
 var s=localStorage.getItem('${THEME_STORAGE_KEY}');
-var d=s==='dark'||(!s&&window.matchMedia('(prefers-color-scheme: dark)').matches);
+var d=s!=='light';
 if(d)document.documentElement.classList.add('dark');
 }catch(e){}})();`;
