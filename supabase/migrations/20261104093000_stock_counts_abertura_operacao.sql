@@ -27,8 +27,15 @@ create unique index if not exists fastbar_stock_counts_operacao_id_key
   on public.fastbar_stock_counts (operacao_id);
 
 alter table public.fastbar_stock_counts enable row level security;
+-- "to service_role" é obrigatório aqui: sem ele a policy vale pra QUALQUER papel, inclusive
+-- anon/authenticated — que por padrão já têm grant do PostgREST na tabela. Isso exporia os
+-- registros de auditoria pela chave pública do app (VITE_SUPABASE_PUBLISHABLE_KEY), que todo
+-- mundo que abre o site carrega no navegador. O revoke abaixo fecha esse grant padrão de vez
+-- (mesmo padrão de fastbar_tenants) — sem ele, bastaria alguém incluir "authenticated" na policy
+-- por engano no futuro pra reabrir o buraco.
 create policy "service role full access" on public.fastbar_stock_counts
-  for all using (true) with check (true);
+  for all to service_role using (true) with check (true);
+revoke all on public.fastbar_stock_counts from anon, authenticated;
 
 create table if not exists public.fastbar_stock_count_items (
   id uuid primary key default gen_random_uuid(),
@@ -60,5 +67,8 @@ create index if not exists fastbar_stock_count_items_stock_count_id_idx
   on public.fastbar_stock_count_items (stock_count_id);
 
 alter table public.fastbar_stock_count_items enable row level security;
+-- Mesmo motivo da tabela acima: "to service_role" + revoke, não só uma policy aberta pra todo
+-- mundo.
 create policy "service role full access" on public.fastbar_stock_count_items
-  for all using (true) with check (true);
+  for all to service_role using (true) with check (true);
+revoke all on public.fastbar_stock_count_items from anon, authenticated;
