@@ -25,6 +25,7 @@ Lovable).
    - `20261104120000_session_payments.sql` (livro de pagamentos; sem ela o pagamento da comanda falha)
    - `20261104130000_session_credits.sql` (crédito adiantado da comanda)
    - `20261104140000_pos_credit_charge.sql` (crédito pela maquininha: coluna `pos_purpose` e `pos_order_id` único)
+   - `20261104150000_producao_fichas_ordens.sql` (Produção: itens produzidos, fichas, ordens e a função `fastbar_register_production_order`)
 2. **Testar o fluxo real** no app (roteiro em `docs/ROTEIRO_TESTE_OPERACAO.md`, quando existir):
    abrir operação com conferência, lançar numa comanda, encerrar com os três destinos.
 3. **Baseline do esquema — Codex, em revisão**: `fastbar_sessions` (e outras tabelas base) nunca foi criada por
@@ -52,6 +53,9 @@ Lovable).
    - ~~Crédito da comanda, consumido item a item~~ (feito: entradas em `fastbar_session_credits`, consumo derivado dos itens).
    - ~~Crédito pela maquininha~~ (feito; só o teste no terminal real fica com o dono) e recuperação ao reabrir (já vem de graça: o crédito é da comanda).
    - Pendente: devolver o crédito que sobrar (estorno) e mostrar o crédito na tela do cliente.
+5. Item 5 do roadmap (Produção), em PRs separados:
+   - ~~Itens produzidos + fichas de produção + ordens de produção~~ (feito; tela `/caixa/producao`).
+   - Próximos: usar o item produzido em fichas de drink / cardápio, incluí-lo na conferência de estoque (`listCountableItems`), lote e validade do item produzido, Cozinha/KDS, sugestão do chef.
 
 ## Arquivos compartilhados (cuidado)
 

@@ -646,6 +646,210 @@ export type Database = {
           },
         ]
       }
+      fastbar_produced_items: {
+        Row: {
+          active: boolean
+          created_at: string
+          current_stock: number
+          id: string
+          name: string
+          tenant_id: string | null
+          unit: string
+          unit_cost: number | null
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          current_stock?: number
+          id?: string
+          name: string
+          tenant_id?: string | null
+          unit?: string
+          unit_cost?: number | null
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          current_stock?: number
+          id?: string
+          name?: string
+          tenant_id?: string | null
+          unit?: string
+          unit_cost?: number | null
+        }
+        Relationships: []
+      }
+      fastbar_production_order_items: {
+        Row: {
+          component_id: string
+          component_kind: string
+          component_name: string
+          cost: number | null
+          id: string
+          order_id: string
+          quantity: number
+        }
+        Insert: {
+          component_id: string
+          component_kind: string
+          component_name: string
+          cost?: number | null
+          id?: string
+          order_id: string
+          quantity: number
+        }
+        Update: {
+          component_id?: string
+          component_kind?: string
+          component_name?: string
+          cost?: number | null
+          id?: string
+          order_id?: string
+          quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_production_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_production_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fastbar_production_orders: {
+        Row: {
+          batches: number
+          cost_complete: boolean
+          cost_total: number | null
+          created_at: string
+          id: string
+          produced_item_id: string | null
+          produced_item_name: string
+          quantity_produced: number
+          realizado_por: string
+          recipe_id: string | null
+          tenant_id: string | null
+          unit_cost: number | null
+        }
+        Insert: {
+          batches: number
+          cost_complete?: boolean
+          cost_total?: number | null
+          created_at?: string
+          id?: string
+          produced_item_id?: string | null
+          produced_item_name: string
+          quantity_produced: number
+          realizado_por?: string
+          recipe_id?: string | null
+          tenant_id?: string | null
+          unit_cost?: number | null
+        }
+        Update: {
+          batches?: number
+          cost_complete?: boolean
+          cost_total?: number | null
+          created_at?: string
+          id?: string
+          produced_item_id?: string | null
+          produced_item_name?: string
+          quantity_produced?: number
+          realizado_por?: string
+          recipe_id?: string | null
+          tenant_id?: string | null
+          unit_cost?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_production_orders_produced_item_id_fkey"
+            columns: ["produced_item_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_produced_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fastbar_production_orders_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_production_recipes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fastbar_production_recipe_items: {
+        Row: {
+          component_id: string
+          component_kind: string
+          id: string
+          quantity: number
+          recipe_id: string
+        }
+        Insert: {
+          component_id: string
+          component_kind: string
+          id?: string
+          quantity: number
+          recipe_id: string
+        }
+        Update: {
+          component_id?: string
+          component_kind?: string
+          id?: string
+          quantity?: number
+          recipe_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_production_recipe_items_recipe_id_fkey"
+            columns: ["recipe_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_production_recipes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fastbar_production_recipes: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          loss_percent: number
+          note: string | null
+          produced_item_id: string
+          tenant_id: string | null
+          yield_quantity: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          loss_percent?: number
+          note?: string | null
+          produced_item_id: string
+          tenant_id?: string | null
+          yield_quantity: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          loss_percent?: number
+          note?: string | null
+          produced_item_id?: string
+          tenant_id?: string | null
+          yield_quantity?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_production_recipes_produced_item_id_fkey"
+            columns: ["produced_item_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_produced_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fastbar_session_credits: {
         Row: {
           amount: number
@@ -1510,6 +1714,10 @@ export type Database = {
           p_purchase_cost?: number
           p_supplier_id?: string
         }
+        Returns: Json
+      }
+      fastbar_register_production_order: {
+        Args: { p_batches: number; p_realizado_por?: string; p_recipe_id: string }
         Returns: Json
       }
       fastbar_add_tab_item: {

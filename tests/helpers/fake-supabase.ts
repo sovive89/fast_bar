@@ -19,7 +19,7 @@ function newId() {
 
 class Query implements PromiseLike<Result> {
   private filters: Filter[] = [];
-  private mode: "select" | "insert" | "update" = "select";
+  private mode: "select" | "insert" | "update" | "delete" = "select";
   private payload: Row | Row[] | null = null;
   private wantSingle: "single" | "maybe" | null = null;
   private wantRows = false;
@@ -43,6 +43,10 @@ class Query implements PromiseLike<Result> {
   update(payload: Row) {
     this.mode = "update";
     this.payload = payload;
+    return this;
+  }
+  delete() {
+    this.mode = "delete";
     return this;
   }
   eq(column: string, value: unknown) {
@@ -106,6 +110,9 @@ class Query implements PromiseLike<Result> {
       if (this.mode === "update") {
         for (const row of affected) Object.assign(row, this.payload);
       }
+      if (this.mode === "delete") {
+        for (const row of affected) rows.splice(rows.indexOf(row), 1);
+      }
     }
     if (this.limitCount !== null) affected = affected.slice(0, this.limitCount);
 
@@ -149,5 +156,15 @@ export class FakeSupabase {
   }
   from(name: string) {
     return new Query(this, name);
+  }
+  /** Funções SQL (rpc) que o teste registra à mão: nome → resposta. Não executa SQL de verdade. */
+  rpcHandlers = new Map<string, (args: Record<string, unknown>) => unknown>();
+  rpc(name: string, args: Record<string, unknown>) {
+    const handler = this.rpcHandlers.get(name);
+    return Promise.resolve(
+      handler
+        ? { data: handler(args), error: null }
+        : { data: null, error: { message: `rpc ${name} não simulada` } },
+    );
   }
 }
