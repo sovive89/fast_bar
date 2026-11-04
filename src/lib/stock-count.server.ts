@@ -31,12 +31,13 @@ export function isStockCountMotivo(value: unknown): value is StockCountMotivo {
   return typeof value === "string" && STOCK_COUNT_MOTIVOS.some((motivo) => motivo.value === value);
 }
 
-/** De onde vem o saldo do item: produto de revenda, bebida base ou ingrediente — cada um mora
- * numa tabela própria, com o saldo numa coluna própria. */
-export type CountableKind = "product" | "base_drink" | "ingredient";
+/** De onde vem o saldo do item: produto de revenda, bebida base, ingrediente ou item produzido
+ * (xarope, polpa, molho — saída da Produção) — cada um mora numa tabela própria, com o saldo numa
+ * coluna própria. */
+export type CountableKind = "product" | "base_drink" | "ingredient" | "produced_item";
 
 export interface CountableItem {
-  /** "tipo:id" — identifica o item sem ambiguidade entre as três tabelas. */
+  /** "tipo:id" — identifica o item sem ambiguidade entre as tabelas. */
   key: string;
   kind: CountableKind;
   id: string;
@@ -47,7 +48,7 @@ export interface CountableItem {
 }
 
 /**
- * Itens "contáveis" na conferência, das três origens de saldo do bar:
+ * Itens "contáveis" na conferência, das quatro origens de saldo do bar:
  *
  * - Bebidas base (fastbar_base_drinks) e ingredientes (fastbar_drink_ingredients): ativos, saldo
  *   em current_stock (numérico — aceita fração, ex.: ml). É aqui que fica a maior parte do estoque
@@ -56,33 +57,45 @@ export interface CountableItem {
  *   Produto com ficha técnica não tem stock_quantity confiável — quem segura o saldo de verdade
  *   são os componentes da receita (as bebidas base/ingredientes acima), não ele — mesmo critério
  *   que stock.functions.ts já usa pra separar "pendente de configurar origem do estoque".
+ * - Itens produzidos (fastbar_produced_items): ativos, saldo em current_stock (numérico). Sem eles
+ *   a Produção criaria saldo que a conferência de abertura nunca veria.
  *
  * A primeira versão só olhava fastbar_products, e na prática a conferência saía vazia: o estoque
  * do bar estava todo em bebidas base.
  */
 export async function listCountableItems(): Promise<CountableItem[]> {
   const { admin } = await import("./fastbar.server");
-  const [{ data: products }, { data: recipeLinks }, { data: baseDrinks }, { data: ingredients }] =
-    await Promise.all([
-      admin()
-        .from("fastbar_products")
-        .select("id, name, category, unit, stock_quantity")
-        .eq("is_active", true)
-        .eq("unlimited_stock", false)
-        .order("category")
-        .order("name"),
-      admin().from("fastbar_recipe_items").select("product_id"),
-      admin()
-        .from("fastbar_base_drinks")
-        .select("id, name, unit, current_stock")
-        .eq("active", true)
-        .order("name"),
-      admin()
-        .from("fastbar_drink_ingredients")
-        .select("id, name, unit, current_stock")
-        .eq("active", true)
-        .order("name"),
-    ]);
+  const [
+    { data: products },
+    { data: recipeLinks },
+    { data: baseDrinks },
+    { data: ingredients },
+    { data: producedItems },
+  ] = await Promise.all([
+    admin()
+      .from("fastbar_products")
+      .select("id, name, category, unit, stock_quantity")
+      .eq("is_active", true)
+      .eq("unlimited_stock", false)
+      .order("category")
+      .order("name"),
+    admin().from("fastbar_recipe_items").select("product_id"),
+    admin()
+      .from("fastbar_base_drinks")
+      .select("id, name, unit, current_stock")
+      .eq("active", true)
+      .order("name"),
+    admin()
+      .from("fastbar_drink_ingredients")
+      .select("id, name, unit, current_stock")
+      .eq("active", true)
+      .order("name"),
+    admin()
+      .from("fastbar_produced_items")
+      .select("id, name, unit, current_stock")
+      .eq("active", true)
+      .order("name"),
+  ]);
 
   const recipeSet = new Set((recipeLinks ?? []).map((link) => link.product_id as string));
   const fromComponents = (
@@ -103,6 +116,7 @@ export async function listCountableItems(): Promise<CountableItem[]> {
   return [
     ...fromComponents(baseDrinks, "base_drink", "Bebidas base"),
     ...fromComponents(ingredients, "ingredient", "Ingredientes"),
+    ...fromComponents(producedItems, "produced_item", "Itens produzidos"),
     ...(products ?? [])
       .filter((product) => !recipeSet.has(product.id))
       .map((product) => ({

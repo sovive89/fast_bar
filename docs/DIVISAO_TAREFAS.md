@@ -74,7 +74,8 @@ Lovable).
    - Pendente: devolver o crédito que sobrar (estorno) e mostrar o crédito na tela do cliente.
 5. Item 5 do roadmap (Produção), em PRs separados:
    - ~~Itens produzidos + fichas de produção + ordens de produção~~ (feito; tela `/caixa/producao`).
-   - Próximos: usar o item produzido em fichas de drink / cardápio, incluí-lo na conferência de estoque (`listCountableItems`), lote e validade do item produzido, Cozinha/KDS, sugestão do chef.
+   - ~~Item produzido na conferência de estoque (`listCountableItems`)~~ (feito; migration `20261104160000_stock_count_produced_items.sql`).
+   - Próximos: usar o item produzido em fichas de drink / cardápio (mexe nas funções SQL de venda e estoque; fazer com cuidado), editar/desativar ficha, lote e validade do item produzido, Cozinha/KDS, sugestão do chef.
 
 ## Arquivos compartilhados (cuidado)
 

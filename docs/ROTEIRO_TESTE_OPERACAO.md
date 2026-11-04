@@ -20,6 +20,7 @@ exato ou print) e o horário.
    - `20261104130000_session_credits.sql`
    - `20261104140000_pos_credit_charge.sql`
    - `20261104150000_producao_fichas_ordens.sql`
+   - `20261104160000_stock_count_produced_items.sql`
 2. O último deploy do `master` terminou no Amplify.
 3. Não há operação aberta. Se houver, ela foi aberta antes da mudança: encerre-a pelo fluxo novo
    (passo 5) antes de começar.
@@ -146,6 +147,7 @@ Antes, anote o saldo de dois ingredientes ativos que tenham lote com preço (ex.
 | Produza com mais receitas do que o saldo permite | Recusa dizendo QUAL ingrediente não tem saldo; **nenhum** saldo muda |
 | Produza com um ingrediente sem preço nos lotes | Produz, mas diz "custo incompleto" e o custo médio do item não muda |
 | Tente salvar ficha sem ingrediente, com rendimento 0 ou perda 100 | Mensagem dizendo o que falta |
+| Com o xarope produzido (saldo > 0), abra uma nova operação (passo 2) | A conferência mostra o grupo "Itens produzidos" com o xarope e o saldo teórico; contar menos exige motivo e **não** muda o saldo |
 
 ## 11. Auditoria no banco (quem tem acesso ao Supabase)
 
