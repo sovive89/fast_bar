@@ -97,5 +97,20 @@ o NØUS Motion é exatamente; esta é a leitura proposta, **não implementada**:
   - continua leve no celular e desligável por "reduzir movimento";
   - animações maiores (Lottie, peças generativas) só entram onde o dono escolher, carregadas só
     naquela tela.
-- **Falta decidir**: se NØUS Motion é esse nome para a camada de animação, um módulo separado
-  (ex.: biblioteca de animações reutilizada entre FastBar, site da NØUS e Pop9) ou outra coisa.
+- ~~**Falta decidir**: se NØUS Motion é esse nome para a camada de animação, um módulo separado
+  (ex.: biblioteca de animações reutilizada entre FastBar, site da NØUS e Pop9) ou outra coisa.~~
+  **Substituída por** "04/11/2026 — NØUS Motion é uma biblioteca separada", abaixo.
+
+## 04/11/2026 — NØUS Motion é uma biblioteca separada
+
+- **Decidido:** NØUS Motion é uma **biblioteca própria**, reutilizável entre os produtos da NØUS
+  (FastBar, Pop9, PØLE), e não o nome da camada de animação deste app.
+- **Onde está:** repositório `sovive89/-Nous_motion`, pacote `@nous/motion` 0.1 (loader, botão,
+  transição, presets JSON validados e editor visual). Especificação em
+  `docs/ESPECIFICACAO_TECNICA.md` daquele repositório.
+- **Estado no FastBar:** **não instalada**. A camada de animação do app continua sendo a de
+  `src/components/motion/` (biblioteca Motion, PR #62). Instalar o `@nous/motion` aqui é um PR
+  próprio, só com autorização explícita do dono.
+- **Falta decidir:** quando instalada, se a `@nous/motion` **substitui** a camada de
+  `src/components/motion/` ou **convive** com ela (por exemplo, `@nous/motion` só no editor de
+  personalização e a camada atual no resto).
