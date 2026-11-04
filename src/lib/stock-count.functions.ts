@@ -9,13 +9,14 @@ import { createServerFn } from "@tanstack/react-start";
 export const getStockCountCandidates = createServerFn({ method: "GET" }).handler(async () => {
   const { assertRegisterAccess } = await import("./fastbar.server");
   await assertRegisterAccess();
-  const { listCountableProducts, STOCK_COUNT_MOTIVOS } = await import("./stock-count.server");
-  const products = await listCountableProducts();
-  return { products, motivos: STOCK_COUNT_MOTIVOS };
+  const { listCountableItems, STOCK_COUNT_MOTIVOS } = await import("./stock-count.server");
+  const items = await listCountableItems();
+  return { items, motivos: STOCK_COUNT_MOTIVOS };
 });
 
 type StockCountItemPayload = {
-  productId: string;
+  /** CountableItem.key ("tipo:id"). */
+  itemKey: string;
   contada: number;
   motivo?: string | undefined;
   observacao?: string | undefined;
@@ -39,7 +40,7 @@ export const openOperationWithStockCount = createServerFn({ method: "POST" })
     const { recordStockCountAndOpenOperation, isStockCountMotivo } =
       await import("./stock-count.server");
     const items = data.items.map((item) => ({
-      productId: item.productId,
+      itemKey: item.itemKey,
       contada: item.contada,
       motivo: isStockCountMotivo(item.motivo) ? item.motivo : undefined,
       observacao: item.observacao,
