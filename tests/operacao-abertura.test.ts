@@ -7,7 +7,7 @@ import { FakeSupabase } from "./helpers/fake-supabase";
 const holder: { db: FakeSupabase } = { db: new FakeSupabase() };
 vi.mock("../src/lib/fastbar.server", () => ({ admin: () => holder.db }));
 
-const { listCountableProducts, recordStockCountAndOpenOperation, skipStockCountAndOpenOperation } =
+const { listCountableItems, recordStockCountAndOpenOperation, skipStockCountAndOpenOperation } =
   await import("../src/lib/stock-count.server");
 const { assertOperationOpen } = await import("../src/lib/operations.server");
 
@@ -70,15 +70,18 @@ beforeEach(() => {
 
 describe("produtos que entram na conferência", () => {
   it("só lista produtos ativos, com saldo próprio e sem ficha técnica", async () => {
-    const products = await listCountableProducts();
-    expect(products.map((product) => product.id).sort()).toEqual(["agua", "cerveja"]);
+    const products = await listCountableItems();
+    expect(products.map((product) => product.key).sort()).toEqual([
+      "product:agua",
+      "product:cerveja",
+    ]);
   });
 });
 
 describe("concluir conferência e abrir operação", () => {
   it("recusa diferença sem motivo e não abre a operação", async () => {
     const result = await recordStockCountAndOpenOperation({
-      items: [{ productId: "cerveja", contada: 20 }],
+      items: [{ itemKey: "product:cerveja", contada: 20 }],
       realizadoPor: "equipe",
     });
     expect(result).toEqual({
@@ -91,7 +94,7 @@ describe("concluir conferência e abrir operação", () => {
 
   it("recusa quantidade negativa", async () => {
     const result = await recordStockCountAndOpenOperation({
-      items: [{ productId: "agua", contada: -1 }],
+      items: [{ itemKey: "product:agua", contada: -1 }],
       realizadoPor: "equipe",
     });
     expect(result.ok).toBe(false);
@@ -102,12 +105,12 @@ describe("concluir conferência e abrir operação", () => {
     const result = await recordStockCountAndOpenOperation({
       items: [
         {
-          productId: "cerveja",
+          itemKey: "product:cerveja",
           contada: 20,
           motivo: "perda_quebra",
           observacao: "4 latas amassadas",
         },
-        { productId: "agua", contada: 10 },
+        { itemKey: "product:agua", contada: 10 },
       ],
       realizadoPor: "equipe",
     });
@@ -126,6 +129,8 @@ describe("concluir conferência e abrir operação", () => {
     const items = holder.db.table("fastbar_stock_count_items");
     expect(items).toHaveLength(2);
     expect(items.find((item) => item.product_id === "cerveja")).toMatchObject({
+      item_kind: "product",
+      item_id: "cerveja",
       quantidade_esperada: 24,
       quantidade_contada: 20,
       motivo: "perda_quebra",
@@ -141,7 +146,7 @@ describe("concluir conferência e abrir operação", () => {
 
   it("só registra a conferência: nunca altera o saldo do produto", async () => {
     await recordStockCountAndOpenOperation({
-      items: [{ productId: "cerveja", contada: 3, motivo: "divergencia_nao_identificada" }],
+      items: [{ itemKey: "product:cerveja", contada: 3, motivo: "divergencia_nao_identificada" }],
       realizadoPor: "equipe",
     });
     const cerveja = holder.db.table("fastbar_products").find((product) => product.id === "cerveja");
@@ -193,5 +198,64 @@ describe("trava de comandas", () => {
     expect((await assertOperationOpen()).ok).toBe(false);
     await skipStockCountAndOpenOperation({ motivo: "Teste automatizado", realizadoPor: "equipe" });
     expect((await assertOperationOpen()).ok).toBe(true);
+  });
+});
+
+describe("bebidas base e ingredientes", () => {
+  beforeEach(() => {
+    holder.db.seed("fastbar_base_drinks", [
+      { id: "vodka", name: "Vodka", unit: "ml", current_stock: 2100, active: true },
+      { id: "gin-velho", name: "Gin antigo", unit: "ml", current_stock: 300, active: false },
+    ]);
+    holder.db.seed("fastbar_drink_ingredients", [
+      { id: "limao", name: "Limão", unit: "un", current_stock: "0.3", active: true },
+    ]);
+  });
+
+  it("entram na conferência junto com os produtos, só os ativos", async () => {
+    const items = await listCountableItems();
+    expect(items.map((item) => [item.key, item.category])).toEqual([
+      ["base_drink:vodka", "Bebidas base"],
+      ["ingredient:limao", "Ingredientes"],
+      ["product:cerveja", "Cervejas"],
+      ["product:agua", "Sem álcool"],
+    ]);
+  });
+
+  it("aceitam contagem fracionada e registram o tipo do item", async () => {
+    const result = await recordStockCountAndOpenOperation({
+      items: [
+        { itemKey: "base_drink:vodka", contada: 1750.5, motivo: "consumo_interno" },
+        // 0.1 + 0.2 em ponto flutuante não é 0.3 — não pode virar "diferença" fantasma.
+        { itemKey: "ingredient:limao", contada: 0.1 + 0.2 },
+      ],
+      realizadoPor: "equipe",
+    });
+    expect(result.ok).toBe(true);
+
+    const items = holder.db.table("fastbar_stock_count_items");
+    expect(items.find((item) => item.item_id === "vodka")).toMatchObject({
+      item_kind: "base_drink",
+      product_id: null,
+      product_name: "Vodka",
+      quantidade_esperada: 2100,
+      quantidade_contada: 1750.5,
+      motivo: "consumo_interno",
+    });
+    expect(items.find((item) => item.item_id === "limao")).toMatchObject({
+      item_kind: "ingredient",
+      quantidade_esperada: 0.3,
+      quantidade_contada: 0.3,
+      motivo: null,
+    });
+  });
+
+  it("nunca altera o saldo da bebida base", async () => {
+    await recordStockCountAndOpenOperation({
+      items: [{ itemKey: "base_drink:vodka", contada: 0, motivo: "divergencia_nao_identificada" }],
+      realizadoPor: "equipe",
+    });
+    const vodka = holder.db.table("fastbar_base_drinks").find((row) => row.id === "vodka");
+    expect(vodka?.current_stock).toBe(2100);
   });
 });

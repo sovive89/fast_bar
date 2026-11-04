@@ -17,7 +17,7 @@ export const Route = createFileRoute("/caixa/abertura")({
 });
 
 type Candidates = Awaited<ReturnType<typeof getStockCountCandidates>>;
-type Product = Candidates["products"][number];
+type Product = Candidates["items"][number];
 type Motivo = Candidates["motivos"][number]["value"];
 
 /**
@@ -50,7 +50,7 @@ function AberturaOperacao() {
 
   const groupedByCategory = useMemo(() => {
     const groups = new Map<string, Product[]>();
-    for (const product of candidates?.products ?? []) {
+    for (const product of candidates?.items ?? []) {
       const list = groups.get(product.category) ?? [];
       list.push(product);
       groups.set(product.category, list);
@@ -58,22 +58,34 @@ function AberturaOperacao() {
     return groups;
   }, [candidates]);
 
+  /** Mesma regra do servidor (normalizeCount em stock-count.server.ts): produto conta em
+   * unidades inteiras; bebida base e ingrediente aceitam fração (ex.: 350,5 ml), com vírgula ou
+   * ponto. */
+  function normalize(value: number, product: Product): number {
+    return product.kind === "product" ? Math.floor(value) : Math.round(value * 1000) / 1000;
+  }
+
   function contadaValue(product: Product): number {
-    const raw = contagens[product.id];
-    if (raw === undefined || raw.trim() === "") return product.stockQuantity;
-    const parsed = Math.floor(Number(raw));
-    return Number.isFinite(parsed) ? parsed : product.stockQuantity;
+    const raw = contagens[product.key];
+    const teorico = normalize(product.stockQuantity, product);
+    if (raw === undefined || raw.trim() === "") return teorico;
+    const parsed = Number(raw.replace(",", "."));
+    return Number.isFinite(parsed) ? normalize(parsed, product) : teorico;
+  }
+
+  function diferenca(product: Product): number {
+    return normalize(contadaValue(product) - normalize(product.stockQuantity, product), product);
   }
 
   function divergiu(product: Product): boolean {
-    return contadaValue(product) !== product.stockQuantity;
+    return diferenca(product) !== 0;
   }
 
   /** Valida localmente antes de pedir a senha — evita o passo de senha só pra voltar com "faltou
    * motivo em X" depois. O servidor confere tudo de novo (nunca confia só no client). */
   function findMissingMotivo(): string | null {
-    for (const product of candidates?.products ?? []) {
-      if (divergiu(product) && !motivos[product.id]) {
+    for (const product of candidates?.items ?? []) {
+      if (divergiu(product) && !motivos[product.key]) {
         return product.name;
       }
     }
@@ -91,11 +103,11 @@ function AberturaOperacao() {
   }
 
   async function handleConfirm(password: string) {
-    const items = (candidates?.products ?? []).map((product) => ({
-      productId: product.id,
+    const items = (candidates?.items ?? []).map((product) => ({
+      itemKey: product.key,
       contada: contadaValue(product),
-      motivo: motivos[product.id] || undefined,
-      observacao: observacoes[product.id],
+      motivo: motivos[product.key] || undefined,
+      observacao: observacoes[product.key],
     }));
     const result = await confirmOpen({ data: { password, items } });
     if (result.ok) {
@@ -158,11 +170,12 @@ function AberturaOperacao() {
         </p>
       </div>
 
-      {candidates.products.length === 0 ? (
-        <SectionCard title="Nenhum produto contável">
+      {candidates.items.length === 0 ? (
+        <SectionCard title="Nada para contar">
           <p className="text-sm text-muted-foreground">
-            Não há produtos com saldo próprio configurados ainda (itens com ficha técnica ou estoque
-            ilimitado não entram nesta conferência). Pode abrir a operação direto.
+            Não há bebidas base, ingredientes ou produtos com saldo próprio ativos (itens com ficha
+            técnica ou estoque ilimitado não entram nesta conferência). Pode abrir a operação
+            direto.
           </p>
         </SectionCard>
       ) : (
@@ -172,23 +185,28 @@ function AberturaOperacao() {
               {products.map((product) => {
                 const hasDiff = divergiu(product);
                 return (
-                  <div key={product.id} className="rounded-xl border border-border p-3">
+                  <div key={product.key} className="rounded-xl border border-border p-3">
                     <div className="flex items-center justify-between gap-3">
                       <div>
                         <p className="text-sm font-medium">{product.name}</p>
                         <p className="text-xs text-muted-foreground">
-                          Teórico: {product.stockQuantity} {product.unit}
+                          Teórico: {normalize(product.stockQuantity, product)} {product.unit}
                         </p>
                       </div>
                       <label className="flex items-center gap-2">
                         <span className="text-xs text-muted-foreground">Contado</span>
                         <input
-                          type="number"
-                          min={0}
-                          step={1}
-                          value={contagens[product.id] ?? String(product.stockQuantity)}
+                          // Texto com teclado numérico, não type="number": no iPhone em
+                          // português o teclado decimal digita vírgula, e um input number
+                          // descarta o valor inteiro quando recebe "350,5".
+                          type="text"
+                          inputMode={product.kind === "product" ? "numeric" : "decimal"}
+                          value={
+                            contagens[product.key] ??
+                            String(normalize(product.stockQuantity, product))
+                          }
                           onChange={(event) =>
-                            setContagens((prev) => ({ ...prev, [product.id]: event.target.value }))
+                            setContagens((prev) => ({ ...prev, [product.key]: event.target.value }))
                           }
                           className="h-10 w-20 rounded-lg border border-border bg-background px-2 text-sm outline-none focus:border-ring"
                         />
@@ -198,18 +216,17 @@ function AberturaOperacao() {
                     {hasDiff && (
                       <div className="mt-3 space-y-2 rounded-lg bg-muted/50 p-3">
                         <p className="text-xs font-medium text-destructive">
-                          Diferença de{" "}
-                          {contadaValue(product) - product.stockQuantity > 0 ? "+" : ""}
-                          {contadaValue(product) - product.stockQuantity} {product.unit}
+                          Diferença de {diferenca(product) > 0 ? "+" : ""}
+                          {diferenca(product)} {product.unit}
                         </p>
                         <label className="block">
                           <span className="text-xs font-medium text-muted-foreground">Motivo</span>
                           <select
-                            value={motivos[product.id] ?? ""}
+                            value={motivos[product.key] ?? ""}
                             onChange={(event) =>
                               setMotivos((prev) => ({
                                 ...prev,
-                                [product.id]: event.target.value as Motivo,
+                                [product.key]: event.target.value as Motivo,
                               }))
                             }
                             className="mt-1 h-11 w-full rounded-xl border border-border bg-background px-3.5 text-sm outline-none focus:border-ring"
@@ -228,11 +245,11 @@ function AberturaOperacao() {
                           </span>
                           <input
                             type="text"
-                            value={observacoes[product.id] ?? ""}
+                            value={observacoes[product.key] ?? ""}
                             onChange={(event) =>
                               setObservacoes((prev) => ({
                                 ...prev,
-                                [product.id]: event.target.value,
+                                [product.key]: event.target.value,
                               }))
                             }
                             placeholder="Detalhe o que aconteceu, se souber"

@@ -13,11 +13,12 @@ exato ou print) e o horário.
    - `20261104093000_stock_counts_abertura_operacao.sql`
    - `20261104094700_fastbar_operations_rls_service_role.sql`
    - `20261104102500_fechamento_operacao.sql`
+   - `20261104110000_stock_count_items_kinds.sql`
 2. O último deploy do `master` terminou no Amplify.
 3. Não há operação aberta. Se houver, ela foi aberta antes da mudança: encerre-a pelo fluxo novo
    (passo 5) antes de começar.
-4. Existe pelo menos um produto ativo, com estoque próprio (sem ficha técnica e sem "estoque
-   ilimitado"). Anote o saldo atual dele: **saldo inicial = ___**.
+4. Existe pelo menos uma bebida base ativa (ou ingrediente, ou produto com estoque próprio). Anote
+   o saldo atual dela: **saldo inicial = ___**.
 
 ## 1. Comanda bloqueada sem operação
 
@@ -31,12 +32,13 @@ exato ou print) e o horário.
 
 | Ação | Resultado esperado |
 | --- | --- |
-| Toque em "Abrir operação" no topo do caixa | Abre a tela "Conferência de estoque", com os produtos agrupados por categoria e o "Teórico" de cada um |
-| Confira se aparecem produtos com ficha técnica ou estoque ilimitado | Não devem aparecer |
+| Toque em "Abrir operação" no topo do caixa | Abre a tela "Conferência de estoque", com grupos "Bebidas base", "Ingredientes" e as categorias de produto, e o "Teórico" de cada item |
+| Confira se aparecem produtos com ficha técnica, estoque ilimitado ou itens desativados | Não devem aparecer |
+| Num item em ml, digite um valor com vírgula (ex.: 350,5) | O valor é aceito e a diferença aparece com decimal |
 | No produto anotado, mude "Contado" para o saldo inicial **menos 2** | Aparece "Diferença de -2" e os campos Motivo e Observação |
 | Toque em "Concluir conferência e abrir operação" sem escolher motivo | Mensagem pedindo o motivo daquele produto; nada abre |
 | Escolha o motivo "Perda / quebra", escreva uma observação, conclua e digite a senha | Volta para o caixa, com "Operação dd/mm/aaaa — aberta às hh:mm" no topo |
-| Abra Estoque e veja o saldo do produto | **Continua igual ao saldo inicial.** A conferência só registra; não corrige o saldo |
+| Abra Estoque e veja o saldo do item | **Continua igual ao saldo inicial.** A conferência só registra; não corrige o saldo |
 
 ## 3. Comandas durante a operação
 
@@ -90,8 +92,8 @@ select o.data_operacional, c.status, c.motivo_pulo, c.created_at
 from fastbar_stock_counts c join fastbar_operations o on o.id = c.operacao_id
 order by c.created_at desc limit 5;
 
--- Itens da conferência do passo 2: diferença -2, motivo perda_quebra
-select product_name, quantidade_esperada, quantidade_contada, divergencia, motivo, observacao
+-- Itens da conferência do passo 2: diferença -2, motivo perda_quebra, com o tipo do item
+select item_kind, product_name, quantidade_esperada, quantidade_contada, divergencia, motivo, observacao
 from fastbar_stock_count_items order by created_at desc limit 10;
 
 -- Destinos do passo 5: cortesia e inadimplência com motivo e valor; mantida_aberta sem os dois

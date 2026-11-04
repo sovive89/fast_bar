@@ -1,10 +1,10 @@
 /**
  * Conferência de estoque na abertura da operação (seção 3 da documentação funcional, P1.1-4 do
- * CLAUDE.md): compara o estoque teórico (fastbar_products.stock_quantity agora, que é o saldo
- * acumulado desde a última conferência/entrada) com a contagem física que a equipe informa.
+ * CLAUDE.md): compara o estoque teórico (o saldo atual de bebidas base, ingredientes e produtos de
+ * revenda — ver listCountableItems) com a contagem física que a equipe informa.
  *
- * Esta conferência é um REGISTRO, nunca um ajuste automático: ela não escreve em
- * fastbar_products.stock_quantity nem em fastbar_stock_lots. Corrigir o saldo a partir de uma
+ * Esta conferência é um REGISTRO, nunca um ajuste automático: ela não escreve em nenhum saldo
+ * (stock_quantity, current_stock) nem em fastbar_stock_lots. Corrigir o saldo a partir de uma
  * divergência encontrada aqui é uma ação deliberada à parte (entrada/perda em Estoque) — "o skip
  * não elimina o estoque teórico... apenas permite a abertura controlada do dia" vale pro caminho
  * normal também: a conferência não decide sozinha qual saldo é o "certo".
@@ -31,7 +31,14 @@ export function isStockCountMotivo(value: unknown): value is StockCountMotivo {
   return typeof value === "string" && STOCK_COUNT_MOTIVOS.some((motivo) => motivo.value === value);
 }
 
-export interface CountableProduct {
+/** De onde vem o saldo do item: produto de revenda, bebida base ou ingrediente — cada um mora
+ * numa tabela própria, com o saldo numa coluna própria. */
+export type CountableKind = "product" | "base_drink" | "ingredient";
+
+export interface CountableItem {
+  /** "tipo:id" — identifica o item sem ambiguidade entre as três tabelas. */
+  key: string;
+  kind: CountableKind;
   id: string;
   name: string;
   category: string;
@@ -40,45 +47,88 @@ export interface CountableProduct {
 }
 
 /**
- * Produtos "contáveis": ativos, com saldo próprio (sem estoque ilimitado) e sem ficha técnica.
- * Produto com ficha técnica não tem stock_quantity confiável — quem segura o saldo de verdade são
- * os componentes da receita (bebida base/ingrediente), não ele — mesmo critério que
- * stock.functions.ts já usa pra separar "pendente de configurar origem do estoque".
+ * Itens "contáveis" na conferência, das três origens de saldo do bar:
  *
- * Limitação conhecida desta primeira entrega: só cobre fastbar_products. Bebida base e
- * ingrediente têm o próprio saldo (fastbar_base_drinks.current_stock,
- * fastbar_drink_ingredients) e ainda não entram nesta conferência — ligado à separação de estoque
- * do item 4 do roadmap (bebidas/ingredientes/produção/suprimentos/utensílios), ainda não feita.
+ * - Bebidas base (fastbar_base_drinks) e ingredientes (fastbar_drink_ingredients): ativos, saldo
+ *   em current_stock (numérico — aceita fração, ex.: ml). É aqui que fica a maior parte do estoque
+ *   de um bar: garrafas, latas, polpas.
+ * - Produtos de revenda (fastbar_products): ativos, sem estoque ilimitado e sem ficha técnica.
+ *   Produto com ficha técnica não tem stock_quantity confiável — quem segura o saldo de verdade
+ *   são os componentes da receita (as bebidas base/ingredientes acima), não ele — mesmo critério
+ *   que stock.functions.ts já usa pra separar "pendente de configurar origem do estoque".
+ *
+ * A primeira versão só olhava fastbar_products, e na prática a conferência saía vazia: o estoque
+ * do bar estava todo em bebidas base.
  */
-export async function listCountableProducts(): Promise<CountableProduct[]> {
+export async function listCountableItems(): Promise<CountableItem[]> {
   const { admin } = await import("./fastbar.server");
-  const [{ data: products }, { data: recipeLinks }] = await Promise.all([
-    admin()
-      .from("fastbar_products")
-      .select("id, name, category, unit, stock_quantity")
-      .eq("is_active", true)
-      .eq("unlimited_stock", false)
-      .order("category")
-      .order("name"),
-    admin().from("fastbar_recipe_items").select("product_id"),
-  ]);
+  const [{ data: products }, { data: recipeLinks }, { data: baseDrinks }, { data: ingredients }] =
+    await Promise.all([
+      admin()
+        .from("fastbar_products")
+        .select("id, name, category, unit, stock_quantity")
+        .eq("is_active", true)
+        .eq("unlimited_stock", false)
+        .order("category")
+        .order("name"),
+      admin().from("fastbar_recipe_items").select("product_id"),
+      admin()
+        .from("fastbar_base_drinks")
+        .select("id, name, unit, current_stock")
+        .eq("active", true)
+        .order("name"),
+      admin()
+        .from("fastbar_drink_ingredients")
+        .select("id, name, unit, current_stock")
+        .eq("active", true)
+        .order("name"),
+    ]);
+
   const recipeSet = new Set((recipeLinks ?? []).map((link) => link.product_id as string));
-  return (products ?? [])
-    .filter((product) => !recipeSet.has(product.id))
-    .map((product) => ({
-      id: product.id,
-      name: product.name,
-      category: product.category,
-      unit: product.unit,
-      stockQuantity: product.stock_quantity,
+  const fromComponents = (
+    rows: { id: string; name: string; unit: string; current_stock: number | string }[] | null,
+    kind: CountableKind,
+    category: string,
+  ): CountableItem[] =>
+    (rows ?? []).map((row) => ({
+      key: `${kind}:${row.id}`,
+      kind,
+      id: row.id,
+      name: row.name,
+      category,
+      unit: row.unit,
+      stockQuantity: Number(row.current_stock),
     }));
+
+  return [
+    ...fromComponents(baseDrinks, "base_drink", "Bebidas base"),
+    ...fromComponents(ingredients, "ingredient", "Ingredientes"),
+    ...(products ?? [])
+      .filter((product) => !recipeSet.has(product.id))
+      .map((product) => ({
+        key: `product:${product.id}`,
+        kind: "product" as const,
+        id: product.id,
+        name: product.name,
+        category: product.category,
+        unit: product.unit,
+        stockQuantity: product.stock_quantity,
+      })),
+  ];
 }
 
 export interface StockCountItemInput {
-  productId: string;
+  /** CountableItem.key ("tipo:id"). */
+  itemKey: string;
   contada: number;
   motivo?: StockCountMotivo | undefined;
   observacao?: string | undefined;
+}
+
+/** Produto guarda saldo inteiro (stock_quantity integer); bebida base e ingrediente guardam
+ * numérico. Arredonda em 3 casas pra não registrar "diferença" por ruído de ponto flutuante. */
+function normalizeCount(value: number, kind: CountableKind): number {
+  return kind === "product" ? Math.floor(value) : Math.round(value * 1000) / 1000;
 }
 
 type OpenResult =
@@ -104,11 +154,13 @@ export async function recordStockCountAndOpenOperation(params: {
   const { admin } = await import("./fastbar.server");
   const { createOperationRow } = await import("./operations.server");
 
-  const candidates = await listCountableProducts();
-  const byId = new Map(candidates.map((product) => [product.id, product]));
+  const candidates = await listCountableItems();
+  const byKey = new Map(candidates.map((item) => [item.key, item]));
 
   const rows: {
-    product_id: string;
+    item_kind: CountableKind;
+    item_id: string;
+    product_id: string | null;
     product_name: string;
     unit: string;
     quantidade_esperada: number;
@@ -117,28 +169,34 @@ export async function recordStockCountAndOpenOperation(params: {
     observacao: string | null;
   }[] = [];
 
-  for (const item of params.items) {
-    const product = byId.get(item.productId);
-    if (!product) continue; // desativado/removido entre abrir a tela e confirmar — ignora
+  for (const input of params.items) {
+    const item = byKey.get(input.itemKey);
+    if (!item) continue; // desativado/removido entre abrir a tela e confirmar — ignora
 
-    const contada = Math.floor(Number(item.contada));
-    if (!Number.isFinite(contada) || contada < 0) {
-      return { ok: false, message: `Quantidade inválida para "${product.name}".` };
+    const raw = Number(input.contada);
+    if (!Number.isFinite(raw) || raw < 0) {
+      return { ok: false, message: `Quantidade inválida para "${item.name}".` };
     }
+    const contada = normalizeCount(raw, item.kind);
+    const esperada = normalizeCount(item.stockQuantity, item.kind);
 
-    const divergiu = contada !== product.stockQuantity;
-    if (divergiu && !item.motivo) {
-      return { ok: false, message: `Informe o motivo da diferença em "${product.name}".` };
+    const divergiu = contada !== esperada;
+    if (divergiu && !input.motivo) {
+      return { ok: false, message: `Informe o motivo da diferença em "${item.name}".` };
     }
 
     rows.push({
-      product_id: product.id,
-      product_name: product.name,
-      unit: product.unit,
-      quantidade_esperada: product.stockQuantity,
+      item_kind: item.kind,
+      item_id: item.id,
+      // product_id continua preenchido para produto (FK e consultas antigas); para bebida base e
+      // ingrediente fica nulo — o vínculo vai em item_kind + item_id.
+      product_id: item.kind === "product" ? item.id : null,
+      product_name: item.name,
+      unit: item.unit,
+      quantidade_esperada: esperada,
       quantidade_contada: contada,
-      motivo: divergiu ? (item.motivo as StockCountMotivo) : null,
-      observacao: divergiu ? item.observacao?.trim() || null : null,
+      motivo: divergiu ? (input.motivo as StockCountMotivo) : null,
+      observacao: divergiu ? input.observacao?.trim() || null : null,
     });
   }
 

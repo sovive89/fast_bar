@@ -21,6 +21,7 @@ Lovable).
    - `20261104093000_stock_counts_abertura_operacao.sql`
    - `20261104094700_fastbar_operations_rls_service_role.sql`
    - `20261104102500_fechamento_operacao.sql`
+   - `20261104110000_stock_count_items_kinds.sql`
 2. **Testar o fluxo real** no app (roteiro em `docs/ROTEIRO_TESTE_OPERACAO.md`, quando existir):
    abrir operação com conferência, lançar numa comanda, encerrar com os três destinos.
 3. **Baseline do esquema**: `fastbar_sessions` (e talvez outras tabelas base) nunca foi criada por
@@ -31,8 +32,12 @@ Lovable).
    `pnpm test` roda `vitest`, que não acha nada neles. Migrar para `vitest` ou excluí-los da config
    do `vitest` (eles já têm `pnpm test:ocr-model` e `pnpm test:stock-photo`).
 5. **Item 4 do roadmap (estoque)**: separar bebidas, ingredientes, produção, suprimentos e
-   utensílios. Inclui estender a conferência de abertura para bebida base e ingrediente (hoje só
-   cobre `fastbar_products` — ver comentário em `src/lib/stock-count.server.ts`).
+   utensílios. (A conferência de abertura já cobre bebida base e ingrediente — feito pelo Claude
+   Code, porque na prática ela saía vazia.) Ao criar tabelas de estoque novas, incluí-las em
+   `listCountableItems` (`src/lib/stock-count.server.ts`).
+6. **Layout da tela Estoque no celular**: o nome do item some, "custo" fica por cima de "Editar"
+   e os botões (Editar, + Entrada, − Perda, Apagar, Lotes) vazam para fora do cartão. Visto em
+   04/11 num iPhone, em `master.d22ipucenoerv1.amplifyapp.com`.
 
 ## Claude Code
 

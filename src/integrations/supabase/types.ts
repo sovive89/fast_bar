@@ -689,6 +689,8 @@ export type Database = {
           created_at: string
           divergencia: number
           id: string
+          item_id: string | null
+          item_kind: string
           motivo: string | null
           observacao: string | null
           product_id: string | null
@@ -702,6 +704,8 @@ export type Database = {
           created_at?: string
           divergencia?: number
           id?: string
+          item_id?: string | null
+          item_kind?: string
           motivo?: string | null
           observacao?: string | null
           product_id?: string | null
@@ -715,6 +719,8 @@ export type Database = {
           created_at?: string
           divergencia?: number
           id?: string
+          item_id?: string | null
+          item_kind?: string
           motivo?: string | null
           observacao?: string | null
           product_id?: string | null
