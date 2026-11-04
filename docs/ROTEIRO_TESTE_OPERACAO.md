@@ -9,7 +9,7 @@ exato ou print) e o horário.
 
 ## 0. Pré-requisitos
 
-1. As três migrations estão aplicadas no Supabase de produção, nesta ordem:
+1. As quatro migrations estão aplicadas no Supabase de produção, nesta ordem:
    - `20261104093000_stock_counts_abertura_operacao.sql`
    - `20261104094700_fastbar_operations_rls_service_role.sql`
    - `20261104102500_fechamento_operacao.sql`
