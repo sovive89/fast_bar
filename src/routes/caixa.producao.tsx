@@ -308,7 +308,7 @@ function Producao() {
           <button
             type="button"
             onClick={() => setComponents([...components, { key: "", quantity: "" }])}
-            className="text-sm font-medium text-primary underline underline-offset-4"
+            className="inline-flex min-h-9 items-center text-sm font-medium text-primary underline underline-offset-4"
           >
             + Adicionar ingrediente
           </button>

@@ -202,7 +202,7 @@ function ConnectionCard({
         <label className="flex shrink-0 cursor-pointer items-center gap-2">
           <input
             type="checkbox"
-            className="h-4 w-4 accent-primary"
+            className="h-5 w-5 accent-primary"
             checked={enabled}
             disabled={saving}
             onChange={(e) => void handleToggle(e.target.checked)}
@@ -350,7 +350,7 @@ function TwilioVerificationModule({
         <label className="flex shrink-0 cursor-pointer items-center gap-2">
           <input
             type="checkbox"
-            className="h-4 w-4 accent-primary"
+            className="h-5 w-5 accent-primary"
             checked={enabled}
             disabled={saving}
             onChange={(e) => void handleToggle(e.target.checked)}
@@ -513,7 +513,7 @@ function MercadoPagoModule({
         <label className="flex shrink-0 cursor-pointer items-center gap-2">
           <input
             type="checkbox"
-            className="h-4 w-4 accent-primary"
+            className="h-5 w-5 accent-primary"
             checked={enabled}
             disabled={saving}
             onChange={(e) => void handleToggle(e.target.checked)}

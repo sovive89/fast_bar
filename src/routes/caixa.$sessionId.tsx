@@ -187,7 +187,10 @@ function RegisterTabDetail() {
 
   return (
     <main className="mx-auto w-full max-w-2xl px-5 py-8">
-      <Link to="/caixa" className="text-sm text-muted-foreground underline underline-offset-4">
+      <Link
+        to="/caixa"
+        className="inline-flex min-h-9 items-center text-sm text-muted-foreground underline underline-offset-4"
+      >
         ← Voltar às comandas
       </Link>
 
@@ -276,7 +279,7 @@ function RegisterTabDetail() {
                 setServiceFee({ data: { sessionId: session.id, apply: !hasServiceFee } }),
               )
             }
-            className="mt-3 text-xs font-medium text-primary underline underline-offset-4 disabled:opacity-50"
+            className="mt-2 inline-flex min-h-9 items-center text-xs font-medium text-primary underline underline-offset-4 disabled:opacity-50"
           >
             {hasServiceFee ? "Tirar taxa de serviço" : "Aplicar taxa de serviço"}
           </button>

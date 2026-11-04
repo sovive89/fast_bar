@@ -330,7 +330,7 @@ export function BrandingModule({
               href="/abrir"
               target="_blank"
               rel="noreferrer"
-              className="flex items-center gap-1 text-xs font-medium text-primary underline underline-offset-4"
+              className="flex min-h-9 items-center gap-1 text-xs font-medium text-primary underline underline-offset-4"
             >
               Ver página <ExternalLink className="h-3 w-3" />
             </a>
@@ -346,7 +346,7 @@ export function BrandingModule({
           <button
             type="button"
             onClick={downloadQr}
-            className="flex items-center gap-1 text-xs font-medium text-primary underline underline-offset-4"
+            className="flex min-h-9 items-center gap-1 text-xs font-medium text-primary underline underline-offset-4"
           >
             <Download className="h-3 w-3" /> Baixar QR code
           </button>

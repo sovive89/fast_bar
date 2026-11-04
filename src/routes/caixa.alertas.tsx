@@ -121,7 +121,7 @@ function AlertsPage() {
               </ul>
               <Link
                 to="/caixa/estoque"
-                className="mt-3 inline-block text-xs font-medium text-primary underline underline-offset-4"
+                className="mt-2 inline-flex min-h-9 items-center text-xs font-medium text-primary underline underline-offset-4"
               >
                 Ir pro Estoque
               </Link>
@@ -145,7 +145,7 @@ function AlertsPage() {
               </ul>
               <Link
                 to="/caixa/crm/clientes"
-                className="mt-3 inline-block text-xs font-medium text-primary underline underline-offset-4"
+                className="mt-2 inline-flex min-h-9 items-center text-xs font-medium text-primary underline underline-offset-4"
               >
                 Ir pro CRM
               </Link>

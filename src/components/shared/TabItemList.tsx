@@ -166,7 +166,7 @@ export function TabItemList({
               onChange={() =>
                 setSelected(allSelected ? new Set() : new Set(groups.map((group) => group.key)))
               }
-              className="h-4 w-4 accent-primary"
+              className="h-5 w-5 accent-primary"
             />
             Selecionar todos
           </label>
@@ -218,16 +218,21 @@ export function TabItemList({
               className={`flex items-center gap-3 px-4 py-3 ${removing > 0 ? "bg-destructive/5" : ""}`}
             >
               {editable && (
-                <input
-                  type="checkbox"
-                  checked={isSelected}
-                  onChange={() => toggle(group.key)}
-                  aria-label={`Selecionar ${group.name}`}
-                  className="h-4 w-4 shrink-0 accent-primary"
-                />
+                // Área de toque maior que a caixinha (16px era pequeno pro dedo no balcão).
+                <label className="-m-2 flex shrink-0 cursor-pointer items-center p-2">
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggle(group.key)}
+                    aria-label={`Selecionar ${group.name}`}
+                    className="h-5 w-5 accent-primary"
+                  />
+                </label>
               )}
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-medium">
+                {/* Até 2 linhas: com preço e −/+ na mesma linha, "truncate" deixava só
+                    "3× Caipirinha de …" no celular — o nome é o que a equipe precisa ler. */}
+                <p className="line-clamp-2 break-words text-sm font-medium">
                   {removing > 0 ? (
                     <>
                       <span className="text-muted-foreground line-through">{group.quantity}×</span>{" "}

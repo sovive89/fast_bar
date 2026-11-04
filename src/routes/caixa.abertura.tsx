@@ -317,7 +317,7 @@ function AberturaOperacao() {
         ) : (
           <button
             onClick={() => setSkipping(true)}
-            className="text-xs font-semibold text-muted-foreground underline"
+            className="inline-flex min-h-9 items-center text-xs font-semibold text-muted-foreground underline"
           >
             Pular conferência (exige senha e motivo)
           </button>

@@ -1126,7 +1126,7 @@ function CardapioPage() {
                   editingCategoryId === cat.id ? (
                     <span
                       key={cat.id}
-                      className="inline-flex items-center gap-1 rounded-full bg-secondary py-1 pl-2 pr-1.5"
+                      className="inline-flex items-center gap-1 rounded-full bg-secondary py-0.5 pl-1 pr-0.5"
                     >
                       <input
                         value={editCategoryName}
@@ -1139,14 +1139,14 @@ function CardapioPage() {
                         onClick={() => void submitEditCategory()}
                         disabled={editCategorySaving}
                         aria-label="Salvar nome da categoria"
-                        className="rounded-full px-1 text-primary disabled:opacity-60"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-primary disabled:opacity-60"
                       >
                         ✓
                       </button>
                       <button
                         onClick={() => setEditingCategoryId(null)}
                         aria-label="Cancelar edição da categoria"
-                        className="rounded-full px-1 text-muted-foreground hover:text-foreground"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-foreground"
                       >
                         ×
                       </button>
@@ -1154,11 +1154,11 @@ function CardapioPage() {
                   ) : (
                     <span
                       key={cat.id}
-                      className="inline-flex items-center gap-1.5 rounded-full bg-secondary py-1 pl-3 pr-1.5 text-xs font-medium text-secondary-foreground"
+                      className="inline-flex items-center gap-1.5 rounded-full bg-secondary py-0.5 pl-3 pr-0.5 text-xs font-medium text-secondary-foreground"
                     >
                       <button
                         onClick={() => openEditCategory(cat)}
-                        className="inline-flex items-center gap-1.5 hover:underline"
+                        className="inline-flex min-h-7 items-center gap-1.5 hover:underline"
                       >
                         {(() => {
                           const Icon = categoryIcon(cat.name);
@@ -1173,7 +1173,7 @@ function CardapioPage() {
                             ? "Itens desta categoria consomem insumos — clique para desligar"
                             : "Marcar que itens desta categoria consomem insumos (precisam de ficha técnica)"
                         }
-                        className={`rounded-full px-1 ${cat.needs_recipe ? "text-primary" : "text-muted-foreground/50 hover:text-muted-foreground"}`}
+                        className={`inline-flex h-7 w-7 items-center justify-center rounded-full ${cat.needs_recipe ? "text-primary" : "text-muted-foreground/50 hover:text-muted-foreground"}`}
                       >
                         🧪
                       </button>
@@ -1182,7 +1182,7 @@ function CardapioPage() {
                           setDeletingCategoryId(deletingCategoryId === cat.id ? null : cat.id)
                         }
                         aria-label={`Apagar categoria ${cat.name}`}
-                        className="rounded-full px-1 text-muted-foreground hover:text-destructive"
+                        className="inline-flex h-7 w-7 items-center justify-center rounded-full text-muted-foreground hover:text-destructive"
                       >
                         ×
                       </button>
@@ -1497,8 +1497,8 @@ function CardapioPage() {
                       const isEditing = editingProductId === product.id;
                       return (
                         <li key={product.id} className="rounded-2xl border border-border bg-card p-4">
-                          <div className="flex items-center justify-between gap-4">
-                            <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
                               {product.image_url ? (
                                 <img
                                   src={product.image_url}
@@ -1510,8 +1510,9 @@ function CardapioPage() {
                                   <CategoryIcon className="h-5 w-5 text-muted-foreground" />
                                 </div>
                               )}
-                              <div className="min-w-0">
-                                <p className="truncate font-semibold">{product.name}</p>
+                              <div className="min-w-0 flex-1">
+                                {/* Até 2 linhas: no celular "truncate" deixava "Caipirinha …". */}
+                                <p className="line-clamp-2 break-words font-semibold">{product.name}</p>
                                 <p className="text-xs text-muted-foreground">
                                   {brl(product.price)}
                                   {product.package_type ? ` · ${product.package_type}` : ""}
@@ -1519,10 +1520,10 @@ function CardapioPage() {
                                 </p>
                               </div>
                             </div>
-                            <div className="flex shrink-0 items-center gap-3">
+                            <div className="flex shrink-0 items-center gap-2">
                               <button
                                 onClick={() => (isEditing ? setEditingProductId(null) : openEditProduct(product))}
-                                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                                className="min-h-9 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                               >
                                 {isEditing ? "Cancelar" : "Editar"}
                               </button>
@@ -1531,7 +1532,7 @@ function CardapioPage() {
                                   setDeletingId(isDeleting ? null : product.id);
                                   setEditingProductId(null);
                                 }}
-                                className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                                className="min-h-9 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
                               >
                                 {isDeleting ? "Cancelar" : "Apagar"}
                               </button>
