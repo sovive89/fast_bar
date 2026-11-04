@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getCustomerTab, getRegisterTab } from "@/lib/tab-reads.functions";
-import type { BarSession, BarTabItem } from "@/types/fastbar";
+import type { BarSession, BarTabItem, SessionPayment } from "@/types/fastbar";
 
 const POLL_MS = 10000;
 
@@ -9,6 +9,7 @@ const POLL_MS = 10000;
 export function useLiveTab(sessionId: string, scope: "customer" | "register" = "customer") {
   const [session, setSession] = useState<BarSession | null>(null);
   const [items, setItems] = useState<BarTabItem[]>([]);
+  const [payments, setPayments] = useState<SessionPayment[]>([]);
   const [loading, setLoading] = useState(true);
   // Só vira true quando o PRIMEIRO carregamento falha (ainda não há dado nenhum pra mostrar).
   // Falha em refresh posterior mantém a tela como está e não liga isso.
@@ -27,6 +28,7 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
       if (currentSession.current !== sessionId) return;
       setSession((result.session as BarSession | null) ?? null);
       setItems((result.items as BarTabItem[] | null) ?? []);
+      setPayments("payments" in result ? (result.payments as SessionPayment[]) : []);
       hasLoaded.current = true;
       loggedFailure.current = false;
       setLoadFailed(false);
@@ -61,6 +63,7 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
     loggedFailure.current = false;
     setSession(null);
     setItems([]);
+    setPayments([]);
     setLoading(true);
     setLoadFailed(false);
     setLoadError(null);
@@ -73,5 +76,5 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
     };
   }, [reload, sessionId]);
 
-  return { session, items, loading, loadFailed, loadError, now, reload };
+  return { session, items, payments, loading, loadFailed, loadError, now, reload };
 }

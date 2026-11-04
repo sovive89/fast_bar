@@ -133,7 +133,7 @@ export async function reconcilePointOrder(orderId: string) {
   const { admin, registerCustomerSpend } = await import("../fastbar.server");
   const { data: session } = await admin()
     .from("fastbar_sessions")
-    .select("id, status, pos_order_id, closed_at")
+    .select("id, status, pos_order_id, pos_amount, closed_at, operacao_id")
     .eq("id", sessionId)
     .maybeSingle();
   if (!session || session.pos_order_id !== orderId) return;
@@ -143,6 +143,18 @@ export async function reconcilePointOrder(orderId: string) {
     const payment = order.transactions?.payments?.[0];
     const method = mapChannel(payment?.payment_method?.type);
     const nowIso = new Date().toISOString();
+    // Livro de pagamentos: a cobrança da maquininha é sempre do saldo inteiro (startMachineCharge),
+    // então quita a comanda. Guarda o valor cobrado para o saldo fechar em zero.
+    if (Number(session.pos_amount) > 0) {
+      await admin().from("fastbar_session_payments").insert({
+        session_id: sessionId,
+        operacao_id: session.operacao_id,
+        amount: Number(session.pos_amount),
+        method: "maquininha",
+        saldo_apos: 0,
+        realizado_por: "maquininha",
+      });
+    }
     const { error } = await admin()
       .from("fastbar_sessions")
       .update({
