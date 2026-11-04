@@ -22,6 +22,7 @@ exato ou print) e o horário.
    - `20261104150000_producao_fichas_ordens.sql`
    - `20261104160000_stock_count_produced_items.sql`
    - `20261104170000_bill_requests.sql`
+   - `20261104180000_push_subscriptions.sql`
 2. O último deploy do `master` terminou no Amplify.
 3. Não há operação aberta. Se houver, ela foi aberta antes da mudança: encerre-a pelo fluxo novo
    (passo 5) antes de começar.
@@ -170,6 +171,21 @@ Precisa de dois aparelhos: o celular do cliente (link da comanda) e o do caixa.
 
 **Limites desta entrega:** o aviso só chega com o caixa **aberto no navegador**. Com o app fechado ou
 o celular bloqueado ainda não há notificação (é o próximo PR, push). No iPhone a vibração não existe.
+
+### 11.1 Notificação push (precisa das chaves configuradas: `docs/PUSH_NOTIFICACOES.md`)
+
+| Ação | Resultado esperado |
+| --- | --- |
+| No celular da equipe, abra o caixa e toque no sino (cabeçalho) | Painel "Avisos no celular"; sino com bolinha amarela enquanto não ativado |
+| Sem as chaves no servidor | O painel diz que as notificações ainda não foram configuradas |
+| No iPhone **sem** instalar o app | Mostra como instalar (Compartilhar → Adicionar à Tela de Início) |
+| Toque em "Ativar neste aparelho" e permita | "Pronto! Este aparelho vai receber os avisos"; o sino fica ativo, sem bolinha |
+| Toque em "Enviar teste" | A notificação "Teste de notificação" chega no aparelho |
+| **Feche o app** e bloqueie a tela; peça a conta pelo celular do cliente | Chega "Ana pediu a conta"; fica na tela até tocar; no Android vibra |
+| Toque na notificação | Abre a comanda do cliente |
+| Peça a conta de novo (toque repetido) | Não chega outra notificação |
+| "Desativar" | Deixa de receber neste aparelho |
+| Bloqueie as notificações do site no navegador | O painel diz que estão bloqueadas e explica como liberar |
 
 ## 12. Auditoria no banco (quem tem acesso ao Supabase)
 

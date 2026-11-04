@@ -114,14 +114,8 @@ export function BillRequestAlerts() {
     <div
       role="alert"
       aria-live="assertive"
-      className={`px-4 pb-4 text-amber-950 ${waiting > 0 ? "bg-amber-300" : "bg-amber-200"}`}
+      className={`px-4 py-4 text-amber-950 ${waiting > 0 ? "bg-amber-300" : "bg-amber-200"}`}
     >
-      {/* Só a faixa pisca: pulsar o bloco inteiro (opacidade) apaga o texto justo quando ele
-          precisa ser lido. */}
-      <div
-        aria-hidden
-        className={`-mx-4 mb-4 h-2 ${waiting > 0 ? "animate-pulse bg-red-600" : "bg-amber-500"}`}
-      />
       <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
         <p className="flex items-center gap-3 text-xl font-extrabold leading-tight">
           <BellRing className="h-7 w-7 shrink-0" aria-hidden />
@@ -140,7 +134,12 @@ export function BillRequestAlerts() {
           o celular inteiro. Rola por dentro. */}
       <ul className="mx-auto mt-3 max-h-[45vh] max-w-2xl space-y-3 overflow-y-auto overscroll-contain">
         {requests.map((request) => (
-          <li key={request.id} className="rounded-2xl bg-white p-4 shadow-md">
+          <li
+            key={request.id}
+            className={`rounded-2xl border-4 bg-white p-4 shadow-md ${
+              request.status === "pedida" ? "alert-pulse-border" : "border-amber-500"
+            }`}
+          >
             <Link
               to="/caixa/$sessionId"
               params={{ sessionId: request.sessionId }}

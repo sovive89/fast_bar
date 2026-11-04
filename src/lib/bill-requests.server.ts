@@ -37,7 +37,7 @@ export async function requestBill(sessionId: string): Promise<RequestBillResult>
 
   const { data: session } = await admin()
     .from("fastbar_sessions")
-    .select("id, status")
+    .select("id, status, customer_name")
     .eq("id", sessionId)
     .maybeSingle();
   if (!session) return { ok: false, message: "Comanda não encontrada." };
@@ -63,6 +63,23 @@ export async function requestBill(sessionId: string): Promise<RequestBillResult>
     if (raced) return { ok: true, status: raced.status, alreadyRequested: true };
     return { ok: false, message: "Não foi possível avisar a equipe agora. Tente de novo." };
   }
+
+  // Avisa o celular da equipe mesmo com o app fechado. Só no pedido NOVO (não no toque repetido) e
+  // nunca falha o pedido: se o push não sair, o alerta dentro do caixa continua valendo.
+  try {
+    const { notifyStaff } = await import("./push.server");
+    const firstName = (session.customer_name ?? "").trim().split(/\s+/)[0] || "Um cliente";
+    await notifyStaff({
+      kind: "conta",
+      title: "Pedido de conta",
+      body: `${firstName} pediu a conta`,
+      url: `/caixa/${sessionId}`,
+      tag: `conta-${sessionId}`,
+    });
+  } catch (error) {
+    console.error("[bill-requests] push não saiu", (error as Error).message);
+  }
+
   return { ok: true, status: "pedida", alreadyRequested: false };
 }
 
