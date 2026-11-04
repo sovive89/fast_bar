@@ -24,6 +24,7 @@ Lovable).
    - `20261104110000_stock_count_items_kinds.sql`
    - `20261104120000_session_payments.sql` (livro de pagamentos; sem ela o pagamento da comanda falha)
    - `20261104130000_session_credits.sql` (crédito adiantado da comanda)
+   - `20261104140000_pos_credit_charge.sql` (crédito pela maquininha: coluna `pos_purpose` e `pos_order_id` único)
 2. **Testar o fluxo real** no app (roteiro em `docs/ROTEIRO_TESTE_OPERACAO.md`, quando existir):
    abrir operação com conferência, lançar numa comanda, encerrar com os três destinos.
 3. **Baseline do esquema — Codex, em revisão**: `fastbar_sessions` (e outras tabelas base) nunca foi criada por
@@ -49,7 +50,8 @@ Lovable).
 4. Item 3 do roadmap (crédito e pagamento), em PRs separados:
    - ~~Livro de pagamentos + pagamento parcial vira pendência~~ (feito neste PR).
    - ~~Crédito da comanda, consumido item a item~~ (feito: entradas em `fastbar_session_credits`, consumo derivado dos itens).
-   - Crédito pela maquininha (só dá para testar no terminal real) e recuperação ao reabrir.
+   - ~~Crédito pela maquininha~~ (feito; só o teste no terminal real fica com o dono) e recuperação ao reabrir (já vem de graça: o crédito é da comanda).
+   - Pendente: devolver o crédito que sobrar (estorno) e mostrar o crédito na tela do cliente.
 
 ## Arquivos compartilhados (cuidado)
 

@@ -16,6 +16,7 @@ import {
   refundMachineCharge,
   registerPayment,
   addSessionCreditFn,
+  startCreditCharge,
   removeTabItems,
   reopenSession,
   setSessionServiceFee,
@@ -64,12 +65,14 @@ function RegisterTabDetail() {
   // Crédito adiantado: valor + forma em que o cliente deixou o dinheiro.
   const [creditText, setCreditText] = useState("");
   const [creditMethod, setCreditMethod] = useState<PaymentMethod>("dinheiro");
+  const [creditMode, setCreditMode] = useState<"manual" | "maquina">("manual");
 
   const add = useServerFn(addTabItem);
   const removeMany = useServerFn(removeTabItems);
   const close = useServerFn(closeSession);
   const pay = useServerFn(registerPayment);
   const addCredit = useServerFn(addSessionCreditFn);
+  const startCredit = useServerFn(startCreditCharge);
   const reopen = useServerFn(reopenSession);
   const confirm = useServerFn(confirmSession);
   const startCharge = useServerFn(startMachineCharge);
@@ -281,35 +284,59 @@ function RegisterTabDetail() {
 
       {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
 
-      {isOpen && (
+      {isOpen && !session.pos_order_id && (
         <section className="mt-8 space-y-2 rounded-xl border border-border p-4">
           <h2 className="text-sm font-semibold">Adicionar crédito à comanda</h2>
           <p className="text-xs text-muted-foreground">
             O cliente deixa um valor adiantado e vai gastando conforme pede. O que sobrar fica na
             comanda.
           </p>
-          <div className="flex gap-2">
-            {(
-              [
-                ["dinheiro", "Dinheiro"],
-                ["cartao", "Cartão"],
-                ["pix", "Pix"],
-              ] as const
-            ).map(([value, label]) => (
-              <button
-                key={value}
-                onClick={() => setCreditMethod(value)}
-                disabled={busy}
-                className={`h-9 flex-1 rounded-lg text-xs font-medium disabled:opacity-60 ${
-                  creditMethod === value
-                    ? "bg-primary text-primary-foreground"
-                    : "border border-border text-muted-foreground"
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          {machineConfigured && (
+            <div className="flex gap-1 rounded-xl border border-border p-1 text-xs font-medium">
+              {(
+                [
+                  ["manual", "Manual"],
+                  ["maquina", "Maquininha"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setCreditMode(value)}
+                  className={`h-8 flex-1 rounded-lg ${
+                    creditMode === value
+                      ? "bg-primary text-primary-foreground"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+          {!(machineConfigured && creditMode === "maquina") && (
+            <div className="flex gap-2">
+              {(
+                [
+                  ["dinheiro", "Dinheiro"],
+                  ["cartao", "Cartão"],
+                  ["pix", "Pix"],
+                ] as const
+              ).map(([value, label]) => (
+                <button
+                  key={value}
+                  onClick={() => setCreditMethod(value)}
+                  disabled={busy}
+                  className={`h-9 flex-1 rounded-lg text-xs font-medium disabled:opacity-60 ${
+                    creditMethod === value
+                      ? "bg-primary text-primary-foreground"
+                      : "border border-border text-muted-foreground"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
             <input
               inputMode="decimal"
@@ -321,17 +348,24 @@ function RegisterTabDetail() {
             />
             <button
               onClick={async () => {
+                const viaMachine = machineConfigured && creditMode === "maquina";
                 const ok = await run(() =>
-                  addCredit({
-                    data: { sessionId: session.id, amount: creditAmount ?? 0, method: creditMethod },
-                  }),
+                  viaMachine
+                    ? startCredit({ data: { sessionId: session.id, amount: creditAmount ?? 0 } })
+                    : addCredit({
+                        data: {
+                          sessionId: session.id,
+                          amount: creditAmount ?? 0,
+                          method: creditMethod,
+                        },
+                      }),
                 );
                 if (ok) setCreditText("");
               }}
               disabled={busy || creditInvalid}
               className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
             >
-              Adicionar
+              {machineConfigured && creditMode === "maquina" ? "Cobrar" : "Adicionar"}
             </button>
           </div>
         </section>
@@ -408,11 +442,15 @@ function RegisterTabDetail() {
               <div className="space-y-3 rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
                 <div className="flex items-center gap-2 text-sm font-medium">
                   <span className="h-2 w-2 animate-pulse rounded-full bg-primary" />
-                  Aguardando pagamento na maquininha...
+                  {session.pos_purpose === "credito"
+                    ? "Aguardando o crédito na maquininha..."
+                    : "Aguardando pagamento na maquininha..."}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Valor enviado: {brl(session.pos_amount ?? 0)}. A comanda fecha sozinha assim que
-                  o pagamento for aprovado no terminal.
+                  Valor enviado: {brl(session.pos_amount ?? 0)}.{" "}
+                  {session.pos_purpose === "credito"
+                    ? "O crédito entra na comanda sozinho assim que o pagamento for aprovado no terminal."
+                    : "A comanda fecha sozinha assim que o pagamento for aprovado no terminal."}
                 </p>
                 <div className="flex gap-2">
                   <button
