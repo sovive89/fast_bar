@@ -1,6 +1,6 @@
 /**
  * Supabase falso, em memória, só com o que a lógica de servidor da operação usa: from/select/
- * insert/update e os filtros eq/neq/in/is/lt, mais order/limit/single/maybeSingle. As tabelas são
+ * insert/update/upsert e os filtros eq/neq/in/is/lt, mais order/limit/single/maybeSingle. As tabelas são
  * listas de objetos — o teste monta o estado inicial e depois confere o que foi gravado.
  *
  * Não é um Postgres: não valida constraints, tipos nem RLS. Serve para testar as regras da
@@ -19,7 +19,8 @@ function newId() {
 
 class Query implements PromiseLike<Result> {
   private filters: Filter[] = [];
-  private mode: "select" | "insert" | "update" | "delete" = "select";
+  private mode: "select" | "insert" | "update" | "delete" | "upsert" = "select";
+  private upsertKeys: string[] = ["id"];
   private payload: Row | Row[] | null = null;
   private wantSingle: "single" | "maybe" | null = null;
   private wantRows = false;
@@ -38,6 +39,13 @@ class Query implements PromiseLike<Result> {
   insert(payload: Row | Row[]) {
     this.mode = "insert";
     this.payload = payload;
+    return this;
+  }
+  /** Grava ou atualiza pela chave de conflito (padrão: id), como o upsert do Supabase. */
+  upsert(payload: Row, options?: { onConflict?: string }) {
+    this.mode = "upsert";
+    this.payload = payload;
+    this.upsertKeys = (options?.onConflict ?? "id").split(",").map((key) => key.trim());
     return this;
   }
   update(payload: Row) {
@@ -105,6 +113,18 @@ class Query implements PromiseLike<Result> {
         if (conflict) return { data: null, error: { message: "duplicate key" } };
       }
       rows.push(...affected);
+    } else if (this.mode === "upsert") {
+      const row = this.payload as Row;
+      const existing = rows.find((candidate) =>
+        this.upsertKeys.every((key) => candidate[key] === row[key]),
+      );
+      if (existing) {
+        Object.assign(existing, row);
+        affected = [existing];
+      } else {
+        affected = [{ id: newId(), ...row }];
+        rows.push(...affected);
+      }
     } else {
       affected = rows.filter((row) => this.filters.every((filter) => filter(row)));
       if (this.mode === "update") {

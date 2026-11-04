@@ -70,9 +70,11 @@ export const getRegisterTab = createServerFn({ method: "POST" })
         .eq("session_id", data.sessionId)
         .order("created_at"),
     ]);
+    const { loadMark } = await import("./session-marks.server");
     return {
       session: session ?? null,
       items: items ?? [],
+      mark: await loadMark(data.sessionId),
       payments: (payments ?? []).map((payment) => ({ ...payment, amount: Number(payment.amount) })),
       credits: (credits ?? []).map((credit) => ({ ...credit, amount: Number(credit.amount) })),
     };
@@ -97,10 +99,13 @@ export const getRegisterOverview = createServerFn({ method: "POST" }).handler(as
   ]);
   // A operação em andamento define o que é "Fechadas nesta operação" e o que já é "Histórico".
   const { getOpenOperation } = await import("./operations.server");
-  const operation = await getOpenOperation();
+  const { loadMarks } = await import("./session-marks.server");
+  const [operation, marks] = await Promise.all([getOpenOperation(), loadMarks()]);
   return {
     sessions: sessions ?? [],
     items: items ?? [],
     currentOperationId: operation?.id ?? null,
+    // Etiqueta, cor e observação da equipe, por id da comanda. Só o caixa recebe isto.
+    marks,
   };
 });

@@ -945,6 +945,51 @@ export type Database = {
           },
         ]
       }
+      fastbar_session_marks: {
+        Row: {
+          color: string | null
+          label: string | null
+          note: string | null
+          session_id: string
+          tenant_id: string | null
+          updated_at: string
+          updated_by: string
+        }
+        Insert: {
+          color?: string | null
+          label?: string | null
+          note?: string | null
+          session_id: string
+          tenant_id?: string | null
+          updated_at?: string
+          updated_by?: string
+        }
+        Update: {
+          color?: string | null
+          label?: string | null
+          note?: string | null
+          session_id?: string
+          tenant_id?: string | null
+          updated_at?: string
+          updated_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_session_marks_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: true
+            referencedRelation: "fastbar_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fastbar_session_marks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fastbar_session_payments: {
         Row: {
           amount: number
