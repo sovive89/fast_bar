@@ -24,6 +24,7 @@ import { Route as CaixaConexoesRouteImport } from './routes/caixa.conexoes'
 import { Route as CaixaConfiguracoesRouteImport } from './routes/caixa.configuracoes'
 import { Route as CaixaCrmRouteImport } from './routes/caixa.crm'
 import { Route as CaixaEstoqueRouteImport } from './routes/caixa.estoque'
+import { Route as CaixaFechamentoRouteImport } from './routes/caixa.fechamento'
 import { Route as CaixaMarcaRouteImport } from './routes/caixa.marca'
 import { Route as CaixaRelatoriosRouteImport } from './routes/caixa.relatorios'
 import { Route as ComandaSessionIdRouteImport } from './routes/comanda.$sessionId'
@@ -110,6 +111,11 @@ const CaixaEstoqueRoute = CaixaEstoqueRouteImport.update({
   path: '/estoque',
   getParentRoute: () => CaixaRoute,
 } as any)
+const CaixaFechamentoRoute = CaixaFechamentoRouteImport.update({
+  id: '/fechamento',
+  path: '/fechamento',
+  getParentRoute: () => CaixaRoute,
+} as any)
 const CaixaMarcaRoute = CaixaMarcaRouteImport.update({
   id: '/marca',
   path: '/marca',
@@ -177,6 +183,7 @@ export interface FileRoutesByFullPath {
   '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
+  '/caixa/fechamento': typeof CaixaFechamentoRoute
   '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
@@ -202,6 +209,7 @@ export interface FileRoutesByTo {
   '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/estoque': typeof CaixaEstoqueRoute
+  '/caixa/fechamento': typeof CaixaFechamentoRoute
   '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
@@ -230,6 +238,7 @@ export interface FileRoutesById {
   '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
+  '/caixa/fechamento': typeof CaixaFechamentoRoute
   '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
   '/comanda/$sessionId': typeof ComandaSessionIdRoute
@@ -259,6 +268,7 @@ export interface FileRouteTypes {
     | '/caixa/configuracoes'
     | '/caixa/crm'
     | '/caixa/estoque'
+    | '/caixa/fechamento'
     | '/caixa/marca'
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
@@ -284,6 +294,7 @@ export interface FileRouteTypes {
     | '/caixa/conexoes'
     | '/caixa/configuracoes'
     | '/caixa/estoque'
+    | '/caixa/fechamento'
     | '/caixa/marca'
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
@@ -311,6 +322,7 @@ export interface FileRouteTypes {
     | '/caixa/configuracoes'
     | '/caixa/crm'
     | '/caixa/estoque'
+    | '/caixa/fechamento'
     | '/caixa/marca'
     | '/caixa/relatorios'
     | '/comanda/$sessionId'
@@ -444,6 +456,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CaixaEstoqueRouteImport
       parentRoute: typeof CaixaRoute
     }
+    '/caixa/fechamento': {
+      id: '/caixa/fechamento'
+      path: '/fechamento'
+      fullPath: '/caixa/fechamento'
+      preLoaderRoute: typeof CaixaFechamentoRouteImport
+      parentRoute: typeof CaixaRoute
+    }
     '/caixa/marca': {
       id: '/caixa/marca'
       path: '/marca'
@@ -544,6 +563,7 @@ interface CaixaRouteChildren {
   CaixaConfiguracoesRoute: typeof CaixaConfiguracoesRoute
   CaixaCrmRoute: typeof CaixaCrmRouteWithChildren
   CaixaEstoqueRoute: typeof CaixaEstoqueRoute
+  CaixaFechamentoRoute: typeof CaixaFechamentoRoute
   CaixaMarcaRoute: typeof CaixaMarcaRoute
   CaixaRelatoriosRoute: typeof CaixaRelatoriosRoute
   CaixaIndexRoute: typeof CaixaIndexRoute
@@ -558,6 +578,7 @@ const CaixaRouteChildren: CaixaRouteChildren = {
   CaixaConfiguracoesRoute: CaixaConfiguracoesRoute,
   CaixaCrmRoute: CaixaCrmRouteWithChildren,
   CaixaEstoqueRoute: CaixaEstoqueRoute,
+  CaixaFechamentoRoute: CaixaFechamentoRoute,
   CaixaMarcaRoute: CaixaMarcaRoute,
   CaixaRelatoriosRoute: CaixaRelatoriosRoute,
   CaixaIndexRoute: CaixaIndexRoute,

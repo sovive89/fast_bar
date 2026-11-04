@@ -1,4 +1,6 @@
-export type SessionStatus = "unverified" | "pending" | "open" | "closed" | "paid" | "cancelled";
+export type SessionStatus =
+  "unverified" | "pending" | "open" | "closed" | "paid" | "cancelled" | "cortesia" | "inadimplente";
+// (cortesia e inadimplente são novos — fechamento de operação, P1.5-6 do CLAUDE.md)
 
 /** Public (client-safe) shape of a fastbar_sessions row — never includes verification_code. */
 export type BarSession = {
@@ -59,4 +61,6 @@ export const STATUS_LABEL: Record<SessionStatus, string> = {
   closed: "Fechada",
   paid: "Paga",
   cancelled: "Cancelada",
+  cortesia: "Cortesia",
+  inadimplente: "Inadimplente",
 };

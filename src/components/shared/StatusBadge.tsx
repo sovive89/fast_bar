@@ -7,6 +7,8 @@ const TONE: Record<SessionStatus, string> = {
   closed: "bg-accent/20 text-accent-foreground",
   paid: "bg-success/15 text-success",
   cancelled: "bg-destructive/15 text-destructive",
+  cortesia: "bg-accent/20 text-accent-foreground",
+  inadimplente: "bg-destructive/15 text-destructive",
 };
 
 export function StatusBadge({ status }: { status: SessionStatus }) {

@@ -20,8 +20,7 @@ import {
   Users,
 } from "lucide-react";
 import { checkBarAccess, lockBarPanel } from "@/lib/bar-gate.functions";
-import { getOperationStatus, closeOperation } from "@/lib/operations.functions";
-import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
+import { getOperationStatus } from "@/lib/operations.functions";
 import { UpdateBanner } from "@/components/shared/UpdateBanner";
 import {
   Sidebar,
@@ -117,17 +116,15 @@ function formatDataOperacional(dataOperacional: string) {
  * encerrar — o conceito descrito em PROMPT_DATA_OPERACIONAL_ABERTURA_FECHAMENTO. Fica no cabeçalho
  * fixo do caixa porque toda venda depende de existir uma operação aberta pra ser vinculada a ela.
  *
- * "ENCERRAR OPERAÇÃO" reaproveita o PasswordConfirm (mesmo componente das outras ações
- * destrutivas do caixa) como a confirmação explícita que o prompt pede — digitar a senha de novo
- * e clicar "Confirmar" já é o passo deliberado, não um único toque acidental.
+ * "Encerrar operação" sempre passa pela revisão das comandas abertas (/caixa/fechamento) — mesmo
+ * motivo da abertura: "não é possível terminar o fluxo sem revisar as comandas abertas" (P1.5 do
+ * CLAUDE.md), e a lista de comandas pendentes de destino pode ser longa.
  */
 function OperationBar() {
   const [status, setStatus] = useState<OperationStatus | null>(null);
   const [now, setNow] = useState(() => new Date());
-  const [confirmingClose, setConfirmingClose] = useState(false);
 
   const loadStatus = useServerFn(getOperationStatus);
-  const doClose = useServerFn(closeOperation);
 
   async function refresh() {
     setStatus(await loadStatus());
@@ -158,15 +155,6 @@ function OperationBar() {
     minute: "2-digit",
   }).format(now);
 
-  async function handleClose(password: string) {
-    const result = await doClose({ data: { password } });
-    if (result.ok) {
-      setConfirmingClose(false);
-      await refresh();
-    }
-    return result;
-  }
-
   return (
     <div className="flex flex-1 flex-wrap items-center justify-between gap-2">
       <div className="flex flex-col text-xs leading-tight">
@@ -184,23 +172,12 @@ function OperationBar() {
       </div>
 
       {operation ? (
-        confirmingClose ? (
-          <div className="w-full max-w-xs sm:w-auto">
-            <PasswordConfirm
-              message="Confirme a senha da equipe para encerrar a operação. Depois disso não dá mais para lançar vendas nela."
-              confirmLabel="Encerrar operação"
-              onCancel={() => setConfirmingClose(false)}
-              onConfirm={handleClose}
-            />
-          </div>
-        ) : (
-          <button
-            onClick={() => setConfirmingClose(true)}
-            className="rounded-full border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-destructive"
-          >
-            Encerrar operação
-          </button>
-        )
+        <Link
+          to="/caixa/fechamento"
+          className="rounded-full border border-destructive/40 px-3 py-1.5 text-xs font-semibold text-destructive"
+        >
+          Encerrar operação
+        </Link>
       ) : (
         // Abrir a operação sempre passa pela conferência de estoque — "conferência de estoque
         // obrigatória antes de abrir comandas" (P1 do CLAUDE.md) — por isso vira navegação para

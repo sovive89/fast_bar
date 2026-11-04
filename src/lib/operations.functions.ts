@@ -2,11 +2,13 @@ import { createServerFn } from "@tanstack/react-start";
 
 /**
  * Camada createServerFn da Operação — mesmo padrão de integrations.functions.ts/service.server.ts:
- * este arquivo é o único ponto seguro pra importar direto em rota/componente client (caixa.tsx),
- * porque só expõe os três server functions. A lógica de verdade (admin(), cálculo de data
- * operacional) mora em operations.server.ts, que faz chamadas diretas com a service role — nunca
- * pode ser importado no topo de um arquivo que o bundler client also processa, senão a service
- * role vaza pro bundle do navegador.
+ * este arquivo é o único ponto seguro pra importar direto em rota/componente client (caixa.tsx).
+ * Só expõe getOperationStatus (leitura); abrir e fechar a operação moraram aqui antes e agora
+ * vivem em stock-count.functions.ts e operation-closure.functions.ts — os dois são o único jeito
+ * de abrir/fechar, porque cada um garante a revisão que o outro não faz. A lógica de verdade
+ * (admin(), cálculo de data operacional) mora em operations.server.ts, que faz chamadas diretas
+ * com a service role — nunca pode ser importado no topo de um arquivo que o bundler client
+ * também processa, senão a service role vaza pro bundle do navegador.
  */
 
 export const getOperationStatus = createServerFn({ method: "GET" }).handler(async () => {
@@ -26,35 +28,8 @@ export const getOperationStatus = createServerFn({ method: "GET" }).handler(asyn
 // (openOperationWithStockCount ou skipStockCountAndOpenOperation), os dois passando por
 // operations.server.ts > createOperationRow().
 
-/**
- * Encerra a operação aberta. O frontend já exige uma confirmação explícita antes de chamar isto
- * (item 5 do prompt) — aqui só valida que existe operação aberta e fecha.
- */
-export const closeOperation = createServerFn({ method: "POST" })
-  .inputValidator((data: { password: string }) => data)
-  .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess } = await import("./fastbar.server");
-    const { teamPasswordMatches } = await import("./bar-gate.server");
-    await assertRegisterAccess();
-    if (!(await teamPasswordMatches(data.password))) {
-      return { ok: false as const, message: "Senha incorreta." };
-    }
-
-    const { getOpenOperation } = await import("./operations.server");
-    const open = await getOpenOperation();
-    if (!open) {
-      return { ok: false as const, message: "Não há operação aberta." };
-    }
-
-    const now = new Date();
-    const { error } = await admin()
-      .from("fastbar_operations")
-      .update({ status: "FECHADA", fechado_em: now.toISOString(), fechado_por: "equipe" })
-      .eq("id", open.id)
-      .eq("status", "ABERTA"); // dupla proteção contra fechamento duplicado em corrida
-
-    if (error) {
-      return { ok: false as const, message: "Não foi possível encerrar a operação." };
-    }
-    return { ok: true as const };
-  });
+// Encerrar a operação direto (sem revisar as comandas em aberto) saiu daqui pelo mesmo motivo que
+// abrir direto: viraria porta dos fundos pra "não é possível terminar o fluxo sem revisar as
+// comandas abertas" (P1.5 do CLAUDE.md). Quem encerra a operação agora é sempre
+// operation-closure.functions.ts (closeOperationAfterReview), que só deixa fechar depois que
+// toda comanda aberta/fechada da operação recebeu um destino (operation-closure.server.ts).

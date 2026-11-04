@@ -679,7 +679,10 @@ export const archiveClosedSessions = createServerFn({ method: "POST" })
     let query = admin()
       .from("fastbar_sessions")
       .select("id")
-      .in("status", ["closed", "paid", "cancelled"])
+      // "cortesia" entra aqui: é um desfecho terminal igual closed/paid/cancelled (a comanda não
+      // recebe mais lançamento nem pagamento). "inadimplente" fica de fora de propósito — tem
+      // área própria ("Inadimplentes"), não se mistura com o arquivo comum.
+      .in("status", ["closed", "paid", "cancelled", "cortesia"])
       .is("archived_at", null);
     if (data.before) query = query.lt("closed_at", data.before);
 
