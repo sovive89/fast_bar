@@ -747,11 +747,14 @@ function ComponentStockTab(props: {
             const isDeleting = deletingId === item.id;
             return (
               <li key={item.id} className="rounded-2xl border border-border bg-card p-4">
-                <div className="flex items-center justify-between gap-4">
+                {/* Celular: duas linhas — identificação + saldo em cima, ações embaixo (quebram linha).
+                    Antes era uma linha só e os 5 botões espremiam o nome até sumir. Do md pra cima volta
+                    a ser uma linha. */}
+                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between md:gap-4">
                   {/* Mesmo formato do card do Cardápio (foto 10×10 ou ícone sobre fundo neutro, nome em
                       destaque, uma linha de detalhe embaixo) — só que aqui o detalhe é estoque:
                       custo, embalagem e em quais produtos o item entra. */}
-                  <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3 md:flex-1">
                     {item.image_url ? (
                       <img
                         src={item.image_url}
@@ -769,7 +772,7 @@ function ComponentStockTab(props: {
                         )}
                       </div>
                     )}
-                    <div className="min-w-0">
+                    <div className="min-w-0 flex-1">
                       <p className="truncate font-semibold">
                         {item.name}
                         {item.kind === "cozinha" && (
@@ -800,14 +803,14 @@ function ComponentStockTab(props: {
                         </p>
                       )}
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <span className={`text-sm font-bold ${low ? "text-destructive" : ""}`}>
+                    <span className={`shrink-0 whitespace-nowrap text-sm font-bold ${low ? "text-destructive" : ""}`}>
                       {item.current_stock} {item.unit}
                     </span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 md:shrink-0 md:flex-nowrap">
                     <button
                       onClick={() => (isEditing ? setOpenEditId(null) : openEditor(item))}
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      className="min-h-9 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {isEditing ? "Cancelar" : "Editar"}
                     </button>
@@ -818,7 +821,7 @@ function ComponentStockTab(props: {
                         setDeletingId(null);
                         setOpenLossId(null);
                       }}
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      className="min-h-9 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {isOpen ? "Cancelar" : "+ Entrada"}
                     </button>
@@ -833,7 +836,7 @@ function ComponentStockTab(props: {
                         setLossNote("");
                         setLossError(null);
                       }}
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-amber-500"
+                      className="min-h-9 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-amber-500"
                     >
                       {openLossId === item.id ? "Cancelar" : "− Perda"}
                     </button>
@@ -844,13 +847,13 @@ function ComponentStockTab(props: {
                         setOpenEntryId(null);
                         setOpenLossId(null);
                       }}
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
+                      className="min-h-9 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
                     >
                       {isDeleting ? "Cancelar" : "Apagar"}
                     </button>
                     <button
                       onClick={() => void toggleLots(item)}
-                      className="rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      className="min-h-9 rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
                     >
                       {openLotsId === item.id ? "Ocultar lotes" : "Lotes"}
                     </button>
@@ -873,7 +876,8 @@ function ComponentStockTab(props: {
                           <li key={lot.id} className="rounded-lg bg-muted/40 px-2.5 py-2 text-xs">
                             {editingLotId === lot.id ? (
                               <div className="space-y-2">
-                                <div className="flex gap-2">
+                                {/* Empilhados no celular: lado a lado, os placeholders cortavam. */}
+                                <div className="flex flex-col gap-2 sm:flex-row">
                                   <input
                                     type="number"
                                     inputMode="decimal"
