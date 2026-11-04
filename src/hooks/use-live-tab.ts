@@ -1,3 +1,4 @@
+import type { SessionMark } from "@/lib/session-marks";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getCustomerTab, getRegisterTab } from "@/lib/tab-reads.functions";
@@ -18,6 +19,8 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
   const [payments, setPayments] = useState<SessionPayment[]>([]);
   const [credits, setCredits] = useState<SessionCredit[]>([]);
   const [billRequest, setBillRequest] = useState<BillRequestState | null>(null);
+  // Etiqueta/cor/observação da equipe. Só a leitura do caixa devolve isto; a do cliente nunca.
+  const [mark, setMark] = useState<SessionMark | null>(null);
   const [loading, setLoading] = useState(true);
   // Só vira true quando o PRIMEIRO carregamento falha (ainda não há dado nenhum pra mostrar).
   // Falha em refresh posterior mantém a tela como está e não liga isso.
@@ -39,6 +42,7 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
       setPayments("payments" in result ? (result.payments as SessionPayment[]) : []);
       setCredits("credits" in result ? (result.credits as SessionCredit[]) : []);
       setBillRequest("billRequest" in result ? (result.billRequest as BillRequestState | null) : null);
+      setMark("mark" in result ? ((result.mark as SessionMark | null) ?? null) : null);
       hasLoaded.current = true;
       loggedFailure.current = false;
       setLoadFailed(false);
@@ -76,6 +80,7 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
     setPayments([]);
     setCredits([]);
     setBillRequest(null);
+    setMark(null);
     setLoading(true);
     setLoadFailed(false);
     setLoadError(null);
@@ -88,5 +93,5 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
     };
   }, [reload, sessionId]);
 
-  return { session, items, payments, credits, billRequest, loading, loadFailed, loadError, now, reload };
+  return { session, items, payments, credits, billRequest, mark, setMark, loading, loadFailed, loadError, now, reload };
 }
