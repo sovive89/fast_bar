@@ -646,6 +646,50 @@ export type Database = {
           },
         ]
       }
+      fastbar_bill_requests: {
+        Row: {
+          attended_at: string | null
+          attended_by: string | null
+          completed_at: string | null
+          completed_by: string | null
+          created_at: string
+          id: string
+          session_id: string
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          attended_at?: string | null
+          attended_by?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id?: string
+          session_id: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Update: {
+          attended_at?: string | null
+          attended_by?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          created_at?: string
+          id?: string
+          session_id?: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_bill_requests_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fastbar_produced_items: {
         Row: {
           active: boolean

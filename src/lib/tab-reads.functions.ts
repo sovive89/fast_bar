@@ -25,7 +25,15 @@ export const getCustomerTab = createServerFn({ method: "POST" })
         .eq("session_id", data.sessionId)
         .order("added_at"),
     ]);
-    return { session: session ?? null, items: items ?? [] };
+    // Pedido de conta ainda ativo (para o botão do cliente mostrar "a equipe foi avisada"). Só o
+    // estado, nunca dados internos.
+    const { getActiveBillRequest } = await import("./bill-requests.server");
+    const billRequest = await getActiveBillRequest(data.sessionId);
+    return {
+      session: session ?? null,
+      items: items ?? [],
+      billRequest: billRequest ? { status: billRequest.status } : null,
+    };
   });
 
 /** Register view: same payload, but only after the caixa password gate. */

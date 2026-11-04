@@ -64,6 +64,9 @@ export type SessionCredit = {
   created_at: string;
 };
 
+/** Pedido de conta ativo da comanda, como o cliente enxerga: só o estado. */
+export type BillRequestState = { status: "pedida" | "em_atendimento" };
+
 export type BarProduct = {
   id: string;
   name: string;

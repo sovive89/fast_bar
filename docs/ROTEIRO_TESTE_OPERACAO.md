@@ -21,6 +21,7 @@ exato ou print) e o horário.
    - `20261104140000_pos_credit_charge.sql`
    - `20261104150000_producao_fichas_ordens.sql`
    - `20261104160000_stock_count_produced_items.sql`
+   - `20261104170000_bill_requests.sql`
 2. O último deploy do `master` terminou no Amplify.
 3. Não há operação aberta. Se houver, ela foi aberta antes da mudança: encerre-a pelo fluxo novo
    (passo 5) antes de começar.
@@ -149,7 +150,28 @@ Antes, anote o saldo de dois ingredientes ativos que tenham lote com preço (ex.
 | Tente salvar ficha sem ingrediente, com rendimento 0 ou perda 100 | Mensagem dizendo o que falta |
 | Com o xarope produzido (saldo > 0), abra uma nova operação (passo 2) | A conferência mostra o grupo "Itens produzidos" com o xarope e o saldo teórico; contar menos exige motivo e **não** muda o saldo |
 
-## 11. Auditoria no banco (quem tem acesso ao Supabase)
+## 11. Pedido de conta pelo celular
+
+Precisa de dois aparelhos: o celular do cliente (link da comanda) e o do caixa.
+
+| Ação | Resultado esperado |
+| --- | --- |
+| No celular do cliente, abra a comanda aberta | Aparece o botão grande "Pedir a conta" |
+| Toque nele | Muda para "Pronto! A equipe foi avisada"; o botão some; ainda dá para pedir mais itens |
+| No caixa, em **qualquer tela** | Aparece uma faixa amarela grande com o nome do cliente e "Pediu a conta" (até 5 segundos); se já tocou na tela uma vez, toca um som e, no Android, vibra |
+| A aba do navegador | O título ganha o contador, ex.: "(1) Caixa" |
+| Toque no ícone do alto-falante | Silencia o som (a faixa continua); o ajuste fica salvo no aparelho |
+| Toque em "Atender" | O cartão passa a "Em atendimento"; no celular do cliente o texto vira "A equipe já está vindo" |
+| Peça a conta de novo pelo cliente (toque duplo/recarregar) | Não cria outro alerta |
+| Com 4 ou 5 pedidos ao mesmo tempo | A faixa não cobre a tela toda: a lista rola por dentro |
+| **Fechar a comanda** no caixa | O alerta dessa comanda some sozinho |
+| "Concluir" num pedido | O alerta some |
+| Comanda já fechada, paga ou cancelada | O cliente não consegue pedir a conta |
+
+**Limites desta entrega:** o aviso só chega com o caixa **aberto no navegador**. Com o app fechado ou
+o celular bloqueado ainda não há notificação (é o próximo PR, push). No iPhone a vibração não existe.
+
+## 12. Auditoria no banco (quem tem acesso ao Supabase)
 
 Confirme que ficou gravado:
 
@@ -162,6 +184,11 @@ order by c.created_at desc limit 5;
 -- Itens da conferência do passo 2: diferença -2, motivo perda_quebra, com o tipo do item
 select item_kind, product_name, quantidade_esperada, quantidade_contada, divergencia, motivo, observacao
 from fastbar_stock_count_items order by created_at desc limit 10;
+
+-- Pedidos de conta do passo 11 (quanto a equipe demorou para atender e concluir)
+select s.customer_name, b.status, b.created_at, b.attended_at, b.completed_at
+from fastbar_bill_requests b join fastbar_sessions s on s.id = b.session_id
+order by b.created_at desc limit 10;
 
 -- Produção do passo 10: ordens e a baixa de cada ingrediente (custo nulo = custo incompleto)
 select o.produced_item_name, o.batches, o.quantity_produced, o.cost_total, o.cost_complete,

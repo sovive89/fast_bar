@@ -1,11 +1,12 @@
 import { Link } from "@tanstack/react-router";
+import { useState } from "react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TabItemList } from "@/components/shared/TabItemList";
 import { MenuList } from "@/features/client/components/MenuList";
 import { brl, elapsed, formatPhone, hhmm } from "@/lib/format";
 import { tabTotal, tabTotalWithDiscount } from "@/services/supabase/tabItems";
 import { BrandingProvider, useBranding, type TenantBranding } from "@/lib/branding";
-import type { BarSession, BarTabItem } from "@/types/fastbar";
+import type { BarSession, BarTabItem, BillRequestState } from "@/types/fastbar";
 
 export interface CustomerTabViewProps {
   loading: boolean;
@@ -14,6 +15,10 @@ export interface CustomerTabViewProps {
   session: BarSession | null;
   items: BarTabItem[];
   now: string | number | Date;
+  /** Pedido de conta ativo desta comanda (só o estado), se houver. */
+  billRequest?: BillRequestState | null;
+  /** Pede a conta. Só avisa a equipe — não fecha a comanda. Ausente = sem o botão. */
+  onRequestBill?: () => Promise<{ ok: boolean; message?: string }>;
 }
 
 /** Cabeçalho de marca das telas do cliente — mostra a identidade do estabelecimento (logo/nome
@@ -54,8 +59,21 @@ function CustomerTabViewContent({
   session,
   items,
   now,
+  billRequest,
+  onRequestBill,
 }: CustomerTabViewProps) {
   const { branding, style } = useBranding();
+  const [requesting, setRequesting] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
+
+  async function askForBill() {
+    if (!onRequestBill || requesting) return;
+    setRequesting(true);
+    setRequestError(null);
+    const result = await onRequestBill();
+    if (!result.ok) setRequestError(result.message ?? "Não foi possível avisar a equipe.");
+    setRequesting(false);
+  }
 
   if (loadFailed && !session) {
     return (
@@ -162,6 +180,38 @@ function CustomerTabViewContent({
           </div>
         </div>
       </div>
+
+      {session.status === "open" && onRequestBill && (
+        <div className="mt-4 rounded-2xl border border-border bg-card p-4">
+          {billRequest ? (
+            <div role="status">
+              <p className="text-sm font-semibold">
+                {billRequest.status === "em_atendimento"
+                  ? "A equipe já está vindo com a sua conta"
+                  : "Pronto! A equipe foi avisada"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                Você ainda pode pedir mais alguma coisa até a conta ser fechada.
+              </p>
+            </div>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => void askForBill()}
+                disabled={requesting}
+                className="h-12 w-full rounded-xl border border-primary text-base font-semibold text-primary disabled:opacity-60"
+              >
+                {requesting ? "Avisando a equipe..." : "Pedir a conta"}
+              </button>
+              <p className="mt-2 text-xs text-muted-foreground">
+                Só avisa a equipe, que traz a conta até você. Dá pra continuar pedindo.
+              </p>
+              {requestError && <p className="mt-2 text-xs text-destructive">{requestError}</p>}
+            </>
+          )}
+        </div>
+      )}
 
       <h2 className="mt-8 text-lg font-semibold">Consumo</h2>
       <div className="mt-3">
