@@ -8,6 +8,7 @@ import {
   getProductionOverview,
   runProductionOrder,
 } from "@/lib/production.functions";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/producao")({
   head: () => ({
@@ -130,7 +131,7 @@ function Producao() {
       </main>
     );
   }
-  if (!data) return <p className="p-6 text-sm text-muted-foreground">Carregando produção...</p>;
+  if (!data) return <Loading className="p-6" label="Carregando produção..." />;
 
   const yieldPreview = parseNumber(yieldText) * (1 - parseNumber(lossText || "0") / 100);
 

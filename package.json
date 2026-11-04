@@ -57,6 +57,7 @@
     "input-otp": "^1.4.2",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.575.0",
+    "motion": "12.23.12",
     "node-html-parser": "^9.0.2",
     "qrcode": "^1.5.4",
     "react": "^19.2.0",

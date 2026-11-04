@@ -12,6 +12,7 @@ import {
 import { updateIntegration, type IntegrationRow } from "@/lib/integrations.functions";
 import { BrandingModule } from "@/components/settings/BrandingModule";
 import { applyTheme, readStoredTheme, storeTheme, type Theme } from "@/lib/theme";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/configuracoes")({
   head: () => ({ meta: [{ title: "Configurações | FastBar" }] }),
@@ -161,9 +162,7 @@ function SettingsPage() {
       </div>
 
       {!settings ? (
-        <p className="mt-6 rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-          Carregando...
-        </p>
+        <Loading className="mt-6 rounded-xl border border-dashed border-border p-6" />
       ) : (
         <div className="mt-6 space-y-4">
           {tab === "perfil" && <ProfileTab settings={settings} />}

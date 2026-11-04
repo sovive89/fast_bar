@@ -9,6 +9,7 @@ import {
   getClosureCandidates,
   resolveClosure,
 } from "@/lib/operation-closure.functions";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/fechamento")({
   head: () => ({
@@ -86,7 +87,9 @@ function FechamentoOperacao() {
 
   if (!data) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-8 text-sm text-muted-foreground">Carregando…</main>
+      <main className="mx-auto max-w-lg px-4 py-8">
+        <Loading label="Carregando…" />
+      </main>
     );
   }
 

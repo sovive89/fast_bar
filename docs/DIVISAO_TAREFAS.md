@@ -84,6 +84,14 @@ Lovable).
      (a janela e a animação, "tipo Motion/React", ainda a esclarecer). Reaproveita `notifyStaff`
      com `kind: "apoio"` (vibração própria já pronta no service worker). Antes de ligar: perfis de
      acesso (hoje a senha é uma só para toda a equipe), retenção e protocolo operacional.
+   - ~~Animações leves (biblioteca Motion)~~ (feito): indicador de "carregando" em todas as telas e
+     entrada/saída do cartão do pedido de conta. Base em `src/components/motion/`. **Lottie** (animações
+     prontas do acervo LottieFiles, estilo Flash) entra só quando o dono escolher uma animação e onde usar,
+     carregado só naquela tela.
+   - Próximo depois do alerta de apoio: **promoção relâmpago** (pedido do dono): happy hour, brinde ou
+     rodada grátis, com regras próprias (horário, itens, desconto ou item grátis), acionada por um botão
+     da equipe na hora, com **aviso no celular dos clientes**. Push para cliente exige **consentimento**
+     do cliente (LGPD), separado da inscrição da equipe; reaproveita a base de push.
 6. Item 5 do roadmap (Produção), em PRs separados:
    - ~~Itens produzidos + fichas de produção + ordens de produção~~ (feito; tela `/caixa/producao`).
    - ~~Item produzido na conferência de estoque (`listCountableItems`)~~ (feito; migration `20261104160000_stock_count_produced_items.sql`).

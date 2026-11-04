@@ -7,6 +7,7 @@ import { brl, elapsed, formatPhone, hhmm } from "@/lib/format";
 import { tabTotal, tabTotalWithDiscount } from "@/services/supabase/tabItems";
 import { BrandingProvider, useBranding, type TenantBranding } from "@/lib/branding";
 import type { BarSession, BarTabItem, BillRequestState } from "@/types/fastbar";
+import { Loading } from "@/components/motion/Loading";
 
 export interface CustomerTabViewProps {
   loading: boolean;
@@ -84,7 +85,7 @@ function CustomerTabViewContent({
   }
 
   if (loading) {
-    return <p className="p-6 text-sm text-muted-foreground">Carregando comanda...</p>;
+    return <Loading className="p-6" label="Carregando comanda..." />;
   }
 
   if (!session) {

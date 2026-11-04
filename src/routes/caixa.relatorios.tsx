@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { brl, dateTime } from "@/lib/format";
 import { getReportsOverview } from "@/lib/reports.functions";
+import { Loading } from "@/components/motion/Loading";
 
 // Ver o comentário em caixa.crm.clientes.tsx: import estático desse componente nas duas rotas
 // gerava chunks circulares no servidor e derrubava a produção inteira.
@@ -185,7 +186,7 @@ function Reports() {
       </div>
 
       {loading || !overview ? (
-        <p className="mt-6 text-sm text-muted-foreground">Carregando relatório...</p>
+        <Loading className="mt-6" label="Carregando relatório..." />
       ) : (
         <div className="mt-6 space-y-6">
           <div className="grid grid-cols-3 gap-3">
