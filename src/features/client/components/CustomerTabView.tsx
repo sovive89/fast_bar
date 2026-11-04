@@ -77,9 +77,14 @@ function CustomerTabViewContent({
     if (!onRequestBill || requesting) return;
     setRequesting(true);
     setRequestError(null);
-    const result = await onRequestBill();
-    if (!result.ok) setRequestError(result.message ?? "Não foi possível avisar a equipe.");
-    setRequesting(false);
+    try {
+      const result = await onRequestBill();
+      if (!result.ok) setRequestError(result.message ?? "Não foi possível avisar a equipe.");
+    } catch {
+      setRequestError("Falha de conexão. Verifique a conexão e tente novamente.");
+    } finally {
+      setRequesting(false);
+    }
   }
 
   if (loadFailed && !session) {
@@ -215,7 +220,11 @@ function CustomerTabViewContent({
               <p className="mt-2 text-xs text-muted-foreground">
                 Só avisa a equipe, que traz a conta até você. Dá pra continuar pedindo.
               </p>
-              {requestError && <p className="mt-2 text-xs text-destructive">{requestError}</p>}
+              {requestError && (
+                <p role="alert" className="mt-2 text-xs text-destructive">
+                  {requestError}
+                </p>
+              )}
             </>
           )}
         </div>

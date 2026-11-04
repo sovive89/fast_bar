@@ -39,7 +39,7 @@ export function SupportWidget({
   activeSession?: boolean;
   portalTarget?: HTMLElement | null;
 }) {
-  const { branding, style, isLoading } = useBranding();
+  const { branding, style } = useBranding();
   const key = `fastbar:apoio:v1:${sessionId}`;
   const [choice, setChoice] = useState<Choice | null>(null);
   const [ready, setReady] = useState(false);
@@ -224,7 +224,7 @@ export function SupportWidget({
     }
   }
 
-  if (!ready || isLoading || (!activeSession && !request)) return null;
+  if (!ready || (!activeSession && !request)) return null;
   const active = request && request.status !== "completed";
   const statusText =
     request?.status === "attending"
