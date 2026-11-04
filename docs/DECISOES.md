@@ -137,3 +137,28 @@ o NØUS Motion é exatamente; esta é a leitura proposta, **não implementada**:
   confirmação real do envio e integração do template. A infraestrutura de push existente não
   significa que esse fluxo já esteja implementado. Não mostrar confirmação de apoio enviado
   sem registro real. Não expor preferências nem ocorrências no CRM público.
+
+## 04/11/2026 — apoio voluntário, conversa e Segurança
+
+- O dono confirmou botão de apoio **sobreposto, translúcido e com respiro**, usando NØUS Motion,
+  exclusivo de quem ativar voluntariamente após ler a política do bar; sem pergunta de gênero.
+- Cliente e equipe trocam mensagens com opções prontas e envio explícito. **Sem gravação de áudio.**
+- Apoio e pedido de conta são alertas diferentes. Apoio fica acima, com visual/som próprios,
+  prioridade progressiva enquanto ninguém assume e novo acionamento destacado para a gestão.
+- Segurança reúne o registro privado de atendimento e prepara abas de Ocorrências e Câmeras.
+  O dono esclareceu que **ocorrência formal é posterior e só se necessária**: equipe redige,
+  encaminha ao cliente e ele confirma ou pede correção. Não gerar documento automaticamente.
+- **Estado nesta branch:** implementação de apoio/chat, fila da equipe e histórico. Ocorrência
+  formal, assinatura, confirmação de relato e câmeras continuam não implementadas.
+- **Substitui a pendência de integração específica:** NØUS Motion instalado para o botão de apoio,
+  sem substituir a camada de animação do restante do app. Detalhes, permissões, retenção,
+  migration e roteiro: `docs/APOIO_E_SEGURANCA.md`.
+
+### Ajuste do dono — barra inferior e transparência no cardápio
+
+- **Substitui o endereço separado em Marca e os atalhos no cabeçalho do PR#71:** endereço, telefone
+  e CNPJ públicos vêm dos dados do estabelecimento; a barra inferior reúne contato, redes sociais,
+  Maps e compartilhamento da localização com aplicativos. Os campos continuam editáveis no painel.
+- O botão de apoio ativado fica na barra inferior da comanda. A logo pequena e as categorias
+  permanecem na barra superior. Cards têm transparência ajustável para mostrar o fundo da marca,
+  cuja imagem também pode ser configurada em Marca. Essa aparência se aplica à PWA do cliente.

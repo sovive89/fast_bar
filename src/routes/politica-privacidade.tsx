@@ -39,8 +39,8 @@ function PrivacyPolicyContent() {
         <div>
           <p className="font-semibold text-foreground">Quais dados coletamos</p>
           <p className="mt-1">
-            Nome, celular, e, caso você preencha o cadastro complementar, data de nascimento (dia
-            e mês), bairro/região administrativa e como você conheceu o estabelecimento.
+            Nome, celular, e, caso você preencha o cadastro complementar, data de nascimento (dia e
+            mês), bairro/região administrativa e como você conheceu o estabelecimento.
           </p>
         </div>
 
@@ -59,6 +59,24 @@ function PrivacyPolicyContent() {
             respeitando os princípios de finalidade, necessidade, segurança e transparência. O
             consentimento para comunicações promocionais é opcional, pode ser revogado a qualquer
             momento, e nunca condiciona a abertura ou o uso da comanda.
+          </p>
+        </div>
+
+        <div>
+          <p className="font-semibold text-foreground">Recurso voluntário de apoio</p>
+          <p className="mt-1">
+            A ativação do botão de apoio é opcional, não pergunta gênero e fica salva apenas neste
+            navegador. Ao pedir ajuda, são registrados o pedido, os horários, as mensagens e as
+            ações da equipe para prestar e acompanhar o atendimento. Esses registros ficam separados
+            do CRM e acessíveis somente à equipe autorizada. Não há gravação de áudio nem acesso a
+            câmeras neste recurso.
+          </p>
+          <p className="mt-1">
+            Registros de atendimento encerrados entram em limpeza após 90 dias. Para solicitar
+            acesso, correção ou exclusão, fale com o estabelecimento. Desativar o botão não apaga
+            pedidos já enviados. Não compartilhe o link da comanda, que também permite acessar a
+            conversa. Uma ocorrência formal, se necessária, é uma etapa separada e não é criada
+            automaticamente pelo pedido de apoio.
           </p>
         </div>
 
