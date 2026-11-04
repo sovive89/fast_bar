@@ -40,6 +40,23 @@ const concurrent = (sql) =>
 const assert = (condition, message) => {
   if (!condition) throw new Error(message);
 };
+const expectSqlState = (sql, sqlstate, message) => {
+  const escapedMessage = message.replace(/'/g, "''");
+  query(`do $support_test$
+    declare
+      rejected boolean := false;
+    begin
+      begin
+        ${sql};
+      exception when sqlstate '${sqlstate}' then
+        rejected := true;
+      end;
+      if not rejected then
+        raise exception '${escapedMessage}';
+      end if;
+    end;
+  $support_test$;`);
+};
 try {
   exec([
     "run",
@@ -95,6 +112,13 @@ try {
         `${role} table grant leaked`,
       );
     }
+  for (const table of ["fastbar_support_requests", "fastbar_support_messages"])
+    assert(
+      query(
+        `select has_table_privilege('service_role','public.${table}','SELECT,INSERT,UPDATE,DELETE');`,
+      ) === "t",
+      `service_role grants missing for ${table}`,
+    );
   for (const role of ["anon", "authenticated"]) {
     assert(
       query(
@@ -118,6 +142,30 @@ try {
   );
   const first = JSON.parse(query(roleSql + request()));
   assert(first.ok === true && !first.escalated, "first request failed");
+  assert(
+    query("select to_regclass('public.fastbar_support_one_active') is not null;") === "t",
+    "active-request unique index missing",
+  );
+  expectSqlState(
+    `insert into public.fastbar_support_requests(tenant_id,session_id,status) values('${TENANT}','${SESSION}','requested')`,
+    "23505",
+    "partial unique index accepted a second active request",
+  );
+  expectSqlState(
+    `insert into public.fastbar_support_requests(tenant_id,session_id,status) values('${TENANT}','${PENDING}','attending')`,
+    "23514",
+    "attending request accepted without staff metadata",
+  );
+  expectSqlState(
+    `insert into public.fastbar_support_requests(tenant_id,session_id,status,attended_at,attended_by,completed_at,completed_by) values('${TENANT}','${PENDING}','completed',now(),'Atendente teste',now(),'Atendente teste')`,
+    "23514",
+    "completed request accepted without completion note",
+  );
+  expectSqlState(
+    `insert into public.fastbar_support_messages(tenant_id,request_id,sender,body,staff_name) values('${TENANT}','${first.id}','customer','oi','Atendente teste')`,
+    "23514",
+    "customer message accepted staff identity",
+  );
   const repeated = JSON.parse(query(roleSql + request()));
   assert(repeated.id === first.id && repeated.alreadyRequested, "duplicate generated");
   const race = await Promise.all(

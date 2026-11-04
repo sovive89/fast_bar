@@ -17,7 +17,11 @@ let _defaultTenantId: string | undefined;
 export async function getDefaultTenantId(): Promise<string> {
   if (_defaultTenantId) return _defaultTenantId;
   const slug = process.env["FASTBAR_TENANT_SLUG"] || "golpebaixo";
-  const { data, error } = await supabaseAdmin.from("fastbar_tenants").select("id").eq("slug", slug).single();
+  const { data, error } = await supabaseAdmin
+    .from("fastbar_tenants")
+    .select("id")
+    .eq("slug", slug)
+    .single();
   if (error || !data) throw new Error(`Tenant "${slug}" não encontrado (fastbar_tenants).`);
   _defaultTenantId = data.id;
   return _defaultTenantId;
@@ -76,7 +80,6 @@ export function sanitizeDocument(type: unknown, value: unknown): string | null {
 // transação única. As versões que existiam aqui perdiam atualizações concorrentes e podiam parar
 // no meio deixando o estoque incoerente.
 
-
 export type CustomerIdentifier =
   | { phone: string; document?: undefined; documentType?: undefined }
   | { phone?: undefined; document: string; documentType: "cpf" | "rg" };
@@ -85,7 +88,10 @@ export type CustomerIdentifier =
  * Cria o cliente na primeira visita, ou atualiza nome/última visita/contagem numa nova visita.
  * Aceita celular OU documento (CPF/RG) como identificador — o que faltar fica null, nunca "".
  */
-export async function upsertCustomer(name: string, identifier: CustomerIdentifier): Promise<string> {
+export async function upsertCustomer(
+  name: string,
+  identifier: CustomerIdentifier,
+): Promise<string> {
   const nowIso = new Date().toISOString();
   const base = supabaseAdmin.from("fastbar_customers").select("id, total_visits");
   const { data: existing } =
@@ -131,6 +137,25 @@ export async function findCustomerNameByDocument(document: string): Promise<stri
     .eq("document", document)
     .maybeSingle();
   return data?.name ?? null;
+}
+
+/** Busca somente o nome por celular, no tenant atual e após validar o gate do caixa. */
+export async function lookupCustomerNameByPhone(value: unknown): Promise<{ name: string | null }> {
+  await assertRegisterAccess();
+  const phone = sanitizePhone(value);
+  if (!phone) return { name: null };
+
+  const tenantId = await getDefaultTenantId();
+  const { data, error } = await admin()
+    .from("fastbar_customers")
+    .select("name")
+    .eq("tenant_id", tenantId)
+    .eq("phone", phone)
+    .maybeSingle();
+  if (error) throw new Error("Não foi possível consultar o cadastro do cliente.");
+
+  const name = typeof data?.name === "string" ? data.name.trim() : "";
+  return { name: name || null };
 }
 
 /** Soma o consumo da comanda paga no total histórico do cliente. */

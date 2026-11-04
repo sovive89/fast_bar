@@ -1,5 +1,5 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TabItemList } from "@/components/shared/TabItemList";
@@ -11,6 +11,7 @@ import {
   cancelSession,
   clearTabItems,
   lookupCustomerByDocument,
+  lookupCustomerByPhone,
   openSessionByTeam,
   openWalkInSession,
   removeTabItems,
@@ -19,6 +20,15 @@ import {
 } from "@/lib/register.functions";
 import type { BarSession } from "@/types/fastbar";
 import { VIEW_TABS, bucketOf, type ListView } from "@/lib/comanda-views";
+import {
+  applyCustomerDocumentLookup,
+  applyCustomerPhoneLookup,
+  clearCustomerPhoneAutofill,
+  createEmptyCustomerNameDraft,
+  editCustomerName,
+  isCurrentPhoneLookupRequest,
+  isPhoneLookupReady,
+} from "@/lib/customer-name-draft";
 
 type OverviewItem = {
   id: string;
@@ -79,13 +89,20 @@ function RegisterList() {
   // Abertura pela equipe (sem QR) e comanda de balcão. Campos próprios, fora do `confirming`
   // genérico, porque aqui não é confirmar uma ação numa comanda que já existe — é criar uma.
   const [opening, setOpening] = useState<null | "manual" | "walkin">(null);
-  const [newName, setNewName] = useState("");
+  const [nameDraft, setNameDraft] = useState(createEmptyCustomerNameDraft);
+  const newName = nameDraft.value;
   const [newPhone, setNewPhone] = useState("");
+  const phoneLookupSequenceRef = useRef(0);
+  const updatePhoneDraft = (value: string) => {
+    phoneLookupSequenceRef.current += 1;
+    setNewPhone(value);
+  };
   // Sem celular: identifica pelo documento em vez de trocar de tela — mesma abertura, outro campo.
   const [useDocument, setUseDocument] = useState(false);
   const [newDocumentType, setNewDocumentType] = useState<"cpf" | "rg">("cpf");
   const [newDocument, setNewDocument] = useState("");
   const [documentMatch, setDocumentMatch] = useState<string | null>(null);
+  const [phoneLookupStatus, setPhoneLookupStatus] = useState<"idle" | "loading" | "found">("idle");
 
   const navigate = useNavigate();
   const loadOverview = useServerFn(getRegisterOverview);
@@ -98,6 +115,7 @@ function RegisterList() {
   const openManual = useServerFn(openSessionByTeam);
   const openWalkIn = useServerFn(openWalkInSession);
   const lookupDocument = useServerFn(lookupCustomerByDocument);
+  const lookupPhone = useServerFn(lookupCustomerByPhone);
 
   async function load() {
     const result = await loadOverview();
@@ -167,8 +185,7 @@ function RegisterList() {
       return;
     }
     const digitsOnly = digits(newDocument);
-    const complete =
-      newDocumentType === "cpf" ? digitsOnly.length === 11 : digitsOnly.length >= 5;
+    const complete = newDocumentType === "cpf" ? digitsOnly.length === 11 : digitsOnly.length >= 5;
     if (!complete) {
       setDocumentMatch(null);
       return;
@@ -178,7 +195,10 @@ function RegisterList() {
       (result) => {
         if (cancelled) return;
         setDocumentMatch(result.name);
-        if (result.name && !newName.trim()) setNewName(result.name);
+        if (result.name) {
+          const matchedName = result.name;
+          setNameDraft((current) => applyCustomerDocumentLookup(current, matchedName));
+        }
       },
     );
     return () => {
@@ -186,6 +206,40 @@ function RegisterList() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [useDocument, newDocumentType, newDocument]);
+
+  // O telefone só consulta quando está completo. A guarda `active` descarta resultados atrasados
+  // de números anteriores; a abertura continua disponível se a consulta falhar.
+  useEffect(() => {
+    setPhoneLookupStatus("idle");
+    if (opening !== "manual") return;
+
+    setNameDraft((current) => clearCustomerPhoneAutofill(current));
+    if (!isPhoneLookupReady(newPhone)) return;
+
+    const requestSequence = ++phoneLookupSequenceRef.current;
+    let active = true;
+    const timer = window.setTimeout(async () => {
+      if (!active) return;
+      setPhoneLookupStatus("loading");
+      try {
+        const result = await lookupPhone({ data: { phone: newPhone } });
+        if (
+          !active ||
+          !isCurrentPhoneLookupRequest(phoneLookupSequenceRef.current, requestSequence)
+        )
+          return;
+        setNameDraft((current) => applyCustomerPhoneLookup(current, result.name));
+        setPhoneLookupStatus(result.name ? "found" : "idle");
+      } catch {
+        if (active) setPhoneLookupStatus("idle");
+      }
+    }, 350);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [opening, newPhone, lookupPhone]);
 
   /** Abre e já leva pra comanda: quem abre quer lançar em seguida, não voltar pra lista. */
   async function confirmOpenManual(password: string) {
@@ -200,11 +254,12 @@ function RegisterList() {
     });
     if (result.ok) {
       setOpening(null);
-      setNewName("");
-      setNewPhone("");
+      setNameDraft(createEmptyCustomerNameDraft());
+      updatePhoneDraft("");
       setUseDocument(false);
       setNewDocument("");
       setDocumentMatch(null);
+      setPhoneLookupStatus("idle");
       await navigate({ to: "/caixa/$sessionId", params: { sessionId: result.sessionId } });
     }
     return result;
@@ -251,11 +306,12 @@ function RegisterList() {
         <button
           onClick={() => {
             setOpening(opening === "manual" ? null : "manual");
-            setNewName("");
-            setNewPhone("");
+            setNameDraft(createEmptyCustomerNameDraft());
+            updatePhoneDraft("");
             setUseDocument(false);
             setNewDocument("");
             setDocumentMatch(null);
+            setPhoneLookupStatus("idle");
             setError(null);
           }}
           className="h-11 flex-1 rounded-xl bg-primary text-sm font-semibold text-primary-foreground shadow-soft"
@@ -282,7 +338,9 @@ function RegisterList() {
           </p>
           <input
             value={newName}
-            onChange={(event) => setNewName(event.target.value)}
+            onChange={(event) =>
+              setNameDraft((current) => editCustomerName(current, event.target.value))
+            }
             placeholder="Nome completo"
             autoFocus
             maxLength={80}
@@ -292,11 +350,18 @@ function RegisterList() {
               Quem não tem celular deixa esse campo em branco e usa só o documento abaixo. */}
           <input
             value={newPhone}
-            onChange={(event) => setNewPhone(formatPhone(event.target.value))}
+            onChange={(event) => updatePhoneDraft(formatPhone(event.target.value))}
             placeholder="(11) 91234-5678"
             inputMode="tel"
             className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
           />
+          {phoneLookupStatus !== "idle" && (
+            <p role="status" aria-live="polite" className="text-xs text-muted-foreground">
+              {phoneLookupStatus === "loading"
+                ? "Consultando cadastro do cliente…"
+                : "Cliente encontrado no cadastro."}
+            </p>
+          )}
           {!useDocument ? (
             <button
               type="button"
@@ -451,7 +516,11 @@ function RegisterList() {
                             )}
                           </p>
                           <p className="text-xs text-muted-foreground">
-                            {formatIdentifier(session.phone, session.document, session.document_type)}
+                            {formatIdentifier(
+                              session.phone,
+                              session.document,
+                              session.document_type,
+                            )}
                             {session.started_at ? ` · abertura ${hhmm(session.started_at)}` : ""} ·{" "}
                             {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
                           </p>
@@ -565,29 +634,32 @@ function RegisterList() {
                         </div>
                       )}
 
-                      {confirming?.kind === "cancelSession" && confirming.sessionId === session.id && (
-                        <div className="mt-4">
-                          <PasswordConfirm
-                            message={
-                              cancelStalled
-                                ? "Esta comanda foi cancelada, mas sobraram lançamentos sem voltar ao estoque. Confirme com a senha da equipe para terminar de devolver."
-                                : "Cancelar esta comanda inteira? O estoque lançado volta e ela não entra no faturamento. Confirme com a senha da equipe."
-                            }
-                            confirmLabel={cancelStalled ? "Concluir cancelamento" : "Cancelar comanda"}
-                            onCancel={() => setConfirming(null)}
-                            onConfirm={async (password) => {
-                              const result = await cancelOne({
-                                data: { sessionId: session.id, password },
-                              });
-                              if (result.ok) {
-                                setConfirming(null);
-                                await load();
+                      {confirming?.kind === "cancelSession" &&
+                        confirming.sessionId === session.id && (
+                          <div className="mt-4">
+                            <PasswordConfirm
+                              message={
+                                cancelStalled
+                                  ? "Esta comanda foi cancelada, mas sobraram lançamentos sem voltar ao estoque. Confirme com a senha da equipe para terminar de devolver."
+                                  : "Cancelar esta comanda inteira? O estoque lançado volta e ela não entra no faturamento. Confirme com a senha da equipe."
                               }
-                              return result;
-                            }}
-                          />
-                        </div>
-                      )}
+                              confirmLabel={
+                                cancelStalled ? "Concluir cancelamento" : "Cancelar comanda"
+                              }
+                              onCancel={() => setConfirming(null)}
+                              onConfirm={async (password) => {
+                                const result = await cancelOne({
+                                  data: { sessionId: session.id, password },
+                                });
+                                if (result.ok) {
+                                  setConfirming(null);
+                                  await load();
+                                }
+                                return result;
+                              }}
+                            />
+                          </div>
+                        )}
 
                       {confirming?.kind === "undoLast" && confirming.sessionId === session.id && (
                         <div className="mt-4">
@@ -631,7 +703,9 @@ function RegisterList() {
                                 Desfazer último
                               </button>
                               <button
-                                onClick={() => setConfirming({ kind: "clear", sessionId: session.id })}
+                                onClick={() =>
+                                  setConfirming({ kind: "clear", sessionId: session.id })
+                                }
                                 className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-destructive"
                               >
                                 Zerar
@@ -650,7 +724,9 @@ function RegisterList() {
                           )}
                           {isArchived && (
                             <button
-                              onClick={() => run(() => unarchiveOne({ data: { sessionId: session.id } }))}
+                              onClick={() =>
+                                run(() => unarchiveOne({ data: { sessionId: session.id } }))
+                              }
                               disabled={busy}
                               className="rounded-full border border-border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
                             >

@@ -11,7 +11,9 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "ai:demo": "tsx index.ts",
-    "test": "vitest run",
+    "test": "pnpm test:vitest && pnpm test:node",
+    "test:vitest": "vitest run",
+    "test:node": "pnpm test:ocr-model && pnpm test:stock-photo",
     "test:support-sql": "node tests/run-support-sql.mjs",
     "test:stock-photo": "node tests/run-stock-photo.mjs",
     "test:ocr-model": "node tests/run-ocr-model.mjs"

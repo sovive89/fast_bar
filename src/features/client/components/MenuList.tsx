@@ -3,6 +3,7 @@ import { getCardapioCliente } from "@/lib/menu-cliente.functions";
 import { useBranding } from "@/lib/branding";
 import { CompanyFooter } from "./CompanyFooter";
 import { brl } from "@/lib/format";
+import { loadWithFallback } from "@/lib/async-result";
 import type { ItemCardapioCliente } from "@/lib/menu-cliente.functions";
 
 const POLL_MS = 15000;
@@ -13,32 +14,47 @@ export function MenuList({
   const { branding } = useBranding();
   const menuId = useId();
   const [products, setProducts] = useState<ItemCardapioCliente[]>([]);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    let inFlight = false;
+
     async function load() {
-      // Disponibilidade vem calculada do servidor (ver menu-cliente.functions): produto com ficha
-      // técnica não tem saldo próprio, então decidir "esgotado" aqui pelo estoque do produto
-      // marcava todo drink como esgotado. O saldo em si não trafega até o aparelho do cliente.
-      let result;
+      if (inFlight) return;
+      inFlight = true;
+
       try {
-        result = await getCardapioCliente();
-      } catch {
-        return;
-      }
-      if (!cancelled) {
-        setProducts(result.itens);
-        setLoading(false);
+        // Disponibilidade vem calculada do servidor (ver menu-cliente.functions): produto com ficha
+        // técnica não tem saldo próprio, então decidir "esgotado" aqui pelo estoque do produto
+        // marcava todo drink como esgotado. O saldo em si não trafega até o aparelho do cliente.
+        const result = await loadWithFallback(getCardapioCliente, null);
+        if (cancelled) return;
+
+        if (result.error || !result.value) {
+          setLoadError(true);
+          return;
+        }
+
+        setProducts(result.value.itens);
+        setHasLoaded(true);
+        setLoadError(false);
+      } finally {
+        inFlight = false;
+        if (!cancelled) setLoading(false);
       }
     }
+
     void load();
     const poll = setInterval(() => void load(), POLL_MS);
     return () => {
       cancelled = true;
       clearInterval(poll);
     };
-  }, []);
+  }, [retryKey]);
 
   const grouped = useMemo(() => {
     const map = new Map<string, ItemCardapioCliente[]>();
@@ -50,7 +66,43 @@ export function MenuList({
     return Array.from(map.entries());
   }, [products]);
 
-  if (loading || grouped.length === 0) return <CompanyFooter supportSlotRef={supportSlotRef} />;
+  function retry() {
+    setLoading(true);
+    setRetryKey((current) => current + 1);
+  }
+
+  const footer = <CompanyFooter supportSlotRef={supportSlotRef} />;
+
+  if (!hasLoaded && loading) {
+    return (
+      <>
+        <p role="status" className="mt-8 text-sm text-muted-foreground">
+          Carregando cardápio…
+        </p>
+        {footer}
+      </>
+    );
+  }
+
+  if (!hasLoaded && loadError) {
+    return (
+      <>
+        <section aria-label="Cardápio" className="mt-8 space-y-3">
+          <p role="alert" className="text-sm text-destructive">
+            Não foi possível carregar o cardápio. Verifique a conexão e tente novamente.
+          </p>
+          <button
+            type="button"
+            onClick={retry}
+            className="min-h-11 rounded-lg border border-border px-4 text-sm font-medium focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
+          >
+            Tentar novamente
+          </button>
+        </section>
+        {footer}
+      </>
+    );
+  }
 
   return (
     <>
@@ -70,76 +122,115 @@ export function MenuList({
             )}
             <h2 className="min-w-0 flex-1 text-sm font-semibold">Cardápio</h2>
           </div>
-          <nav
-            aria-label="Categorias do cardápio"
-            className="flex min-w-0 gap-2 overflow-x-auto pb-2"
-          >
-            {grouped.map(([category], index) => (
-              <a
-                key={category}
-                href={`#${menuId}-categoria-${index}`}
-                className="flex min-h-11 shrink-0 items-center rounded-full border border-border px-4 text-sm font-medium hover:bg-muted"
-              >
-                {category}
-              </a>
-            ))}
-          </nav>
+          {grouped.length > 0 && (
+            <nav
+              aria-label="Categorias do cardápio"
+              className="flex min-w-0 gap-2 overflow-x-auto pb-2"
+            >
+              {grouped.map(([category], index) => (
+                <a
+                  key={category}
+                  href={`#${menuId}-categoria-${index}`}
+                  className="flex min-h-11 shrink-0 items-center rounded-full border border-border px-4 text-sm font-medium hover:bg-muted"
+                >
+                  {category}
+                </a>
+              ))}
+            </nav>
+          )}
         </div>
+
         <p className="mt-1 text-xs text-muted-foreground">
           Só consulta — o lançamento na comanda é feito pelo caixa.
         </p>
 
-        <div className="mt-4 space-y-5">
-          {grouped.map(([category, items], index) => (
-            <div
-              key={category}
-              id={`${menuId}-categoria-${index}`}
-              className="scroll-mt-[calc(env(safe-area-inset-top)+120px)]"
+        {loading && hasLoaded && (
+          <p role="status" className="mt-3 text-xs text-muted-foreground">
+            Atualizando cardápio…
+          </p>
+        )}
+        {loadError && (
+          <div
+            role="status"
+            className="mt-3 flex flex-wrap items-center gap-2 text-xs text-amber-700 dark:text-amber-400"
+          >
+            <span>
+              Não foi possível atualizar. {hasLoaded ? "Exibindo os últimos dados carregados." : ""}
+            </span>
+            <button
+              type="button"
+              onClick={retry}
+              className="min-h-11 rounded-lg px-2 font-semibold underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary"
             >
-              <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
-                {category}
-              </p>
-              <ul className="space-y-2">
-                {items.map((product) => {
-                  const soldOut = !product.disponivel;
-                  return (
-                    <li
-                      key={product.id}
-                      style={{
-                        background: `color-mix(in srgb, var(--card) ${Math.round((branding.cardOpacity ?? 0.82) * 100)}%, transparent)`,
-                      }}
-                      className={`flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 ${
-                        soldOut ? "opacity-50" : ""
-                      }`}
-                    >
-                      {product.image_url ? (
-                        <img
-                          src={product.image_url}
-                          alt={product.name}
-                          className="h-11 w-11 shrink-0 rounded-lg object-cover"
-                        />
-                      ) : (
-                        <div className="h-11 w-11 shrink-0 rounded-lg bg-muted" />
-                      )}
-                      <p className="min-w-0 flex-1 break-words text-sm font-medium">
-                        {product.name}
-                      </p>
-                      {soldOut ? (
-                        <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                          Esgotado
-                        </span>
-                      ) : (
-                        <span className="shrink-0 text-sm font-semibold">{brl(product.price)}</span>
-                      )}
-                    </li>
-                  );
-                })}
-              </ul>
+              Tentar novamente
+            </button>
+          </div>
+        )}
+
+        {grouped.length === 0 ? (
+          <p
+            role="status"
+            className="mt-4 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground"
+          >
+            Ainda não há itens disponíveis no cardápio.
+          </p>
+        ) : (
+          <>
+            <div className="mt-4 space-y-5">
+              {grouped.map(([category, items], index) => (
+                <div
+                  key={category}
+                  id={`${menuId}-categoria-${index}`}
+                  className="scroll-mt-[calc(env(safe-area-inset-top)+120px)]"
+                >
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-[0.15em] text-muted-foreground">
+                    {category}
+                  </p>
+                  <ul className="space-y-2">
+                    {items.map((product) => {
+                      const soldOut = !product.disponivel;
+                      return (
+                        <li
+                          key={product.id}
+                          style={{
+                            background: `color-mix(in srgb, var(--card) ${Math.round((branding.cardOpacity ?? 0.82) * 100)}%, transparent)`,
+                          }}
+                          className={`flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 ${
+                            soldOut ? "opacity-50" : ""
+                          }`}
+                        >
+                          {product.image_url ? (
+                            <img
+                              src={product.image_url}
+                              alt={product.name}
+                              className="h-11 w-11 shrink-0 rounded-lg object-cover"
+                            />
+                          ) : (
+                            <div className="h-11 w-11 shrink-0 rounded-lg bg-muted" />
+                          )}
+                          <p className="min-w-0 flex-1 break-words text-sm font-medium">
+                            {product.name}
+                          </p>
+                          {soldOut ? (
+                            <span className="shrink-0 rounded-full bg-muted px-2.5 py-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                              Esgotado
+                            </span>
+                          ) : (
+                            <span className="shrink-0 text-sm font-semibold">
+                              {brl(product.price)}
+                            </span>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          </>
+        )}
       </section>
-      <CompanyFooter supportSlotRef={supportSlotRef} />
+      {footer}
     </>
   );
 }

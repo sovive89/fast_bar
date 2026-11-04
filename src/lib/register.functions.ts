@@ -71,14 +71,20 @@ export const confirmSession = createServerFn({ method: "POST" })
 export const lookupCustomerByDocument = createServerFn({ method: "POST" })
   .inputValidator((data: { documentType: "cpf" | "rg"; document: string }) => data)
   .handler(async ({ data }) => {
-    const { assertRegisterAccess, sanitizeDocument, findCustomerNameByDocument } = await import(
-      "./fastbar.server"
-    );
+    const { assertRegisterAccess, sanitizeDocument, findCustomerNameByDocument } =
+      await import("./fastbar.server");
     await assertRegisterAccess();
     const document = sanitizeDocument(data.documentType, data.document);
     if (!document) return { name: null };
     const name = await findCustomerNameByDocument(document);
     return { name };
+  });
+
+export const lookupCustomerByPhone = createServerFn({ method: "POST" })
+  .inputValidator((data: { phone: string }) => data)
+  .handler(async ({ data }) => {
+    const { lookupCustomerNameByPhone } = await import("./fastbar.server");
+    return lookupCustomerNameByPhone(data.phone);
   });
 
 /**
@@ -161,7 +167,9 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
       .from("fastbar_sessions")
       .select("id")
       .in("status", ["pending", "open"]);
-    existingQuery = phone ? existingQuery.eq("phone", phone) : existingQuery.eq("document", document!);
+    existingQuery = phone
+      ? existingQuery.eq("phone", phone)
+      : existingQuery.eq("document", document!);
     const { data: existing } = await existingQuery
       .order("created_at", { ascending: false })
       .limit(1)
@@ -172,7 +180,10 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
 
     const customerId = phone
       ? await upsertCustomer(name, { phone })
-      : await upsertCustomer(name, { document: document!, documentType: data.documentType as "cpf" | "rg" });
+      : await upsertCustomer(name, {
+          document: document!,
+          documentType: data.documentType as "cpf" | "rg",
+        });
 
     // Cliente que ficou devendo numa visita anterior volta para aquela comanda, com o saldo antigo
     // (docs/DECISOES.md). A equipe está com ele no balcão, então já vai direto para "open".
@@ -316,12 +327,15 @@ export const addTabItem = createServerFn({ method: "POST" })
         )
         .eq("product_id", data.productId);
       for (const row of recipe ?? []) {
-        const pick = <T,>(join: T | T[] | null): T | null => (Array.isArray(join) ? (join[0] ?? null) : join);
+        const pick = <T>(join: T | T[] | null): T | null =>
+          Array.isArray(join) ? (join[0] ?? null) : join;
         const drink = pick(row.fastbar_base_drinks);
         const ingredient = pick(row.fastbar_drink_ingredients);
         const component = drink ?? ingredient;
         if (!component || component.name !== rpc.component) continue;
-        const theoretical = await findTheoreticalComponentIds(drink ? "base_drink" : "ingredient", [component]);
+        const theoretical = await findTheoreticalComponentIds(drink ? "base_drink" : "ingredient", [
+          component,
+        ]);
         if (theoretical.has(component.id)) {
           return {
             ok: false as const,
@@ -389,7 +403,11 @@ export const removeTabItems = createServerFn({ method: "POST" })
       .eq("session_id", data.sessionId)
       .in("id", requested);
     if (readError) {
-      return { ok: false as const, removed: 0, message: "Não foi possível ler os itens da comanda." };
+      return {
+        ok: false as const,
+        removed: 0,
+        message: "Não foi possível ler os itens da comanda.",
+      };
     }
 
     let removed = 0;
@@ -397,7 +415,11 @@ export const removeTabItems = createServerFn({ method: "POST" })
       const { data: result, error } = await admin().rpc("fastbar_remove_tab_item", {
         p_item_id: row.id,
       });
-      const outcome = fromRpc(result as RpcResult | null, error, "Não foi possível remover o item.");
+      const outcome = fromRpc(
+        result as RpcResult | null,
+        error,
+        "Não foi possível remover o item.",
+      );
       if (!outcome.ok) {
         return {
           ok: false as const,
@@ -490,7 +512,10 @@ export const archiveSession = createServerFn({ method: "POST" })
       .maybeSingle();
     if (!session) return { ok: false as const, message: "Comanda não encontrada." };
     if (!["closed", "paid", "cancelled"].includes(session.status)) {
-      return { ok: false as const, message: "Só dá pra arquivar comanda já fechada, paga ou cancelada." };
+      return {
+        ok: false as const,
+        message: "Só dá pra arquivar comanda já fechada, paga ou cancelada.",
+      };
     }
 
     const { error } = await admin()

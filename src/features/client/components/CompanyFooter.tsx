@@ -44,8 +44,7 @@ export function CompanyFooter({
     ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(company.address)}`
     : null;
   const hasCompany = !!(company?.tradeName || company?.address || company?.phone || company?.cnpj);
-  const visible =
-    !!supportSlotRef || hasCompany || !!branding.whatsappNumber || !!branding.instagramUser;
+  const visible = hasCompany || !!branding.whatsappNumber || !!branding.instagramUser;
 
   useEffect(() => {
     if (!visible || !footerRef.current) return;
