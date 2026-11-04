@@ -52,7 +52,11 @@ function mapChannel(type: string | undefined): string {
 
 /** Envia a cobrança pro terminal — cria o pedido no Mercado Pago e grava o ID na comanda pra
  * correlacionar quando o webhook (ou a checagem manual) confirmar o pagamento. */
-export async function startPointCharge(sessionId: string, amount: number) {
+export async function startPointCharge(
+  sessionId: string,
+  amount: number,
+  purpose: "pagamento" | "credito" = "pagamento",
+) {
   const cfg = await getConfig();
   if (!cfg.enabled || !cfg.accessToken || !cfg.terminalId) {
     return { ok: false as const, message: "Maquininha não configurada em Conexões." };
@@ -84,6 +88,7 @@ export async function startPointCharge(sessionId: string, amount: number) {
       pos_order_id: result.order.id,
       pos_requested_at: new Date().toISOString(),
       pos_amount: amount,
+      pos_purpose: purpose,
     })
     .eq("id", sessionId);
   if (error) return { ok: false as const, message: "Cobrança enviada, mas não foi possível salvar na comanda." };
@@ -107,7 +112,7 @@ export async function cancelPointCharge(sessionId: string) {
 
   await admin()
     .from("fastbar_sessions")
-    .update({ pos_order_id: null, pos_requested_at: null, pos_amount: null })
+    .update({ pos_order_id: null, pos_requested_at: null, pos_amount: null, pos_purpose: null })
     .eq("id", sessionId);
   return { ok: true as const };
 }
@@ -133,11 +138,43 @@ export async function reconcilePointOrder(orderId: string) {
   const { admin, registerCustomerSpend } = await import("../fastbar.server");
   const { data: session } = await admin()
     .from("fastbar_sessions")
-    .select("id, status, pos_order_id, pos_amount, closed_at, operacao_id")
+    .select("id, status, pos_order_id, pos_amount, pos_purpose, closed_at, operacao_id")
     .eq("id", sessionId)
     .maybeSingle();
   if (!session || session.pos_order_id !== orderId) return;
-  if (session.status === "paid" || session.status === "cancelled") return;
+  const isCredit = session.pos_purpose === "credito";
+  // Cobrança de pagamento numa comanda já paga/cancelada não faz nada. Cobrança de CRÉDITO segue
+  // mesmo assim: o dinheiro já passou no terminal, então a entrada precisa ficar registrada.
+  if (!isCredit && (session.status === "paid" || session.status === "cancelled")) return;
+
+  if (order.status === "processed" && isCredit) {
+    // O índice único em pos_order_id é a trava de verdade contra crédito em dobro; esta leitura
+    // só evita gastar um insert quando já dá para saber que a entrada existe.
+    const { data: existing } = await admin()
+      .from("fastbar_session_credits")
+      .select("id")
+      .eq("pos_order_id", orderId)
+      .maybeSingle();
+    if (!existing) {
+      const { error: creditError } = await admin().from("fastbar_session_credits").insert({
+        session_id: sessionId,
+        operacao_id: session.operacao_id,
+        amount: Number(session.pos_amount),
+        method: "maquininha",
+        realizado_por: "maquininha",
+        pos_order_id: orderId,
+      });
+      // Sem a entrada gravada, NÃO limpa a cobrança: a comanda continua "aguardando" e o próximo
+      // "Verificar agora" tenta de novo, em vez de perder o dinheiro que passou no terminal.
+      if (creditError) return;
+    }
+    await admin()
+      .from("fastbar_sessions")
+      .update({ pos_order_id: null, pos_requested_at: null, pos_amount: null, pos_purpose: null })
+      .eq("id", sessionId)
+      .eq("pos_order_id", orderId);
+    return;
+  }
 
   if (order.status === "processed") {
     const payment = order.transactions?.payments?.[0];
@@ -163,6 +200,7 @@ export async function reconcilePointOrder(orderId: string) {
         paid_at: nowIso,
         payment_method: method,
         pos_order_id: null,
+        pos_purpose: null,
         pos_paid_order_id: orderId,
         pos_requested_at: null,
       })
@@ -177,7 +215,7 @@ export async function reconcilePointOrder(orderId: string) {
     // tentar de novo (maquininha ou manual), sem mexer no status dela.
     await admin()
       .from("fastbar_sessions")
-      .update({ pos_order_id: null, pos_requested_at: null, pos_amount: null })
+      .update({ pos_order_id: null, pos_requested_at: null, pos_amount: null, pos_purpose: null })
       .eq("id", sessionId)
       .eq("pos_order_id", orderId);
   }

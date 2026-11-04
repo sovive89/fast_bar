@@ -16,6 +16,7 @@ exato ou print) e o horário.
    - `20261104110000_stock_count_items_kinds.sql`
    - `20261104120000_session_payments.sql`
    - `20261104130000_session_credits.sql`
+   - `20261104140000_pos_credit_charge.sql`
 2. O último deploy do `master` terminou no Amplify.
 3. Não há operação aberta. Se houver, ela foi aberta antes da mudança: encerre-a pelo fluxo novo
    (passo 5) antes de começar.
@@ -118,6 +119,16 @@ Com a operação aberta, abra uma comanda nova.
 | Em outra comanda, adicione R$ 20 de crédito e lance R$ 50 | Crédito usado R$ 20, restante R$ 0 e "Saldo a receber R$ 30,00" |
 | Tente adicionar crédito numa comanda fechada | A seção de crédito nem aparece (só em comanda aberta) |
 
+### 9.1 Crédito pela maquininha (só com o terminal Mercado Pago configurado em Conexões)
+
+| Ação | Resultado esperado |
+| --- | --- |
+| Em "Adicionar crédito", escolha "Maquininha", digite 20 e toque "Cobrar" | Aparece "Aguardando o crédito na maquininha..." com o valor enviado; a seção de crédito some enquanto espera |
+| Pague no terminal | Em até alguns segundos (ou com "Verificar agora") o crédito de R$ 20,00 aparece na comanda, que continua **aberta** |
+| Repita e toque "Cancelar cobrança" antes de pagar | Volta ao normal, sem crédito |
+| Repita e deixe a cobrança ser recusada no terminal | A comanda é liberada, sem crédito |
+| Cobrar a conta pela maquininha numa comanda com crédito | O terminal cobra só o saldo depois do crédito |
+
 ## 10. Auditoria no banco (quem tem acesso ao Supabase)
 
 Confirme que ficou gravado:
@@ -132,8 +143,8 @@ order by c.created_at desc limit 5;
 select item_kind, product_name, quantidade_esperada, quantidade_contada, divergencia, motivo, observacao
 from fastbar_stock_count_items order by created_at desc limit 10;
 
--- Entradas de crédito do passo 9
-select s.customer_name, c.amount, c.method, c.created_at
+-- Entradas de crédito do passo 9 (pos_order_id preenchido = veio da maquininha)
+select s.customer_name, c.amount, c.method, c.pos_order_id, c.created_at
 from fastbar_session_credits c join fastbar_sessions s on s.id = c.session_id
 order by c.created_at desc limit 10;
 

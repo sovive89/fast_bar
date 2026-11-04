@@ -653,6 +653,7 @@ export type Database = {
           id: string
           method: string
           operacao_id: string | null
+          pos_order_id: string | null
           realizado_por: string
           session_id: string | null
           tenant_id: string | null
@@ -663,6 +664,7 @@ export type Database = {
           id?: string
           method: string
           operacao_id?: string | null
+          pos_order_id?: string | null
           realizado_por?: string
           session_id?: string | null
           tenant_id?: string | null
@@ -673,6 +675,7 @@ export type Database = {
           id?: string
           method?: string
           operacao_id?: string | null
+          pos_order_id?: string | null
           realizado_por?: string
           session_id?: string | null
           tenant_id?: string | null
@@ -1029,6 +1032,7 @@ export type Database = {
           payment_method: string | null
           phone: string | null
           pos_amount: number | null
+          pos_purpose: string | null
           pos_order_id: string | null
           pos_paid_order_id: string | null
           pos_refunded_at: string | null
@@ -1056,6 +1060,7 @@ export type Database = {
           payment_method?: string | null
           phone?: string | null
           pos_amount?: number | null
+          pos_purpose?: string | null
           pos_order_id?: string | null
           pos_paid_order_id?: string | null
           pos_refunded_at?: string | null
@@ -1083,6 +1088,7 @@ export type Database = {
           payment_method?: string | null
           phone?: string | null
           pos_amount?: number | null
+          pos_purpose?: string | null
           pos_order_id?: string | null
           pos_paid_order_id?: string | null
           pos_refunded_at?: string | null

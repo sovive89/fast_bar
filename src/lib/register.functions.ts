@@ -591,6 +591,33 @@ export const addSessionCreditFn = createServerFn({ method: "POST" })
   });
 
 /**
+ * Cobra um valor na maquininha para virar CRÉDITO da comanda (não quita a conta). Mesmo caminho do
+ * pagamento pela maquininha — só muda o propósito gravado na cobrança, para o webhook saber que
+ * deve registrar uma entrada de crédito em vez de fechar a comanda. Só em comanda aberta.
+ */
+export const startCreditCharge = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string; amount: number }) => data)
+  .handler(async ({ data }) => {
+    const { admin, assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    const { round2 } = await import("./session-payments.server");
+    const amount = round2(Number(data.amount));
+    if (!Number.isFinite(amount) || amount <= 0 || amount > 100000) {
+      return { ok: false as const, message: "Informe um valor maior que zero." };
+    }
+    const { data: session } = await admin()
+      .from("fastbar_sessions")
+      .select("id, status")
+      .eq("id", data.sessionId)
+      .maybeSingle();
+    if (!session || session.status !== "open") {
+      return { ok: false as const, message: "Só dá para adicionar crédito em comanda aberta." };
+    }
+    const { startPointCharge } = await import("./mercadopago/service.server");
+    return startPointCharge(data.sessionId, amount, "credito");
+  });
+
+/**
  * Envia o valor da comanda pra maquininha (Mercado Pago Point) — o valor é recalculado aqui a
  * partir dos itens de verdade, nunca aceito do cliente, pra não confiar num total que o navegador
  * mandou. A confirmação de pagamento não acontece nesta chamada: ela só entrega a cobrança pro
