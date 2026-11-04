@@ -64,7 +64,7 @@ function RegisterList() {
   const [sessions, setSessions] = useState<BarSession[]>([]);
   const [items, setItems] = useState<OverviewItem[]>([]);
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"open" | "all" | "archived">("open");
+  const [view, setView] = useState<"open" | "all" | "archived" | "inadimplente">("open");
   const [now, setNow] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{
@@ -144,10 +144,17 @@ function RegisterList() {
       .filter((session) => {
         const archived = Boolean(session.archived_at);
         if (view === "archived") return archived;
+        // "Inadimplentes" é área própria — não se mistura com "Todas"/"Em aberto" (CLAUDE.md
+        // P1.6). Fica fora mesmo se um dia alguém arquivar uma comanda inadimplente.
+        if (view === "inadimplente") return session.status === "inadimplente";
         if (archived) return false;
+        if (session.status === "inadimplente") return false;
         // "Em aberto" = ainda em andamento, recebendo lançamentos. Fechada aguarda pagamento
-        // (não recebe mais itens), paga e cancelada são desfechos — nenhuma das três é "aberta".
-        return view === "all" ? true : !["closed", "paid", "cancelled"].includes(session.status);
+        // (não recebe mais itens), paga, cancelada e cortesia são desfechos — nenhuma delas é
+        // "aberta".
+        return view === "all"
+          ? true
+          : !["closed", "paid", "cancelled", "cortesia"].includes(session.status);
       })
       .filter((session) => {
         if (!term) return true;
@@ -164,8 +171,11 @@ function RegisterList() {
   const openTotal = openSessions.reduce((sum, session) => sum + (totals.get(session.id) ?? 0), 0);
   const archivableCount = sessions.filter(
     (session) =>
-      !session.archived_at && ["closed", "paid", "cancelled"].includes(session.status),
+      !session.archived_at && ["closed", "paid", "cancelled", "cortesia"].includes(session.status),
   ).length;
+  const inadimplenteCount = sessions.filter((session) => session.status === "inadimplente").length;
+  const inadimplenteLabel =
+    inadimplenteCount > 0 ? `Inadimplentes (${inadimplenteCount})` : "Inadimplentes";
 
   // Assim que o CPF/RG parece completo, confere se já é cliente conhecido e preenche o nome —
   // poupa redigitar quem já voltou, sem travar quem prefere digitar o nome direto.
@@ -397,6 +407,7 @@ function RegisterList() {
             { id: "open", label: "Em aberto" },
             { id: "all", label: "Todas" },
             { id: "archived", label: "Arquivadas" },
+            { id: "inadimplente", label: inadimplenteLabel },
           ] as const
         ).map((option) => (
           <button
@@ -421,7 +432,7 @@ function RegisterList() {
 
       {confirming?.kind === "archiveAll" && (
         <ConfirmBar
-          message={`Tirar ${archivableCount} comandas fechadas/pagas/canceladas da lista? Nada é apagado — elas continuam contando no faturamento (quando aplicável) e você pode revê-las em "Arquivadas".`}
+          message={`Tirar ${archivableCount} comandas fechadas/pagas/canceladas/cortesia da lista? Nada é apagado — elas continuam contando no faturamento (quando aplicável) e você pode revê-las em "Arquivadas".`}
           confirmLabel="Arquivar"
           busy={busy}
           onCancel={() => setConfirming(null)}

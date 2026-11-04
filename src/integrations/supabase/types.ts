@@ -592,6 +592,60 @@ export type Database = {
         }
         Relationships: []
       }
+      fastbar_operation_closures: {
+        Row: {
+          created_at: string
+          destino: string
+          id: string
+          motivo: string | null
+          operacao_id: string
+          realizado_por: string
+          session_customer_name: string
+          session_id: string | null
+          tenant_id: string | null
+          valor: number | null
+        }
+        Insert: {
+          created_at?: string
+          destino: string
+          id?: string
+          motivo?: string | null
+          operacao_id: string
+          realizado_por?: string
+          session_customer_name: string
+          session_id?: string | null
+          tenant_id?: string | null
+          valor?: number | null
+        }
+        Update: {
+          created_at?: string
+          destino?: string
+          id?: string
+          motivo?: string | null
+          operacao_id?: string
+          realizado_por?: string
+          session_customer_name?: string
+          session_id?: string | null
+          tenant_id?: string | null
+          valor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_operation_closures_operacao_id_fkey"
+            columns: ["operacao_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fastbar_operation_closures_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fastbar_stock_counts: {
         Row: {
           created_at: string
