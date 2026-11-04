@@ -646,6 +646,54 @@ export type Database = {
           },
         ]
       }
+      fastbar_session_credits: {
+        Row: {
+          amount: number
+          created_at: string
+          id: string
+          method: string
+          operacao_id: string | null
+          realizado_por: string
+          session_id: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          id?: string
+          method: string
+          operacao_id?: string | null
+          realizado_por?: string
+          session_id?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          id?: string
+          method?: string
+          operacao_id?: string | null
+          realizado_por?: string
+          session_id?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_session_credits_operacao_id_fkey"
+            columns: ["operacao_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_operations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fastbar_session_credits_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fastbar_session_payments: {
         Row: {
           amount: number

@@ -15,6 +15,7 @@ import {
   confirmSession,
   refundMachineCharge,
   registerPayment,
+  addSessionCreditFn,
   removeTabItems,
   reopenSession,
   setSessionServiceFee,
@@ -46,7 +47,7 @@ export const Route = createFileRoute("/caixa/$sessionId")({
 function RegisterTabDetail() {
   const { sessionId } = Route.useParams();
   const navigate = useNavigate();
-  const { session, items, payments, loading, loadFailed, loadError, now, reload } = useLiveTab(
+  const { session, items, payments, credits, loading, loadFailed, loadError, now, reload } = useLiveTab(
     sessionId,
     "register",
   );
@@ -60,11 +61,15 @@ function RegisterTabDetail() {
   const [amountText, setAmountText] = useState("");
   const [partialMotivo, setPartialMotivo] = useState("");
   const [partialPassword, setPartialPassword] = useState("");
+  // Crédito adiantado: valor + forma em que o cliente deixou o dinheiro.
+  const [creditText, setCreditText] = useState("");
+  const [creditMethod, setCreditMethod] = useState<PaymentMethod>("dinheiro");
 
   const add = useServerFn(addTabItem);
   const removeMany = useServerFn(removeTabItems);
   const close = useServerFn(closeSession);
   const pay = useServerFn(registerPayment);
+  const addCredit = useServerFn(addSessionCreditFn);
   const reopen = useServerFn(reopenSession);
   const confirm = useServerFn(confirmSession);
   const startCharge = useServerFn(startMachineCharge);
@@ -159,7 +164,14 @@ function RegisterTabDetail() {
   // Saldo = total − o que já foi recebido (livro de pagamentos). Centavos arredondados pra um
   // resíduo de ponto flutuante não deixar a comanda "devendo" 0,00.
   const paidSoFar = Math.round(payments.reduce((sum, p) => sum + p.amount, 0) * 100) / 100;
-  const balanceValue = Math.max(0, Math.round((totalValue - paidSoFar) * 100) / 100);
+  // Crédito adiantado: o consumo é derivado dos itens (menor entre o crédito e o que falta pagar),
+  // então lançar um item gasta crédito na hora e remover um item devolve — igual ao servidor.
+  const creditTotal = Math.round(credits.reduce((sum, c) => sum + c.amount, 0) * 100) / 100;
+  const creditUsed = Math.min(creditTotal, Math.max(0, Math.round((totalValue - paidSoFar) * 100) / 100));
+  const creditLeft = Math.round((creditTotal - creditUsed) * 100) / 100;
+  const balanceValue = Math.max(0, Math.round((totalValue - paidSoFar - creditUsed) * 100) / 100);
+  const creditAmount = creditText.trim() === "" ? null : Number(creditText.replace(",", "."));
+  const creditInvalid = creditAmount === null || !Number.isFinite(creditAmount) || creditAmount <= 0;
   const typedAmount = amountText.trim() === "" ? null : Number(amountText.replace(",", "."));
   const amountInvalid =
     typedAmount !== null && (!Number.isFinite(typedAmount) || typedAmount <= 0 || typedAmount > balanceValue);
@@ -224,12 +236,26 @@ function RegisterTabDetail() {
           </p>
         )}
 
-        {paidSoFar > 0 && (
+        {(paidSoFar > 0 || creditTotal > 0) && (
           <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
-            <div className="flex justify-between text-muted-foreground">
-              <span>Já recebido</span>
-              <span>−{brl(paidSoFar)}</span>
-            </div>
+            {creditTotal > 0 && (
+              <>
+                <div className="flex justify-between text-muted-foreground">
+                  <span>Crédito usado (de {brl(creditTotal)})</span>
+                  <span>−{brl(creditUsed)}</span>
+                </div>
+                <div className="flex justify-between font-medium text-success">
+                  <span>Crédito restante</span>
+                  <span>{brl(creditLeft)}</span>
+                </div>
+              </>
+            )}
+            {paidSoFar > 0 && (
+              <div className="flex justify-between text-muted-foreground">
+                <span>Já recebido</span>
+                <span>−{brl(paidSoFar)}</span>
+              </div>
+            )}
             <div className="flex justify-between font-semibold">
               <span>Saldo a receber</span>
               <span>{brl(balanceValue)}</span>
@@ -254,6 +280,62 @@ function RegisterTabDetail() {
       </div>
 
       {error && <p className="mt-4 text-sm text-destructive">{error}</p>}
+
+      {isOpen && (
+        <section className="mt-8 space-y-2 rounded-xl border border-border p-4">
+          <h2 className="text-sm font-semibold">Adicionar crédito à comanda</h2>
+          <p className="text-xs text-muted-foreground">
+            O cliente deixa um valor adiantado e vai gastando conforme pede. O que sobrar fica na
+            comanda.
+          </p>
+          <div className="flex gap-2">
+            {(
+              [
+                ["dinheiro", "Dinheiro"],
+                ["cartao", "Cartão"],
+                ["pix", "Pix"],
+              ] as const
+            ).map(([value, label]) => (
+              <button
+                key={value}
+                onClick={() => setCreditMethod(value)}
+                disabled={busy}
+                className={`h-9 flex-1 rounded-lg text-xs font-medium disabled:opacity-60 ${
+                  creditMethod === value
+                    ? "bg-primary text-primary-foreground"
+                    : "border border-border text-muted-foreground"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input
+              inputMode="decimal"
+              value={creditText}
+              onChange={(event) => setCreditText(event.target.value)}
+              placeholder="Valor (ex.: 100,00)"
+              disabled={busy}
+              className="h-10 min-w-0 flex-1 rounded-lg border border-border bg-background px-3 text-base"
+            />
+            <button
+              onClick={async () => {
+                const ok = await run(() =>
+                  addCredit({
+                    data: { sessionId: session.id, amount: creditAmount ?? 0, method: creditMethod },
+                  }),
+                );
+                if (ok) setCreditText("");
+              }}
+              disabled={busy || creditInvalid}
+              className="h-10 rounded-lg bg-primary px-4 text-sm font-semibold text-primary-foreground disabled:opacity-60"
+            >
+              Adicionar
+            </button>
+          </div>
+        </section>
+      )}
 
       {isOpen && (
         <section className="mt-8">

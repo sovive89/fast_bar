@@ -23,6 +23,7 @@ Lovable).
    - `20261104102500_fechamento_operacao.sql`
    - `20261104110000_stock_count_items_kinds.sql`
    - `20261104120000_session_payments.sql` (livro de pagamentos; sem ela o pagamento da comanda falha)
+   - `20261104130000_session_credits.sql` (crédito adiantado da comanda)
 2. **Testar o fluxo real** no app (roteiro em `docs/ROTEIRO_TESTE_OPERACAO.md`, quando existir):
    abrir operação com conferência, lançar numa comanda, encerrar com os três destinos.
 3. **Baseline do esquema — Codex, em revisão**: `fastbar_sessions` (e outras tabelas base) nunca foi criada por
@@ -47,7 +48,7 @@ Lovable).
 3. ~~Separar "Fechadas nesta operação" de "Histórico" na lista de comandas~~ (feito).
 4. Item 3 do roadmap (crédito e pagamento), em PRs separados:
    - ~~Livro de pagamentos + pagamento parcial vira pendência~~ (feito neste PR).
-   - Crédito da comanda, consumido item a item (livro de crédito, desfazer item devolve crédito).
+   - ~~Crédito da comanda, consumido item a item~~ (feito: entradas em `fastbar_session_credits`, consumo derivado dos itens).
    - Crédito pela maquininha (só dá para testar no terminal real) e recuperação ao reabrir.
 
 ## Arquivos compartilhados (cuidado)

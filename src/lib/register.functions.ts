@@ -572,6 +572,24 @@ export const registerPayment = createServerFn({ method: "POST" })
     });
   });
 
+/** Recebe um valor adiantado como crédito da comanda; o consumo é derivado dos itens. */
+export const addSessionCreditFn = createServerFn({ method: "POST" })
+  .inputValidator((data: { sessionId: string; amount: number; method: PaymentMethod }) => data)
+  .handler(async ({ data }) => {
+    const { assertRegisterAccess } = await import("./fastbar.server");
+    await assertRegisterAccess();
+    if (!PAYMENT_METHODS.includes(data.method)) {
+      return { ok: false as const, message: "Forma de pagamento inválida." };
+    }
+    const { addSessionCredit } = await import("./session-payments.server");
+    return addSessionCredit({
+      sessionId: data.sessionId,
+      amount: data.amount,
+      method: data.method,
+      realizadoPor: "equipe",
+    });
+  });
+
 /**
  * Envia o valor da comanda pra maquininha (Mercado Pago Point) — o valor é recalculado aqui a
  * partir dos itens de verdade, nunca aceito do cliente, pra não confiar num total que o navegador

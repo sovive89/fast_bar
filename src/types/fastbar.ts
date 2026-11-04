@@ -54,6 +54,14 @@ export type SessionPayment = {
   created_at: string;
 };
 
+/** Crédito adiantado recebido na comanda (fastbar_session_credits). */
+export type SessionCredit = {
+  id: string;
+  amount: number;
+  method: string;
+  created_at: string;
+};
+
 export type BarProduct = {
   id: string;
   name: string;
