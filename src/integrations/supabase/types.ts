@@ -1295,6 +1295,42 @@ export type Database = {
           },
         ]
       }
+      fastbar_session_reopenings: {
+        Row: {
+          created_at: string
+          id: string
+          motivo: string
+          operacao_id: string | null
+          realizado_por: string
+          saldo: number
+          session_id: string | null
+          status_anterior: string
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          motivo: string
+          operacao_id?: string | null
+          realizado_por?: string
+          saldo: number
+          session_id?: string | null
+          status_anterior: string
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          motivo?: string
+          operacao_id?: string | null
+          realizado_por?: string
+          saldo?: number
+          session_id?: string | null
+          status_anterior?: string
+          tenant_id?: string | null
+        }
+        Relationships: []
+      }
       fastbar_sessions: {
         Row: {
           archived_at: string | null

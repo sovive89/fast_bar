@@ -113,6 +113,37 @@ export const openClientSession = createServerFn({ method: "POST" })
         message: "O bar ainda não abriu. Tente novamente em instantes.",
       };
     }
+    // Cliente que ficou devendo numa visita anterior volta para aquela comanda (com os itens e o
+    // saldo antigo), em vez de abrir outra. Passa pelas mesmas etapas de uma comanda nova:
+    // código no celular se ainda não verificou, depois a confirmação da equipe no balcão — a
+    // dívida só aparece pra ele depois disso.
+    const { reopenDebtSession } = await import("./debt-reopen.server");
+    const reopened = await reopenDebtSession({
+      phone,
+      document: null,
+      toStatus: alreadyVerified ? "pending" : "unverified",
+      realizadoPor: "cliente",
+    });
+    if (reopened) {
+      if (alreadyVerified) {
+        const profileCompleted = await isProfileCompleted(customerId);
+        return {
+          ok: true as const,
+          sessionId: reopened.sessionId,
+          needsVerification: false as const,
+          profileCompleted,
+        };
+      }
+      const sendResult = await requestPhoneVerification(phone, channel);
+      if (!sendResult.ok) return { ok: false as const, message: sendResult.message };
+      return {
+        ok: true as const,
+        sessionId: reopened.sessionId,
+        needsVerification: true as const,
+        profileCompleted: false,
+      };
+    }
+
     const operationalFields = await operationalFieldsForNewSession();
     const { data: inserted, error } = await admin()
       .from("fastbar_sessions")
