@@ -29,11 +29,7 @@ function EmpresaLayout() {
             Visão geral
           </Link>
           {EMPRESA_AREAS.map((area) => (
-            <Link
-              key={area.key}
-              to={area.to}
-              className={tabClass(pathname.startsWith(area.to))}
-            >
+            <Link key={area.key} to={area.to} className={tabClass(pathname.startsWith(area.to))}>
               {area.label}
             </Link>
           ))}
