@@ -67,12 +67,16 @@ exato ou print) e o horário.
 
 ## 6. Lista de comandas depois do encerramento
 
+As abas são: **Em aberto**, **Fechadas nesta operação**, **Histórico** e **Inadimplentes**.
+
 | Ação | Resultado esperado |
 | --- | --- |
 | Aba "Inadimplentes" | Mostra B, com status "Inadimplente" (o contador aparece na aba) |
-| Aba "Em aberto" | Não mostra A nem B |
-| Aba "Todas" | A aparece como "Cortesia"; C continua "Fechada" |
-| "Arquivar fechadas" | A cortesia (A) entra no lote; a inadimplente (B) não |
+| Aba "Em aberto" | Mostra C (conta pedida, ainda sem pagamento, mantida aberta) e não mostra A nem B |
+| Aba "Fechadas nesta operação" | Com a operação encerrada, está vazia; A (cortesia) já foi para o Histórico |
+| Aba "Histórico" | Mostra A, com status "Cortesia" |
+| Abra uma nova operação (passo 7) e veja as abas | "Fechadas nesta operação" começa vazia; nada de operações anteriores aparece nela |
+| Nessa nova operação, abra uma comanda, lance, registre o pagamento | Ela aparece em "Fechadas nesta operação" e, na operação seguinte, passa para "Histórico" |
 
 ## 7. Pular a conferência
 

@@ -43,7 +43,7 @@ Lovable).
 
 1. Testes automáticos de abertura e fechamento de operação (`tests/operacao-*.test.ts`).
 2. Roteiro de teste manual (`docs/ROTEIRO_TESTE_OPERACAO.md`).
-3. Separar "Fechadas nesta operação" de "Histórico" na lista de comandas (pendência do item 2).
+3. ~~Separar "Fechadas nesta operação" de "Histórico" na lista de comandas~~ (feito).
 4. Item 3 do roadmap (crédito e pagamento): crédito pela maquininha, pagamento parcial vira
    pendência, crédito recuperado ao reabrir comanda.
 

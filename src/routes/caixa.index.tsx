@@ -7,7 +7,6 @@ import { brl, digits, elapsed, formatCpf, formatIdentifier, formatPhone, hhmm } 
 import { useServerFn } from "@tanstack/react-start";
 import { getRegisterOverview } from "@/lib/tab-reads.functions";
 import {
-  archiveClosedSessions,
   archiveSession,
   cancelSession,
   clearTabItems,
@@ -19,6 +18,7 @@ import {
   undoLastTabItem,
 } from "@/lib/register.functions";
 import type { BarSession } from "@/types/fastbar";
+import { VIEW_TABS, bucketOf, type ListView } from "@/lib/comanda-views";
 
 type OverviewItem = {
   id: string;
@@ -64,7 +64,8 @@ function RegisterList() {
   const [sessions, setSessions] = useState<BarSession[]>([]);
   const [items, setItems] = useState<OverviewItem[]>([]);
   const [search, setSearch] = useState("");
-  const [view, setView] = useState<"open" | "all" | "archived" | "inadimplente">("open");
+  const [view, setView] = useState<ListView>("open");
+  const [currentOperationId, setCurrentOperationId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<{
@@ -94,7 +95,6 @@ function RegisterList() {
   const cancelOne = useServerFn(cancelSession);
   const archiveOne = useServerFn(archiveSession);
   const unarchiveOne = useServerFn(unarchiveSession);
-  const archiveClosed = useServerFn(archiveClosedSessions);
   const openManual = useServerFn(openSessionByTeam);
   const openWalkIn = useServerFn(openWalkInSession);
   const lookupDocument = useServerFn(lookupCustomerByDocument);
@@ -103,6 +103,7 @@ function RegisterList() {
     const result = await loadOverview();
     setSessions(result.sessions as BarSession[]);
     setItems(result.items as OverviewItem[]);
+    setCurrentOperationId(result.currentOperationId);
   }
 
   useEffect(() => {
@@ -141,21 +142,7 @@ function RegisterList() {
     const term = search.trim().toLowerCase();
     const termDigits = digits(search);
     return sessions
-      .filter((session) => {
-        const archived = Boolean(session.archived_at);
-        if (view === "archived") return archived;
-        // "Inadimplentes" é área própria — não se mistura com "Todas"/"Em aberto" (CLAUDE.md
-        // P1.6). Fica fora mesmo se um dia alguém arquivar uma comanda inadimplente.
-        if (view === "inadimplente") return session.status === "inadimplente";
-        if (archived) return false;
-        if (session.status === "inadimplente") return false;
-        // "Em aberto" = ainda em andamento, recebendo lançamentos. Fechada aguarda pagamento
-        // (não recebe mais itens), paga, cancelada e cortesia são desfechos — nenhuma delas é
-        // "aberta".
-        return view === "all"
-          ? true
-          : !["closed", "paid", "cancelled", "cortesia"].includes(session.status);
-      })
+      .filter((session) => bucketOf(session, currentOperationId) === view)
       .filter((session) => {
         if (!term) return true;
         return (
@@ -165,17 +152,12 @@ function RegisterList() {
               (session.document ?? "").includes(termDigits)))
         );
       });
-  }, [sessions, search, view]);
+  }, [sessions, search, view, currentOperationId]);
 
   const openSessions = sessions.filter((session) => session.status === "open");
   const openTotal = openSessions.reduce((sum, session) => sum + (totals.get(session.id) ?? 0), 0);
-  const archivableCount = sessions.filter(
-    (session) =>
-      !session.archived_at && ["closed", "paid", "cancelled", "cortesia"].includes(session.status),
-  ).length;
-  const inadimplenteCount = sessions.filter((session) => session.status === "inadimplente").length;
-  const inadimplenteLabel =
-    inadimplenteCount > 0 ? `Inadimplentes (${inadimplenteCount})` : "Inadimplentes";
+  const counts = { open: 0, fechadas: 0, historico: 0, inadimplente: 0 };
+  for (const session of sessions) counts[bucketOf(session, currentOperationId)] += 1;
 
   // Assim que o CPF/RG parece completo, confere se já é cliente conhecido e preenche o nome —
   // poupa redigitar quem já voltou, sem travar quem prefere digitar o nome direto.
@@ -402,43 +384,21 @@ function RegisterList() {
       />
 
       <div className="mt-3 flex flex-wrap items-center gap-2">
-        {(
-          [
-            { id: "open", label: "Em aberto" },
-            { id: "all", label: "Todas" },
-            { id: "archived", label: "Arquivadas" },
-            { id: "inadimplente", label: inadimplenteLabel },
-          ] as const
-        ).map((option) => (
+        {VIEW_TABS.map((option) => (
           <button
             key={option.id}
             onClick={() => setView(option.id)}
             className={`rounded-full px-4 py-1.5 text-sm font-medium ${view === option.id ? "bg-primary text-primary-foreground" : "bg-secondary text-secondary-foreground"}`}
           >
             {option.label}
+            {option.id === "inadimplente" && counts.inadimplente > 0
+              ? ` (${counts.inadimplente})`
+              : ""}
           </button>
         ))}
-        {view === "all" && archivableCount > 0 && (
-          <button
-            onClick={() => setConfirming({ kind: "archiveAll" })}
-            className="ml-auto rounded-full border border-border px-3 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground"
-          >
-            Arquivar fechadas ({archivableCount})
-          </button>
-        )}
       </div>
 
       {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
-
-      {confirming?.kind === "archiveAll" && (
-        <ConfirmBar
-          message={`Tirar ${archivableCount} comandas fechadas/pagas/canceladas/cortesia da lista? Nada é apagado — elas continuam contando no faturamento (quando aplicável) e você pode revê-las em "Arquivadas".`}
-          confirmLabel="Arquivar"
-          busy={busy}
-          onCancel={() => setConfirming(null)}
-          onConfirm={() => run(() => archiveClosed({ data: {} }))}
-        />
-      )}
 
       {filtered.length === 0 ? (
         <p className="mt-6 rounded-xl border border-dashed border-border p-6 text-sm text-muted-foreground">
@@ -455,7 +415,8 @@ function RegisterList() {
             const isOpen = session.status === "open";
             const isClosed = session.status === "closed";
             const isArchived = Boolean(session.archived_at);
-            const canArchive = !isArchived && (isClosed || isPaid || isCancelled);
+            const canArchive =
+              !isArchived && (isClosed || isPaid || isCancelled || session.status === "cortesia");
             // Comanda cancelada que ainda tem lançamentos é um cancelamento que travou antes de
             // devolver tudo ao estoque. Oferecer a ação de novo é o que permite terminá-lo — o
             // servidor trata a repetição como retomada, não como novo cancelamento.
