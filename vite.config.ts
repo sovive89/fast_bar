@@ -62,6 +62,16 @@ export default defineConfig({
       }),
     ],
   },
+  // Runtime do servidor na AWS Amplify: Node 22 (o padrão do Nitro é Node 20, que não tem
+  // WebSocket nativo — e o supabase-js precisa dele, o que travava o login do caixa).
+  //
+  // Sem `preset` de propósito: o Nitro detecta sozinho onde está buildando (Amplify, Vercel,
+  // Lovable). Fixar "aws-amplify" aqui quebraria os deploys da Vercel e da Lovable; `awsAmplify`
+  // só é lido quando o preset da Amplify está ativo, então nos outros lugares não faz nada.
+  //
+  // O cast existe porque o tipo do @lovable.dev/vite-tanstack-config só lista algumas opções do
+  // Nitro, mas ele repassa o objeto inteiro para o nitro().
+  nitro: { awsAmplify: { runtime: "nodejs22.x" } } as { preset?: string },
   tanstackStart: {
     // Redirect TanStack Start's bundled server entry to src/server.ts (our SSR error wrapper).
     // nitro/vite builds from this

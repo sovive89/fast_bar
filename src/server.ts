@@ -1,3 +1,4 @@
+import { installWebSocketPolyfill } from "./lib/websocket-polyfill.server";
 import "./lib/error-capture";
 
 import { consumeLastCapturedError } from "./lib/error-capture";
@@ -6,6 +7,10 @@ import { renderErrorPage } from "./lib/error-page";
 type ServerEntry = {
   fetch: (request: Request, env: unknown, ctx: unknown) => Promise<Response> | Response;
 };
+
+// Instala o WebSocket global antes de qualquer cliente Supabase ser criado (os clientes são
+// preguiçosos e o app em si só é carregado no import dinâmico abaixo).
+installWebSocketPolyfill();
 
 let serverEntryPromise: Promise<ServerEntry> | undefined;
 
