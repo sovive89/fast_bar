@@ -5,6 +5,7 @@ import { formatPhone } from "@/lib/format";
 import { getStockReport } from "@/lib/base-drinks.functions";
 import { getCrmAlerts } from "@/lib/customers.functions";
 import { SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/alertas")({
   head: () => ({
@@ -68,7 +69,7 @@ function AlertsPage() {
       </div>
 
       {loading ? (
-        <p className="mt-6 text-sm text-muted-foreground">Carregando alertas...</p>
+        <Loading className="mt-6" label="Carregando alertas..." />
       ) : totalAlerts === 0 ? (
         <p className="mt-6 rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
           Nada pedindo atenção agora. 🎉

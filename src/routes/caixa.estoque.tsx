@@ -28,6 +28,7 @@ import {
   updateIngredient,
   updateStockLot,
 } from "@/lib/base-drinks.functions";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/estoque")({
   head: () => ({
@@ -860,7 +861,7 @@ function ComponentStockTab(props: {
                   <div className="mt-3 rounded-xl border border-border p-3">
                     <p className="text-xs font-semibold">Lotes recebidos</p>
                     {lotsLoading ? (
-                      <p className="mt-1 text-xs text-muted-foreground">Carregando...</p>
+                      <Loading size="sm" className="mt-1" />
                     ) : lots.length === 0 ? (
                       <p className="mt-1 text-xs text-muted-foreground">
                         Nenhum lote registrado ainda — entradas feitas antes desse recurso não têm
@@ -1318,7 +1319,7 @@ function RelatoriosTab() {
   }, []);
 
   if (!report) {
-    return <p className="text-sm text-muted-foreground">Carregando relatório...</p>;
+    return <Loading label="Carregando relatório..." />;
   }
 
   return (

@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getRetentionCohorts } from "@/lib/customers.functions";
 import { currentMonthKey, monthsBetween } from "@/lib/analytics";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/crm/analises")({
   head: () => ({
@@ -68,7 +69,7 @@ function AnalisesTab() {
         </p>
 
         {!cohorts ? (
-          <p className="mt-4 text-sm text-muted-foreground">Carregando...</p>
+          <Loading className="mt-4" />
         ) : cohorts.length === 0 ? (
           <p className="mt-4 text-sm text-muted-foreground">
             Sem clientes suficientes ainda pra montar coortes.

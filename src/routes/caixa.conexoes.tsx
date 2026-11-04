@@ -19,6 +19,7 @@ import {
   type IntegrationRow,
 } from "@/lib/integrations.functions";
 import type { PointTerminal } from "@/lib/mercadopago/types";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/conexoes")({
   head: () => ({
@@ -660,7 +661,7 @@ function ConnectionsPage() {
       </div>
 
       {!rows ? (
-        <p className="mt-6 text-sm text-muted-foreground">Carregando...</p>
+        <Loading className="mt-6" />
       ) : (
         <div className="mt-6 space-y-3">
           <section

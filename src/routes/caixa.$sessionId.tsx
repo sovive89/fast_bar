@@ -26,6 +26,7 @@ import {
 import { fetchProducts } from "@/services/supabase/products";
 import { tabTotals } from "@/services/supabase/tabItems";
 import type { BarProduct } from "@/types/fastbar";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/$sessionId")({
   head: () => ({
@@ -146,7 +147,7 @@ function RegisterTabDetail() {
   }
 
   if (loading) {
-    return <p className="p-6 text-sm text-muted-foreground">Carregando comanda...</p>;
+    return <Loading className="p-6" label="Carregando comanda..." />;
   }
 
   if (!session) {

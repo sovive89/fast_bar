@@ -25,6 +25,7 @@ import {
   PRODUCT_UNITS,
   PRODUCT_PACKAGE_TYPES,
 } from "@/lib/base-drinks.functions";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/cardapio")({
   head: () => ({
@@ -1592,9 +1593,7 @@ function CardapioPage() {
                                 </label>
                               </div>
                               {editRecipeLoading ? (
-                                <p className="rounded-xl border border-dashed border-border p-3 text-xs text-muted-foreground">
-                                  Carregando ficha técnica atual...
-                                </p>
+                                <Loading size="sm" className="rounded-xl border border-dashed border-border p-3" label="Carregando ficha técnica atual..." />
                               ) : editRecipeLoadFailed ? (
                                 <p className="rounded-xl border border-dashed border-destructive/40 p-3 text-xs text-destructive">
                                   Não foi possível carregar a ficha técnica — feche e reabra "Editar"

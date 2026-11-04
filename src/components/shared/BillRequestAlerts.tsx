@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { BellRing, Volume2, VolumeX } from "lucide-react";
+import { AnimatePresence, m } from "motion/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { getBillRequests, updateBillRequest } from "@/lib/bill-requests.functions";
 import { playAlertSound, unlockAlertSound, vibrateAlert } from "@/lib/alert-sound";
@@ -106,80 +107,96 @@ export function BillRequestAlerts() {
     }
   }
 
-  if (requests.length === 0) return null;
-
   const waiting = requests.filter((r) => r.status === "pedida").length;
 
+  // A faixa entra deslizando de cima e sai do mesmo jeito quando o último pedido é concluído.
   return (
-    <div
-      role="alert"
-      aria-live="assertive"
-      className={`px-4 py-4 text-amber-950 ${waiting > 0 ? "bg-amber-300" : "bg-amber-200"}`}
-    >
-      <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
-        <p className="flex items-center gap-3 text-xl font-extrabold leading-tight">
-          <BellRing className="h-7 w-7 shrink-0" aria-hidden />
-          {requests.length === 1 ? "Pedido de conta" : `${requests.length} pedidos de conta`}
-        </p>
-        <button
-          type="button"
-          onClick={toggleMute}
-          aria-label={muted ? "Ligar o som do alerta" : "Silenciar o som do alerta"}
-          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/60 text-amber-950"
+    <AnimatePresence initial={false}>
+      {requests.length > 0 && (
+        <m.div
+          key="faixa"
+          initial={{ opacity: 0, y: -16 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -16 }}
+          transition={{ duration: 0.2 }}
+          role="alert"
+          aria-live="assertive"
+          className={`px-4 py-4 text-amber-950 ${waiting > 0 ? "bg-amber-300" : "bg-amber-200"}`}
         >
-          {muted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
-        </button>
-      </div>
-      {/* Altura limitada: o alerta mora na faixa fixa do topo e, com vários pedidos, não pode cobrir
-          o celular inteiro. Rola por dentro. */}
-      <ul className="mx-auto mt-3 max-h-[45vh] max-w-2xl space-y-3 overflow-y-auto overscroll-contain">
-        {requests.map((request) => (
-          <li
-            key={request.id}
-            className={`rounded-2xl border-4 bg-white p-4 shadow-md ${
-              request.status === "pedida" ? "alert-pulse-border" : "border-amber-500"
-            }`}
-          >
-            <Link
-              to="/caixa/$sessionId"
-              params={{ sessionId: request.sessionId }}
-              className="block min-w-0"
+          <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
+            <p className="flex items-center gap-3 text-xl font-extrabold leading-tight">
+              <BellRing className="h-7 w-7 shrink-0" aria-hidden />
+              {requests.length === 1 ? "Pedido de conta" : `${requests.length} pedidos de conta`}
+            </p>
+            <button
+              type="button"
+              onClick={toggleMute}
+              aria-label={muted ? "Ligar o som do alerta" : "Silenciar o som do alerta"}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/60 text-amber-950"
             >
-              <span className="block break-words text-2xl font-bold leading-tight">
-                {request.customerName}
-              </span>
-              <span className="mt-1 block text-base font-medium text-amber-900">
-                {request.status === "pedida" ? "Pediu a conta" : "Em atendimento"} ·{" "}
-                {hhmm(request.createdAt)}
-              </span>
-            </Link>
-            <div className="mt-3 grid grid-cols-2 gap-3">
-              {request.status === "pedida" ? (
-                <button
-                  type="button"
-                  disabled={busyId === request.id}
-                  onClick={() => void act(request.id, "atender")}
-                  className="h-14 rounded-xl bg-amber-600 text-lg font-bold text-white disabled:opacity-60"
+              {muted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+            </button>
+          </div>
+          {/* Altura limitada: o alerta mora na faixa fixa do topo e, com vários pedidos, não pode cobrir
+          o celular inteiro. Rola por dentro. */}
+          <ul className="mx-auto mt-3 max-h-[45vh] max-w-2xl space-y-3 overflow-y-auto overscroll-contain">
+            <AnimatePresence initial={false}>
+              {requests.map((request) => (
+                // Pedido novo entra com um "pulo" (mola) para chamar o olho; concluído sai deslizando.
+                <m.li
+                  key={request.id}
+                  layout
+                  initial={{ opacity: 0, scale: 0.85, y: -12 }}
+                  animate={{ opacity: 1, scale: 1, y: 0 }}
+                  exit={{ opacity: 0, x: 60 }}
+                  transition={{ type: "spring", stiffness: 500, damping: 28 }}
+                  className={`rounded-2xl border-4 bg-white p-4 shadow-md ${
+                    request.status === "pedida" ? "alert-pulse-border" : "border-amber-500"
+                  }`}
                 >
-                  Atender
-                </button>
-              ) : (
-                <span className="flex h-14 items-center justify-center rounded-xl bg-amber-100 text-lg font-semibold text-amber-900">
-                  Atendendo...
-                </span>
-              )}
-              <button
-                type="button"
-                disabled={busyId === request.id}
-                onClick={() => void act(request.id, "concluir")}
-                className="h-14 rounded-xl border-2 border-amber-700 text-lg font-bold disabled:opacity-60"
-              >
-                Concluir
-              </button>
-            </div>
-          </li>
-        ))}
-      </ul>
-    </div>
+                  <Link
+                    to="/caixa/$sessionId"
+                    params={{ sessionId: request.sessionId }}
+                    className="block min-w-0"
+                  >
+                    <span className="block break-words text-2xl font-bold leading-tight">
+                      {request.customerName}
+                    </span>
+                    <span className="mt-1 block text-base font-medium text-amber-900">
+                      {request.status === "pedida" ? "Pediu a conta" : "Em atendimento"} ·{" "}
+                      {hhmm(request.createdAt)}
+                    </span>
+                  </Link>
+                  <div className="mt-3 grid grid-cols-2 gap-3">
+                    {request.status === "pedida" ? (
+                      <button
+                        type="button"
+                        disabled={busyId === request.id}
+                        onClick={() => void act(request.id, "atender")}
+                        className="h-14 rounded-xl bg-amber-600 text-lg font-bold text-white disabled:opacity-60"
+                      >
+                        Atender
+                      </button>
+                    ) : (
+                      <span className="flex h-14 items-center justify-center rounded-xl bg-amber-100 text-lg font-semibold text-amber-900">
+                        Atendendo...
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busyId === request.id}
+                      onClick={() => void act(request.id, "concluir")}
+                      className="h-14 rounded-xl border-2 border-amber-700 text-lg font-bold disabled:opacity-60"
+                    >
+                      Concluir
+                    </button>
+                  </div>
+                </m.li>
+              ))}
+            </AnimatePresence>
+          </ul>
+        </m.div>
+      )}
+    </AnimatePresence>
   );
 }

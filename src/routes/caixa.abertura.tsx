@@ -8,6 +8,7 @@ import {
   openOperationWithStockCount,
   skipStockCountAndOpen,
 } from "@/lib/stock-count.functions";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/abertura")({
   head: () => ({
@@ -153,7 +154,9 @@ function AberturaOperacao() {
 
   if (!candidates) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-8 text-sm text-muted-foreground">Carregando…</main>
+      <main className="mx-auto max-w-lg px-4 py-8">
+        <Loading label="Carregando…" />
+      </main>
     );
   }
 

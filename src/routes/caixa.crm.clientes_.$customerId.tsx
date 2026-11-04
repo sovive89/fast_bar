@@ -6,6 +6,7 @@ import { brl, formatPhone, hhmm } from "@/lib/format";
 import { getCustomerDetail, updateCustomerNotes } from "@/lib/customers.functions";
 import { SEGMENT_HINT, SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
 import type { SessionStatus } from "@/types/fastbar";
+import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/crm/clientes_/$customerId")({
   head: () => ({
@@ -120,7 +121,7 @@ function CustomerDetail() {
   }
 
   if (loading) {
-    return <p className="p-6 text-sm text-muted-foreground">Carregando cliente...</p>;
+    return <Loading className="p-6" label="Carregando cliente..." />;
   }
 
   if (!customer) {
