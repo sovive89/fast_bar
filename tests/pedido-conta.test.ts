@@ -4,6 +4,11 @@ import { FakeSupabase } from "./helpers/fake-supabase";
 const holder: { db: FakeSupabase } = { db: new FakeSupabase() };
 vi.mock("../src/lib/fastbar.server", () => ({ admin: () => holder.db }));
 
+const notifyStaff = vi.fn(async (_payload: unknown) => ({ sent: 1, removed: 0, failed: 0 }));
+vi.mock("../src/lib/push.server", () => ({
+  notifyStaff: (payload: unknown) => notifyStaff(payload),
+}));
+
 const {
   requestBill,
   getActiveBillRequest,
@@ -13,6 +18,8 @@ const {
 } = await import("../src/lib/bill-requests.server");
 
 beforeEach(() => {
+  notifyStaff.mockClear();
+  notifyStaff.mockResolvedValue({ sent: 1, removed: 0, failed: 0 });
   holder.db = new FakeSupabase();
   holder.db.seed("fastbar_sessions", [
     { id: "ana", customer_name: "Ana", status: "open" },
@@ -138,5 +145,39 @@ describe("equipe vê e atende", () => {
     await completeBillRequestsForSession("ana", "equipe");
     expect(await getActiveBillRequest("ana")).toBeNull();
     expect(await getActiveBillRequest("bruno")).toMatchObject({ status: "pedida" });
+  });
+});
+
+describe("push para o celular da equipe", () => {
+  it("o pedido novo avisa a equipe com o primeiro nome, e leva para a comanda", async () => {
+    holder.db.table("fastbar_sessions").find((x) => x.id === "ana")!.customer_name =
+      "Ana Paula Souza";
+    await requestBill("ana");
+    expect(notifyStaff).toHaveBeenCalledTimes(1);
+    expect(notifyStaff).toHaveBeenCalledWith({
+      kind: "conta",
+      title: "Pedido de conta",
+      body: "Ana pediu a conta",
+      url: "/caixa/ana",
+      tag: "conta-ana",
+    });
+  });
+
+  it("o toque repetido NÃO dispara outro push", async () => {
+    await requestBill("ana");
+    await requestBill("ana");
+    expect(notifyStaff).toHaveBeenCalledTimes(1);
+  });
+
+  it("recusado (comanda fechada, paga, inexistente) não dispara push", async () => {
+    for (const id of ["fechada", "paga", "pendente", "nao-existe"]) await requestBill(id);
+    expect(notifyStaff).not.toHaveBeenCalled();
+  });
+
+  it("se o push falhar (até lançando erro), o cliente continua vendo sucesso", async () => {
+    notifyStaff.mockRejectedValueOnce(new Error("serviço de push fora do ar"));
+    const result = await requestBill("ana");
+    expect(result).toEqual({ ok: true, status: "pedida", alreadyRequested: false });
+    expect(requests()).toHaveLength(1);
   });
 });

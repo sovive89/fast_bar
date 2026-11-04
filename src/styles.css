@@ -184,3 +184,32 @@
     letter-spacing: -0.02em;
   }
 }
+
+
+/*
+ * Alerta de pedido de conta no caixa: o cartão fica firme e legível e só a BORDA vermelha pulsa
+ * (pulsar a opacidade do bloco inteiro apagava o texto). Para quem desliga animações no aparelho
+ * (prefers-reduced-motion), a borda vermelha continua, parada.
+ */
+@keyframes alert-border-pulse {
+  0%,
+  100% {
+    border-color: rgb(220 38 38);
+    box-shadow: 0 0 0 0 rgb(220 38 38 / 0.55);
+  }
+  50% {
+    border-color: rgb(252 165 165);
+    box-shadow: 0 0 0 8px rgb(220 38 38 / 0);
+  }
+}
+
+.alert-pulse-border {
+  border-color: rgb(220 38 38);
+  animation: alert-border-pulse 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert-pulse-border {
+    animation: none;
+  }
+}

@@ -75,12 +75,15 @@ Lovable).
 5. Pedido de conta pelo celular e alertas (P2/P7 do `CLAUDE.md`), em PRs separados:
    - ~~Pedido de conta + alerta grande no caixa (banner, som, vibração)~~ (feito; migration
      `20261104170000_bill_requests.sql`).
-   - Próximos: **notificação push** (celular da equipe com o app fechado) e o **alerta de apoio**
-     (mulheres e LGBTQIA+, desligado por configuração até a revisão de privacidade/jurídica).
-     Atenção: hoje **nenhum service worker chega à produção** (ver comentário em `vite.config.ts`;
-     o manifest que vale é o `public/manifest.webmanifest`). Push exige um `public/sw.js` servido de
-     verdade, chaves VAPID nas variáveis do Amplify e uma tabela de inscrições. iPhone só recebe push
-     com o app instalado na tela inicial (iOS 16.4+).
+   - ~~Notificação push do pedido de conta~~ (feito; migration `20261104180000_push_subscriptions.sql`,
+     `public/push-sw.js`, sino no cabeçalho do caixa). **Falta a configuração das chaves VAPID no
+     Amplify** (ver `docs/PUSH_NOTIFICACOES.md`); sem elas o push fica desligado.
+   - Próximo: **alerta de apoio** (mulheres e LGBTQIA+), em PR separado e **desligado por
+     configuração** até a revisão de privacidade/jurídica. Requisitos já definidos pelo dono:
+     alertar **de outra forma** que o pedido de conta e **abrir uma janela** sozinho no caixa
+     (a janela e a animação, "tipo Motion/React", ainda a esclarecer). Reaproveita `notifyStaff`
+     com `kind: "apoio"` (vibração própria já pronta no service worker). Antes de ligar: perfis de
+     acesso (hoje a senha é uma só para toda a equipe), retenção e protocolo operacional.
 6. Item 5 do roadmap (Produção), em PRs separados:
    - ~~Itens produzidos + fichas de produção + ordens de produção~~ (feito; tela `/caixa/producao`).
    - ~~Item produzido na conferência de estoque (`listCountableItems`)~~ (feito; migration `20261104160000_stock_count_produced_items.sql`).
