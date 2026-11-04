@@ -65,6 +65,11 @@ o quê: `docs/DIVISAO_TAREFAS.md`.
   Lovable). Até ser desligada, o aviso do `AGENTS.md` continua valendo. Depois, o aviso sai do
   `AGENTS.md` num PR pequeno. Os pacotes do Lovable no build (`@lovable.dev/vite-tanstack-config`)
   continuam: trocá-los mexe no deploy.
+- **Desenvolvimento só pelo GitHub (04/11/2026):** o projeto nasceu no Lovable e o vínculo não pôde ser
+  desligado pelo dono. Ninguém edita no Lovable; todo o desenvolvimento acontece no repositório
+  (branch + PR). O vínculo fica parado: o Lovable só recebe o que entra na `master` e nada volta dele.
+  Se um dia incomodar, o caminho é um repositório novo sem o vínculo (exige reconfigurar a Amplify).
+  O aviso do `AGENTS.md` continua valendo enquanto o vínculo existir.
 - As diretrizes de marca da Anthropic (skill `brand-guidelines`) **não se aplicam** ao FastBar: o
   painel tem a paleta própria e o cliente vê a marca do bar.
 
