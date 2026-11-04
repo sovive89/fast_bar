@@ -17,6 +17,7 @@ exato ou print) e o horário.
    - `20261104120000_session_payments.sql`
    - `20261104130000_session_credits.sql`
    - `20261104140000_pos_credit_charge.sql`
+   - `20261104150000_producao_fichas_ordens.sql`
 2. O último deploy do `master` terminou no Amplify.
 3. Não há operação aberta. Se houver, ela foi aberta antes da mudança: encerre-a pelo fluxo novo
    (passo 5) antes de começar.
@@ -129,7 +130,22 @@ Com a operação aberta, abra uma comanda nova.
 | Repita e deixe a cobrança ser recusada no terminal | A comanda é liberada, sem crédito |
 | Cobrar a conta pela maquininha numa comanda com crédito | O terminal cobra só o saldo depois do crédito |
 
-## 10. Auditoria no banco (quem tem acesso ao Supabase)
+## 10. Produção
+
+Antes, anote o saldo de dois ingredientes ativos que tenham lote com preço (ex.: Limão e Açúcar).
+
+| Ação | Resultado esperado |
+| --- | --- |
+| Menu lateral → "Produção" | Abre a tela com "Itens produzidos", "Nova ficha de produção" e "Últimas produções" |
+| Em "Nova ficha", nome "Xarope de limão", unidade ml, rende 1500, perda 10; ingredientes: Limão 1000 e Açúcar 800 | A prévia diz "cada receita soma 1.350 ml ao saldo" |
+| Toque "Salvar ficha" | Mensagem "Ficha criada" e o item aparece com saldo 0 |
+| No item, deixe 1 receita e toque "Produzir" | Saldo do xarope vira 1.350 ml; mensagem com o custo; o saldo do Limão cai 1000 e o do Açúcar cai 800 em Estoque |
+| Confira o custo médio do xarope | Bate com o preço dos lotes que saíram primeiro (FEFO), não com a média de todos |
+| Produza com mais receitas do que o saldo permite | Recusa dizendo QUAL ingrediente não tem saldo; **nenhum** saldo muda |
+| Produza com um ingrediente sem preço nos lotes | Produz, mas diz "custo incompleto" e o custo médio do item não muda |
+| Tente salvar ficha sem ingrediente, com rendimento 0 ou perda 100 | Mensagem dizendo o que falta |
+
+## 11. Auditoria no banco (quem tem acesso ao Supabase)
 
 Confirme que ficou gravado:
 
@@ -142,6 +158,12 @@ order by c.created_at desc limit 5;
 -- Itens da conferência do passo 2: diferença -2, motivo perda_quebra, com o tipo do item
 select item_kind, product_name, quantidade_esperada, quantidade_contada, divergencia, motivo, observacao
 from fastbar_stock_count_items order by created_at desc limit 10;
+
+-- Produção do passo 10: ordens e a baixa de cada ingrediente (custo nulo = custo incompleto)
+select o.produced_item_name, o.batches, o.quantity_produced, o.cost_total, o.cost_complete,
+       i.component_name, i.quantity, i.cost
+from fastbar_production_orders o join fastbar_production_order_items i on i.order_id = o.id
+order by o.created_at desc, i.component_name limit 10;
 
 -- Entradas de crédito do passo 9 (pos_order_id preenchido = veio da maquininha)
 select s.customer_name, c.amount, c.method, c.pos_order_id, c.created_at
