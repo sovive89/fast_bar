@@ -25,7 +25,7 @@ Lovable).
    - `20261104120000_session_payments.sql` (livro de pagamentos; sem ela o pagamento da comanda falha)
 2. **Testar o fluxo real** no app (roteiro em `docs/ROTEIRO_TESTE_OPERACAO.md`, quando existir):
    abrir operação com conferência, lançar numa comanda, encerrar com os três destinos.
-3. **Baseline do esquema**: `fastbar_sessions` (e talvez outras tabelas base) nunca foi criada por
+3. **Baseline do esquema — Codex, em revisão**: `fastbar_sessions` (e outras tabelas base) nunca foi criada por
    uma migration do repositório, só existe no banco. Por isso o check "Supabase Preview" quebra em
    todo PR que mexe em `supabase/migrations/`. Gerar uma migration de baseline a partir do banco
    real.
