@@ -11,7 +11,7 @@
     "lint": "eslint .",
     "format": "prettier --write .",
     "ai:demo": "tsx index.ts",
-    "test": "vitest run",
+    "test": "vitest run --exclude 'nous-motion/**' --exclude '**/node_modules/**'",
     "test:stock-photo": "node tests/run-stock-photo.mjs",
     "test:ocr-model": "node tests/run-ocr-model.mjs"
   },

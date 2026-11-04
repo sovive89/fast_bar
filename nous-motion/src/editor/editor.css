@@ -1,0 +1,18 @@
+.nm-ed { display: grid; gap: 16px; font: 400 0.9375rem/1.4 system-ui, sans-serif; }
+.nm-ed__tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.nm-ed__tabs button, .nm-ed > button { min-height: 44px; padding: 0 16px; border-radius: 10px; border: 1px solid var(--nm-secondary); background: transparent; color: inherit; cursor: pointer; }
+.nm-ed__tabs button[aria-selected="true"] { border-color: var(--nm-primary); outline: 2px solid var(--nm-primary); }
+.nm-ed__gallery { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 12px; }
+.nm-ed__gallery > li { min-width: 0; }
+.nm-ed__tile { min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; padding: 12px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--nm-secondary) 50%, transparent); }
+.nm-ed__tile[data-selected="true"] { border-color: var(--nm-primary); outline: 2px solid var(--nm-primary); }
+.nm-ed__pick { display: grid; gap: 2px; min-height: 44px; text-align: center; background: transparent; border: 0; color: inherit; cursor: pointer; border-radius: 8px; }
+.nm-ed__pick:focus-visible { outline: 3px solid var(--nm-focus); }
+.nm-ed__work { display: grid; gap: 16px; grid-template-columns: 1fr; }
+@media (min-width: 720px) { .nm-ed__work { grid-template-columns: 1fr 1fr; } }
+.nm-ed__preview { min-width: 0; overflow: hidden; min-height: 120px; display: flex; align-items: center; justify-content: center; padding: 16px; border-radius: 12px; border: 1px dashed var(--nm-secondary); }
+.nm-ed__card { padding: 16px 24px; border-radius: 12px; background: color-mix(in srgb, var(--nm-primary) 15%, transparent); }
+.nm-ed__form { display: grid; gap: 10px; }
+.nm-ed__field { display: grid; grid-template-columns: 1fr; gap: 4px; }
+.nm-ed__field input[type="range"], .nm-ed__field select, .nm-ed__field input[type="text"] { width: 100%; min-height: 36px; }
+.nm-ed__json { margin: 0; padding: 12px; overflow: auto; border-radius: 10px; background: color-mix(in srgb, var(--nm-secondary) 15%, transparent); font-size: 0.75rem; }

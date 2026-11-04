@@ -1,0 +1,49 @@
+.nm-btn { --nm-mx: 0px; --nm-my: 0px; position: relative; overflow: hidden; isolation: isolate; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 2px solid var(--nm-primary); border-radius: var(--nm-radius); font: 600 0.9375rem/1 system-ui, sans-serif; cursor: pointer; transform: translate(var(--nm-mx), var(--nm-my)); transition: transform calc(0.18s * var(--nm-speed)) ease-out, box-shadow calc(0.18s * var(--nm-speed)) ease-out; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+.nm-btn[data-size="sm"] { padding: 8px 12px; min-height: 36px; font-size: 0.8125rem; }
+.nm-btn[data-size="md"] { padding: 12px 18px; min-height: 44px; }
+.nm-btn[data-size="lg"] { padding: 16px 24px; min-height: 52px; font-size: 1.0625rem; }
+.nm-btn[data-variant="solid"] { background: var(--nm-primary); color: var(--nm-on); }
+.nm-btn[data-variant="outline"] { background: transparent; color: var(--nm-primary); }
+.nm-btn[data-variant="ghost"] { background: transparent; border-color: transparent; color: var(--nm-primary); }
+.nm-btn[data-shadow="true"] { box-shadow: 0 4px 14px color-mix(in srgb, var(--nm-primary) 40%, transparent); }
+.nm-btn:focus-visible { outline: 3px solid var(--nm-focus); outline-offset: 2px; }
+.nm-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.nm-btn[aria-busy="true"] { cursor: progress; }
+.nm-btn__label { position: relative; z-index: 1; }
+.nm-btn__sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.nm-btn__icon { font-weight: 700; z-index: 1; }
+.nm-btn__spinner { width: 1em; height: 1em; border: 2px solid currentColor; border-right-color: transparent; border-radius: 50%; animation: nm-btn-spin calc(0.7s * var(--nm-speed)) linear infinite; z-index: 1; }
+
+/* Press: funciona em toque e mouse. */
+.nm-btn[data-template="scale"]:active:not(:disabled) { transform: scale(calc(1 - 0.06 * var(--nm-intensity))); }
+.nm-btn[data-template="pulse"]:not(:disabled):not([aria-busy="true"]) { animation: nm-btn-pulse calc(1.6s * var(--nm-speed)) ease-out infinite; }
+.nm-btn[data-template="alert"]:not(:disabled) { animation: nm-btn-shake calc(0.5s * var(--nm-speed)) ease-in-out 2; }
+.nm-btn[data-template="ripple"]::after { content: ""; position: absolute; left: var(--nm-x, 50%); top: var(--nm-y, 50%); width: 20px; height: 20px; margin: -10px; border-radius: 50%; background: currentColor; opacity: 0; pointer-events: none; z-index: 0; }
+.nm-btn[data-ripple="on"]::after { animation: nm-btn-ripple calc(0.6s * var(--nm-speed)) ease-out; }
+
+/* Slide: o preenchimento fica atrás do texto. */
+.nm-btn__fill { position: absolute; inset: 0; background: color-mix(in srgb, var(--nm-primary) 25%, transparent); transform: translateX(-101%); transition: transform calc(0.25s * var(--nm-speed)) ease-out; z-index: 0; }
+
+/* Notificação */
+.nm-btn__badge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #dc2626; color: #fff; font-size: 0.6875rem; line-height: 18px; text-align: center; z-index: 2; animation: nm-btn-pulse calc(1.6s * var(--nm-speed)) ease-out infinite; }
+.nm-btn[data-template="notification"] { overflow: visible; }
+
+/* Estados finais: ícone (✓/✕) + texto para leitores, não só cor. */
+.nm-btn[data-state="success"] { background: #15803d; border-color: #15803d; color: #fff; }
+.nm-btn[data-state="error"] { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+
+/* Hover só onde existe hover (mouse). No toque nada disso roda. */
+@media (hover: hover) and (pointer: fine) {
+  .nm-btn[data-template="glow"]:hover:not(:disabled) { box-shadow: 0 0 calc(18px * var(--nm-intensity)) var(--nm-primary); }
+  .nm-btn[data-template="slide"]:hover:not(:disabled) .nm-btn__fill { transform: translateX(0); }
+  .nm-btn[data-template="scale"]:hover:not(:disabled) { transform: scale(calc(1 + 0.04 * var(--nm-intensity))); }
+}
+
+@keyframes nm-btn-spin { to { transform: rotate(360deg); } }
+@keyframes nm-btn-pulse { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--nm-primary) 55%, transparent); } 100% { box-shadow: 0 0 0 calc(12px * var(--nm-intensity)) transparent; } }
+@keyframes nm-btn-shake { 0%, 100% { transform: translateX(0); } 25% { transform: translateX(calc(-4px * var(--nm-intensity))); } 75% { transform: translateX(calc(4px * var(--nm-intensity))); } }
+@keyframes nm-btn-ripple { from { opacity: 0.35; transform: scale(1); } to { opacity: 0; transform: scale(18); } }
+
+/* Reduced motion: sem efeitos decorativos. Spinner vira estático (o texto "Carregando" continua). */
+@media (prefers-reduced-motion: reduce) { .nm-btn[data-rm="system"], .nm-btn[data-rm="system"] *, .nm-btn[data-rm="system"]::after { animation: none !important; transition: none !important; } }
+.nm-btn[data-reduced="true"], .nm-btn[data-reduced="true"] *, .nm-btn[data-reduced="true"]::after { animation: none !important; transition: none !important; }

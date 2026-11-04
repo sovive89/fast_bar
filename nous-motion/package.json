@@ -1,0 +1,61 @@
+{
+  "name": "@nous/motion",
+  "version": "0.1.0",
+  "description": "Animações e microinterações modulares para React (NØUS).",
+  "private": true,
+  "type": "module",
+  "sideEffects": [
+    "**/*.css"
+  ],
+  "files": [
+    "dist"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/types/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./loader": {
+      "types": "./dist/types/loader.d.ts",
+      "import": "./dist/loader.js"
+    },
+    "./button": {
+      "types": "./dist/types/button.d.ts",
+      "import": "./dist/button.js"
+    },
+    "./transition": {
+      "types": "./dist/types/transition.d.ts",
+      "import": "./dist/transition.js"
+    },
+    "./editor": {
+      "types": "./dist/types/editor.d.ts",
+      "import": "./dist/editor.js"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "build": "vite build && tsc -p tsconfig.build.json",
+    "size": "node scripts/measure-size.mjs",
+    "demo": "vite --config examples/react-demo/vite.config.ts"
+  },
+  "peerDependencies": {
+    "react": ">=18",
+    "react-dom": ">=18"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
+    "@testing-library/user-event": "^14.6.8",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "jsdom": "^25.0.1",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0",
+    "vitest": "^3.0.0"
+  }
+}

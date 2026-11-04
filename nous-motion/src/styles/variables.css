@@ -1,0 +1,6 @@
+/* Tokens do @nous/motion. O app pode sobrescrever em :root ou em um ancestral. */
+:root {
+  --nm-primary: #f97316;
+  --nm-secondary: #a3a3a3;
+  --nm-focus: #2563eb;
+}

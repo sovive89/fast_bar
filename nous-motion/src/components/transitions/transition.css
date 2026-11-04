@@ -1,0 +1,16 @@
+.nm-t { transition: opacity var(--nm-t-dur) var(--nm-t-ease) var(--nm-t-delay), transform var(--nm-t-dur) var(--nm-t-ease) var(--nm-t-delay), grid-template-rows var(--nm-t-dur) var(--nm-t-ease) var(--nm-t-delay); }
+.nm-t[data-visible="false"] { opacity: 0; }
+
+.nm-t[data-template="slide"][data-visible="false"][data-direction="up"] { transform: translateY(calc(24px * var(--nm-t-k))); }
+.nm-t[data-template="slide"][data-visible="false"][data-direction="down"] { transform: translateY(calc(-24px * var(--nm-t-k))); }
+.nm-t[data-template="slide"][data-visible="false"][data-direction="left"] { transform: translateX(calc(24px * var(--nm-t-k))); }
+.nm-t[data-template="slide"][data-visible="false"][data-direction="right"] { transform: translateX(calc(-24px * var(--nm-t-k))); }
+
+.nm-t[data-template="scale"][data-visible="false"] { transform: scale(calc(1 - 0.15 * var(--nm-t-k))); }
+
+/* Collapse anima a altura (grid 0fr→1fr): é a única que mexe em layout; use em blocos pequenos. */
+.nm-t[data-template="collapse"] { display: grid; grid-template-rows: 1fr; }
+.nm-t[data-template="collapse"][data-visible="false"] { grid-template-rows: 0fr; }
+.nm-t__inner { overflow: hidden; min-height: 0; }
+
+@media (prefers-reduced-motion: reduce) { .nm-t[data-rm="system"] { transition: none; } }
