@@ -114,3 +114,26 @@ o NØUS Motion é exatamente; esta é a leitura proposta, **não implementada**:
 - **Falta decidir:** quando instalada, se a `@nous/motion` **substitui** a camada de
   `src/components/motion/` ou **convive** com ela (por exemplo, `@nous/motion` só no editor de
   personalização e a camada atual no resto).
+
+## 04/11/2026 — cardápio da PWA e apoio por adesão voluntária
+
+- **Pedido do dono:** cardápio com logo pequena à esquerda, cabeçalho translúcido persistente,
+  categorias em rolagem horizontal e atalhos de localização, contato e Instagram. Os produtos
+  rolam por baixo. O endereço público é configurado em Marca, separado dos documentos da empresa.
+- **Implementado nesta branch:** cabeçalho sticky no cardápio da comanda e na página inicial,
+  links das categorias com compensação da altura do cabeçalho, WhatsApp, Instagram, mapa e
+  compartilhamento de localização quando configurados. Sem migration; mantém as permissões
+  existentes para editar Marca e retorna apenas o endereço destinado à exibição pública.
+- **Esclarecimento do dono:** “alerta” significa apoio/segurança e pertence à PWA de atendimento.
+  Uma tela explica as políticas de proteção do bar e a existência do botão. A pessoa escolhe
+  aderir; **não se pergunta gênero neste fluxo**, por minimização dos dados — não por uma proibição geral da LGPD. O botão só aparece para quem optar pelo recurso.
+- **Animação solicitada:** usar um template do NØUS Motion para esse botão. A biblioteca possui
+  `NousButton` com templates `alert` e `notification`; ainda não foi instalada neste app.
+  Este pedido autoriza a integração específica do botão, sem decidir a substituição da camada
+  de animação do restante do aplicativo. A proposta antiga de usar a biblioteca apenas nas
+  telas da equipe fica **substituída por esta exceção para o botão de apoio do cliente**.
+- **Pendente, em entrega própria:** tela de adesão, persistência da escolha, acionamento por
+  pressionar e segurar, ocorrência protegida, aviso prioritário e atendimento pela equipe,
+  confirmação real do envio e integração do template. A infraestrutura de push existente não
+  significa que esse fluxo já esteja implementado. Não mostrar confirmação de apoio enviado
+  sem registro real. Não expor preferências nem ocorrências no CRM público.

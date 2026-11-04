@@ -25,7 +25,9 @@ const DEFAULT_PRIMARY_COLOR = "#f97316";
  */
 /** Reduz a imagem antes de subir — logo de celular vem com megabytes que não servem pra nada num
  * avatar de 40px, e o upload trafega em base64 (cresce ~33%). */
-async function compressImageForUpload(file: File): Promise<{ base64: string; contentType: string }> {
+async function compressImageForUpload(
+  file: File,
+): Promise<{ base64: string; contentType: string }> {
   const bitmap = await createImageBitmap(file);
   const maxSide = 512;
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
@@ -54,6 +56,7 @@ export function BrandingModule({
   const [primaryColor, setPrimaryColor] = useState(config["primaryColor"] ?? "");
   const [instagramUser, setInstagramUser] = useState(config["instagramUser"] ?? "");
   const [whatsappNumber, setWhatsappNumber] = useState(config["whatsappNumber"] ?? "");
+  const [publicAddress, setPublicAddress] = useState(config["publicAddress"] ?? "");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -102,6 +105,8 @@ export function BrandingModule({
       // Grava já normalizado: o cliente lê direto do banco pra montar o link, então guardar
       // "@bar" ou "(61) 9..." aqui viraria link quebrado lá na frente.
       await onSave(row?.enabled ?? true, {
+        ...config,
+        publicAddress: publicAddress.trim(),
         brandName,
         logoUrl,
         primaryColor,
@@ -230,6 +235,22 @@ export function BrandingModule({
         </div>
 
         <div className="mt-4 space-y-3">
+          <div>
+            <label htmlFor="public-address" className="text-xs font-medium text-muted-foreground">
+              Endereço público
+            </label>
+            <input
+              id="public-address"
+              type="text"
+              value={publicAddress}
+              onChange={(e) => setPublicAddress(e.target.value)}
+              placeholder="Rua, número, bairro e cidade"
+              className="mt-1 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Aparece no cardápio para abrir rotas e compartilhar a localização.
+            </p>
+          </div>
           <div>
             <label className="text-xs font-medium text-muted-foreground">Instagram</label>
             <div className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-background px-3 focus-within:border-primary">

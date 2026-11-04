@@ -9,6 +9,8 @@
  * tela realmente precisar — não vale antecipar campo que nada lê.
  */
 export interface TenantBranding {
+  /** Endereço público exibido no cardápio, configurado pela equipe. */
+  publicAddress?: string | null;
   brandName: string;
   logoUrl: string | null;
   primaryColor: string | null;

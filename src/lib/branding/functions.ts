@@ -28,7 +28,14 @@ export const getPublicBranding = createServerFn({ method: "GET" }).handler(
     // (ou editada direto no banco) continua chegando aqui do jeito que estiver.
     const instagramUser = sanitizeInstagramUser(config["instagramUser"]);
     const whatsappNumber = sanitizeWhatsappNumber(config["whatsappNumber"]);
-    return { brandName, logoUrl, primaryColor, instagramUser, whatsappNumber };
+    return {
+      brandName,
+      logoUrl,
+      primaryColor,
+      instagramUser,
+      whatsappNumber,
+      publicAddress: config["publicAddress"]?.trim() || null,
+    };
   },
 );
 

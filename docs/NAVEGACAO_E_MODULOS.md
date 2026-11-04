@@ -62,3 +62,15 @@ Fora do menu, acessadas por botões no cabeçalho do caixa: **Abertura** (`/caix
 - Um PR por movimentação; nada de reorganizar tudo de uma vez (`CLAUDE.md` §9).
 - Validar em tela de celular estreita (UX mobile é prioridade absoluta).
 - Atualizar este arquivo e o `DECISOES.md` no mesmo PR.
+
+## 7. PWA do cliente — continuidade da gravação (04/11/2026)
+
+- Nesta branch: cardápio também na página inicial; cabeçalho persistente com logo, categorias
+  horizontais e atalhos públicos configurados em Marca (Instagram, WhatsApp e localização).
+- O botão de apoio pertence à PWA de atendimento e será exibido somente após adesão voluntária,
+  precedida da explicação das políticas do bar, sem coleta de gênero. Implementação pendente,
+  incluindo o template NØUS Motion solicitado. Ver decisão correspondente em `DECISOES.md`.
+- Roteiro: em 320/375/430 px, conferir ausência de rolagem lateral da página; rolar as categorias,
+  saltar até a última e conferir que o título fica abaixo do cabeçalho; abrir cada atalho;
+  compartilhar/cancelar compartilhamento; repetir com campos públicos vazios. Conferir no
+  aparelho real após o deploy. Nenhum efeito sobre estoque, caixa ou histórico financeiro.

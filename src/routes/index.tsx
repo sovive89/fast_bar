@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { MenuList } from "@/features/client/components/MenuList";
 import { Lock } from "lucide-react";
 import { BrandingProvider, useBranding } from "@/lib/branding";
 
@@ -29,7 +30,7 @@ function ClientHomeContent() {
 
   return (
     <main
-      className="relative mx-auto flex min-h-screen w-full max-w-md flex-col justify-center px-5 py-10"
+      className="relative mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-10"
       style={style}
     >
       <Link
@@ -51,8 +52,8 @@ function ClientHomeContent() {
       </p>
       <h1 className="mt-2 text-4xl font-bold">Sua comanda digital</h1>
       <p className="mt-2 text-sm text-muted-foreground">
-        Informe seus dados e acompanhe seu consumo pelo celular. O lançamento dos
-        itens é feito pelo caixa.
+        Informe seus dados e acompanhe seu consumo pelo celular. O lançamento dos itens é feito pelo
+        caixa.
       </p>
 
       <div className="mt-8">
@@ -63,6 +64,7 @@ function ClientHomeContent() {
           Abrir comanda
         </Link>
       </div>
+      <MenuList />
     </main>
   );
 }
