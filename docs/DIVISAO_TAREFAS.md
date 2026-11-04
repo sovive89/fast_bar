@@ -97,8 +97,9 @@ Lovable).
    - Caixas de seleção e cinco destinos (Arquivo, Cortesia, Inadimplência, Fechar conta, Manter
      aberta); comandas de operações anteriores entram no fechamento.
    - Comanda inadimplente reabre quando o cliente volta (`src/lib/debt-reopen.server.ts`).
-   - Migration `20261104190000_fechamento_destinos_arquivo_conta_pedida.sql` **ainda não aplicada**
-     em produção: aplicar antes do merge (só amplia as regras; o código atual continua funcionando).
+   - Migration `20261104190000_fechamento_destinos_arquivo_conta_pedida.sql` **aplicada em produção
+     em 04/11/2026** (projeto `evjoxkllaaxgxdaupees`, registrada como `fechamento_destinos_arquivo_conta_pedida`;
+     não reaplicar). Só amplia as regras; o código atual continua funcionando.
 6. Item 5 do roadmap (Produção), em PRs separados:
    - ~~Itens produzidos + fichas de produção + ordens de produção~~ (feito; tela `/caixa/producao`).
    - ~~Item produzido na conferência de estoque (`listCountableItems`)~~ (feito; migration `20261104160000_stock_count_produced_items.sql`).
