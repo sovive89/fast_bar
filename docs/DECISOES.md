@@ -68,6 +68,12 @@ o quê: `docs/DIVISAO_TAREFAS.md`.
 - As diretrizes de marca da Anthropic (skill `brand-guidelines`) **não se aplicam** ao FastBar: o
   painel tem a paleta própria e o cliente vê a marca do bar.
 
+## Mapa de navegação e modelos
+
+- Abas, módulos e realocações (feitas, decididas e propostas): `docs/NAVEGACAO_E_MODULOS.md`.
+- Modelos para colar no Notion (decisão, entrega, módulo, roteiro de teste, ocorrência, pendência):
+  `docs/TEMPLATES_NOTION.md`.
+
 ## Proposta (aguarda o dono) — NØUS Motion no FastBar
 
 O dono pediu "colocar o NØUS Motion como ferramenta na aplicação". Ainda não está definido o que
