@@ -259,3 +259,55 @@ describe("bebidas base e ingredientes", () => {
     expect(vodka?.current_stock).toBe(2100);
   });
 });
+
+describe("itens produzidos", () => {
+  beforeEach(() => {
+    holder.db.seed("fastbar_produced_items", [
+      { id: "xarope", name: "Xarope de limão", unit: "ml", current_stock: 1350, active: true },
+      { id: "velho", name: "Calda antiga", unit: "ml", current_stock: 500, active: false },
+    ]);
+  });
+
+  it("entram na conferência, só os ativos, no grupo próprio", async () => {
+    const items = await listCountableItems();
+    const produced = items.filter((item) => item.kind === "produced_item");
+    expect(
+      produced.map((item) => [item.key, item.category, item.unit, item.stockQuantity]),
+    ).toEqual([["produced_item:xarope", "Itens produzidos", "ml", 1350]]);
+  });
+
+  it("aceitam contagem fracionada, exigem motivo na diferença e registram o tipo", async () => {
+    const semMotivo = await recordStockCountAndOpenOperation({
+      items: [{ itemKey: "produced_item:xarope", contada: 1200.5 }],
+      realizadoPor: "equipe",
+    });
+    expect(semMotivo.ok).toBe(false);
+
+    const result = await recordStockCountAndOpenOperation({
+      items: [{ itemKey: "produced_item:xarope", contada: 1200.5, motivo: "perda_quebra" }],
+      realizadoPor: "equipe",
+    });
+    expect(result.ok).toBe(true);
+    expect(
+      holder.db.table("fastbar_stock_count_items").find((item) => item.item_id === "xarope"),
+    ).toMatchObject({
+      item_kind: "produced_item",
+      product_id: null,
+      product_name: "Xarope de limão",
+      quantidade_esperada: 1350,
+      quantidade_contada: 1200.5,
+      motivo: "perda_quebra",
+    });
+  });
+
+  it("nunca altera o saldo do item produzido", async () => {
+    await recordStockCountAndOpenOperation({
+      items: [
+        { itemKey: "produced_item:xarope", contada: 0, motivo: "divergencia_nao_identificada" },
+      ],
+      realizadoPor: "equipe",
+    });
+    const xarope = holder.db.table("fastbar_produced_items").find((row) => row.id === "xarope");
+    expect(xarope?.current_stock).toBe(1350);
+  });
+});
