@@ -1,13 +1,18 @@
 import { Link } from "@tanstack/react-router";
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { TabItemList } from "@/components/shared/TabItemList";
+import { BrandBackground } from "./BrandBackground";
 import { MenuList } from "@/features/client/components/MenuList";
 import { brl, elapsed, formatPhone, hhmm } from "@/lib/format";
 import { tabTotal, tabTotalWithDiscount } from "@/services/supabase/tabItems";
 import { BrandingProvider, useBranding, type TenantBranding } from "@/lib/branding";
 import type { BarSession, BarTabItem, BillRequestState } from "@/types/fastbar";
 import { Loading } from "@/components/motion/Loading";
+
+const SupportWidget = lazy(() =>
+  import("./SupportWidget").then((module) => ({ default: module.SupportWidget })),
+);
 
 export interface CustomerTabViewProps {
   loading: boolean;
@@ -64,6 +69,7 @@ function CustomerTabViewContent({
   onRequestBill,
 }: CustomerTabViewProps) {
   const { branding, style } = useBranding();
+  const [supportSlot, setSupportSlot] = useState<HTMLDivElement | null>(null);
   const [requesting, setRequesting] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
 
@@ -137,7 +143,8 @@ function CustomerTabViewContent({
   }
 
   return (
-    <main className="mx-auto w-full max-w-md px-5 py-8" style={style}>
+    <main className="relative isolate mx-auto w-full max-w-md px-5 pb-32 pt-8" style={style}>
+      <BrandBackground />
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <BrandHeader branding={branding} />
@@ -219,7 +226,15 @@ function CustomerTabViewContent({
         <TabItemList items={items} />
       </div>
 
-      <MenuList />
+      <MenuList supportSlotRef={setSupportSlot} />
+      <Suspense fallback={null}>
+        <SupportWidget
+          key={session.id}
+          sessionId={session.id}
+          portalTarget={supportSlot}
+          activeSession={session.status === "open" || session.status === "closed"}
+        />
+      </Suspense>
 
       <p className="mt-6 text-xs text-muted-foreground">
         Os itens são lançados pelo caixa. O fechamento e o pagamento também são feitos no caixa.

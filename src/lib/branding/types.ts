@@ -11,6 +11,10 @@
 export interface TenantBranding {
   /** Endereço público exibido no cardápio, configurado pela equipe. */
   publicAddress?: string | null;
+  /** Política de acolhimento exibida antes da adesão voluntária. */
+  supportPolicy?: string | null;
+  backgroundUrl?: string | null;
+  cardOpacity?: number | null;
   brandName: string;
   logoUrl: string | null;
   primaryColor: string | null;

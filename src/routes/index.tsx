@@ -1,4 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
+import { BrandBackground } from "@/features/client/components/BrandBackground";
 import { MenuList } from "@/features/client/components/MenuList";
 import { Lock } from "lucide-react";
 import { BrandingProvider, useBranding } from "@/lib/branding";
@@ -30,9 +31,10 @@ function ClientHomeContent() {
 
   return (
     <main
-      className="relative mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-10"
+      className="relative isolate mx-auto flex min-h-screen w-full max-w-md flex-col px-5 py-10"
       style={style}
     >
+      <BrandBackground />
       <Link
         to="/equipe"
         aria-label="Acesso da equipe"

@@ -12,11 +12,13 @@
     "format": "prettier --write .",
     "ai:demo": "tsx index.ts",
     "test": "vitest run",
+    "test:support-sql": "node tests/run-support-sql.mjs",
     "test:stock-photo": "node tests/run-stock-photo.mjs",
     "test:ocr-model": "node tests/run-ocr-model.mjs"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.2.2",
+    "@nous/motion": "file:vendor/nous-motion/nous-motion-0.1.0-28d145f.tgz",
     "@radix-ui/react-accordion": "^1.2.12",
     "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-aspect-ratio": "^1.1.8",

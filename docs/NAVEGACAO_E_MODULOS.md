@@ -74,3 +74,12 @@ Fora do menu, acessadas por botões no cabeçalho do caixa: **Abertura** (`/caix
   saltar até a última e conferir que o título fica abaixo do cabeçalho; abrir cada atalho;
   compartilhar/cancelar compartilhamento; repetir com campos públicos vazios. Conferir no
   aparelho real após o deploy. Nenhum efeito sobre estoque, caixa ou histórico financeiro.
+
+## 8. Segurança — apoio e áreas futuras (04/11/2026)
+
+- Nesta branch, `/caixa/seguranca` e item Segurança no menu: Apoio (histórico privado), Ocorrências
+  (preparada, abertura manual futura) e Câmeras (integração futura).
+- Faixa prioritária de apoio acima do pedido de conta no layout da equipe. Na comanda do cliente,
+  botão sobreposto só após adesão voluntária; conversa privada com mensagens prontas.
+- O pedido não vira ocorrência formal automaticamente. A confirmação do relato pelo cliente é
+  posterior, se a equipe precisar abrir uma ocorrência. Ver `APOIO_E_SEGURANCA.md`.
