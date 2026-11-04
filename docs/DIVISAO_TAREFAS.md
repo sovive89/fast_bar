@@ -1,6 +1,6 @@
 # Divisão de tarefas entre agentes (Claude Code × Codex)
 
-Atualizado em 04/11/2026. Dois agentes trabalham neste repositório ao mesmo tempo. Esta divisão
+Atualizado em 04/11/2026 (fim do dia). Dois agentes trabalham neste repositório ao mesmo tempo. Esta divisão
 existe para que os dois não editem os mesmos arquivos em paralelo, o que gera conflito de merge e
 retrabalho. Leia também o `CLAUDE.md` (contexto de produto) e o `AGENTS.md` (regras de git do
 Lovable).
@@ -8,24 +8,43 @@ Lovable).
 ## Critério da divisão
 
 - **Codex tem acesso ao Supabase de produção** (MCP em `.codex/config.toml`). O Claude Code, na
-  sessão em nuvem, não alcança nem o banco nem o site no Amplify. Então tudo que precisa do banco
-  real fica com o Codex.
+  sessão em nuvem, não alcança o site no Amplify e só alcança o banco quando a sessão tem o
+  conector do Supabase ligado. Em 04/11 o Codex parou e o conector estava ligado, então o Claude
+  Code aplicou as migrations (item 1 abaixo). Regra: quem vir o conector funcionando pode aplicar,
+  mas antes **confere o que já foi aplicado** (`list_migrations`) e registra aqui.
 - **Cada agente fica com áreas de código diferentes.** O Codex já fez o OCR e a entrada de estoque
   por foto, então continua no estoque. O Claude Code fez abertura/fechamento de operação e
   comandas, então continua no fluxo de comanda e pagamento.
 
 ## Codex
 
-1. **Aplicar em produção as migrations novas**, em ordem, e conferir com os advisors de segurança
-   do Supabase:
+1. ~~**Aplicar em produção as migrations novas**~~ — **feito em 04/11/2026** (projeto Supabase
+   "Fastbar", `evjoxkllaaxgxdaupees`), pelo Claude Code, na ordem e conferido com os advisors de
+   segurança:
    - `20261104093000_stock_counts_abertura_operacao.sql`
-   - `20261104094700_fastbar_operations_rls_service_role.sql`
+   - `20261104094700_fastbar_operations_rls_service_role.sql` (o editor do Supabase exige
+     aprovação humana do `drop policy`; o dono rodou o SQL à mão no SQL Editor)
    - `20261104102500_fechamento_operacao.sql`
    - `20261104110000_stock_count_items_kinds.sql`
-   - `20261104120000_session_payments.sql` (livro de pagamentos; sem ela o pagamento da comanda falha)
-   - `20261104130000_session_credits.sql` (crédito adiantado da comanda)
-   - `20261104140000_pos_credit_charge.sql` (crédito pela maquininha: coluna `pos_purpose` e `pos_order_id` único)
-   - `20261104150000_producao_fichas_ordens.sql` (Produção: itens produzidos, fichas, ordens e a função `fastbar_register_production_order`)
+   - `20261104120000_session_payments.sql`
+   - `20261104130000_session_credits.sql`
+   - `20261104140000_pos_credit_charge.sql`
+   - `20261104150000_producao_fichas_ordens.sql`
+
+   Além disso, uma migration só no banco (não está no repositório): revogou o `EXECUTE` do
+   público (`anon`/`authenticated`) em `fastbar_create_product`, `fastbar_update_product`,
+   `fastbar_delete_consumable` e `rls_auto_enable`, que o app só chama pelo servidor.
+
+   **Atenção:** as migrations foram aplicadas pelo conector, que registra a versão com a data/hora
+   da aplicação e o nome sem o prefixo de data (ex.: `session_payments`), diferente dos arquivos do
+   repositório (`20261104120000_session_payments`). O esquema está igual; só o histórico
+   (`supabase_migrations.schema_migrations`) tem versões diferentes das do repositório. Quem for
+   mexer em migrations deve conferir as tabelas, não só a lista de versões, e **não reaplicar** estas.
+
+   **Alertas de segurança que sobraram** (não são das mudanças de 04/11), para o Codex ou quem
+   pegar: `fastbar_default_tenant_id` executável pelo público (é o valor padrão do `tenant_id` em
+   18 tabelas; antes de revogar, confirmar que nenhum fluxo grava com a chave pública),
+   `update_updated_at` sem `search_path` fixo, e `fastbar_tenants` com RLS ligada e sem política.
 2. **Testar o fluxo real** no app (roteiro em `docs/ROTEIRO_TESTE_OPERACAO.md`, quando existir):
    abrir operação com conferência, lançar numa comanda, encerrar com os três destinos.
 3. **Baseline do esquema — Codex, em revisão**: `fastbar_sessions` (e outras tabelas base) nunca foi criada por
