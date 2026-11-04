@@ -6,7 +6,7 @@ const PUBLIC_SESSION_COLUMNS =
 
 /** Caixa-only shape — internal identifiers ok since it's behind assertRegisterAccess. CPF/RG fica
  * de fora do PUBLIC_SESSION_COLUMNS (link do cliente) porque é dado sensível — só a equipe vê. */
-const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at, payment_method, document, document_type, pos_order_id, pos_amount, pos_paid_order_id, pos_refunded_at`;
+const REGISTER_SESSION_COLUMNS = `${PUBLIC_SESSION_COLUMNS}, customer_id, archived_at, operacao_id, payment_method, document, document_type, pos_order_id, pos_amount, pos_paid_order_id, pos_refunded_at`;
 
 /** Customer view: readable only with the unguessable comanda link, never sensitive columns. */
 export const getCustomerTab = createServerFn({ method: "POST" })
@@ -56,7 +56,9 @@ export const getRegisterOverview = createServerFn({ method: "POST" }).handler(as
     admin()
       .from("fastbar_sessions")
       .select(REGISTER_SESSION_COLUMNS)
-      .in("status", ["pending", "open", "closed", "paid", "cancelled"])
+      // cortesia e inadimplente precisam estar aqui: sem eles as comandas resolvidas no fechamento
+      // da operação sumiriam da lista, e a aba "Inadimplentes" ficaria sempre vazia.
+      .in("status", ["pending", "open", "closed", "paid", "cancelled", "cortesia", "inadimplente"])
       .order("created_at", { ascending: false })
       .limit(200),
     admin()
@@ -64,5 +66,12 @@ export const getRegisterOverview = createServerFn({ method: "POST" }).handler(as
       .select("id, session_id, name, unit_price, quantity, added_at")
       .order("added_at"),
   ]);
-  return { sessions: sessions ?? [], items: items ?? [] };
+  // A operação em andamento define o que é "Fechadas nesta operação" e o que já é "Histórico".
+  const { getOpenOperation } = await import("./operations.server");
+  const operation = await getOpenOperation();
+  return {
+    sessions: sessions ?? [],
+    items: items ?? [],
+    currentOperationId: operation?.id ?? null,
+  };
 });

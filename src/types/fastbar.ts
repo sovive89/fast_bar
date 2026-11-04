@@ -16,6 +16,8 @@ export type BarSession = {
   payment_method?: string | null;
   customer_id?: string | null;
   archived_at?: string | null;
+  /** Operação (turno) em que a comanda nasceu; null nas anteriores ao controle de operações. */
+  operacao_id?: string | null;
   discount_percent?: number;
   /** Taxa de serviço carimbada nesta comanda no fechamento. 0 = sem taxa (cliente recusou, ou o
    * bar não cobra). Fica gravada na comanda, e não lida da config na hora de cobrar, pra que mudar
