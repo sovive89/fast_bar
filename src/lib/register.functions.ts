@@ -173,6 +173,25 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
     const customerId = phone
       ? await upsertCustomer(name, { phone })
       : await upsertCustomer(name, { document: document!, documentType: data.documentType as "cpf" | "rg" });
+
+    // Cliente que ficou devendo numa visita anterior volta para aquela comanda, com o saldo antigo
+    // (docs/DECISOES.md). A equipe está com ele no balcão, então já vai direto para "open".
+    const { reopenDebtSession } = await import("./debt-reopen.server");
+    const reopened = await reopenDebtSession({
+      phone,
+      document,
+      toStatus: "open",
+      realizadoPor: "equipe",
+    });
+    if (reopened) {
+      return {
+        ok: true as const,
+        sessionId: reopened.sessionId,
+        existed: true as const,
+        reopenedDebt: reopened.saldo,
+      };
+    }
+
     const { operationalFieldsForNewSession } = await import("./operations.server");
     const operationalFields = await operationalFieldsForNewSession();
     const { data: inserted, error } = await admin()
