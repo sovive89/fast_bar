@@ -17,6 +17,7 @@ import { Route as PoliticaPrivacidadeRouteImport } from './routes/politica-priva
 import { Route as CSessionIdRouteImport } from './routes/c.$sessionId'
 import { Route as CaixaIndexRouteImport } from './routes/caixa.index'
 import { Route as CaixaSessionIdRouteImport } from './routes/caixa.$sessionId'
+import { Route as CaixaAberturaRouteImport } from './routes/caixa.abertura'
 import { Route as CaixaAlertasRouteImport } from './routes/caixa.alertas'
 import { Route as CaixaCardapioRouteImport } from './routes/caixa.cardapio'
 import { Route as CaixaConexoesRouteImport } from './routes/caixa.conexoes'
@@ -72,6 +73,11 @@ const CaixaIndexRoute = CaixaIndexRouteImport.update({
 const CaixaSessionIdRoute = CaixaSessionIdRouteImport.update({
   id: '/$sessionId',
   path: '/$sessionId',
+  getParentRoute: () => CaixaRoute,
+} as any)
+const CaixaAberturaRoute = CaixaAberturaRouteImport.update({
+  id: '/abertura',
+  path: '/abertura',
   getParentRoute: () => CaixaRoute,
 } as any)
 const CaixaAlertasRoute = CaixaAlertasRouteImport.update({
@@ -164,6 +170,7 @@ export interface FileRoutesByFullPath {
   '/politica-privacidade': typeof PoliticaPrivacidadeRoute
   '/c/$sessionId': typeof CSessionIdRoute
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
+  '/caixa/abertura': typeof CaixaAberturaRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
   '/caixa/conexoes': typeof CaixaConexoesRoute
@@ -189,6 +196,7 @@ export interface FileRoutesByTo {
   '/politica-privacidade': typeof PoliticaPrivacidadeRoute
   '/c/$sessionId': typeof CSessionIdRoute
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
+  '/caixa/abertura': typeof CaixaAberturaRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
   '/caixa/conexoes': typeof CaixaConexoesRoute
@@ -215,6 +223,7 @@ export interface FileRoutesById {
   '/politica-privacidade': typeof PoliticaPrivacidadeRoute
   '/c/$sessionId': typeof CSessionIdRoute
   '/caixa/$sessionId': typeof CaixaSessionIdRoute
+  '/caixa/abertura': typeof CaixaAberturaRoute
   '/caixa/alertas': typeof CaixaAlertasRoute
   '/caixa/cardapio': typeof CaixaCardapioRoute
   '/caixa/conexoes': typeof CaixaConexoesRoute
@@ -243,6 +252,7 @@ export interface FileRouteTypes {
     | '/politica-privacidade'
     | '/c/$sessionId'
     | '/caixa/$sessionId'
+    | '/caixa/abertura'
     | '/caixa/alertas'
     | '/caixa/cardapio'
     | '/caixa/conexoes'
@@ -268,6 +278,7 @@ export interface FileRouteTypes {
     | '/politica-privacidade'
     | '/c/$sessionId'
     | '/caixa/$sessionId'
+    | '/caixa/abertura'
     | '/caixa/alertas'
     | '/caixa/cardapio'
     | '/caixa/conexoes'
@@ -293,6 +304,7 @@ export interface FileRouteTypes {
     | '/politica-privacidade'
     | '/c/$sessionId'
     | '/caixa/$sessionId'
+    | '/caixa/abertura'
     | '/caixa/alertas'
     | '/caixa/cardapio'
     | '/caixa/conexoes'
@@ -381,6 +393,13 @@ declare module '@tanstack/react-router' {
       path: '/$sessionId'
       fullPath: '/caixa/$sessionId'
       preLoaderRoute: typeof CaixaSessionIdRouteImport
+      parentRoute: typeof CaixaRoute
+    }
+    '/caixa/abertura': {
+      id: '/caixa/abertura'
+      path: '/abertura'
+      fullPath: '/caixa/abertura'
+      preLoaderRoute: typeof CaixaAberturaRouteImport
       parentRoute: typeof CaixaRoute
     }
     '/caixa/alertas': {
@@ -518,6 +537,7 @@ const CaixaCrmRouteWithChildren = CaixaCrmRoute._addFileChildren(
 
 interface CaixaRouteChildren {
   CaixaSessionIdRoute: typeof CaixaSessionIdRoute
+  CaixaAberturaRoute: typeof CaixaAberturaRoute
   CaixaAlertasRoute: typeof CaixaAlertasRoute
   CaixaCardapioRoute: typeof CaixaCardapioRoute
   CaixaConexoesRoute: typeof CaixaConexoesRoute
@@ -531,6 +551,7 @@ interface CaixaRouteChildren {
 
 const CaixaRouteChildren: CaixaRouteChildren = {
   CaixaSessionIdRoute: CaixaSessionIdRoute,
+  CaixaAberturaRoute: CaixaAberturaRoute,
   CaixaAlertasRoute: CaixaAlertasRoute,
   CaixaCardapioRoute: CaixaCardapioRoute,
   CaixaConexoesRoute: CaixaConexoesRoute,

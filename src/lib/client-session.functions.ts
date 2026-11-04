@@ -101,7 +101,18 @@ export const openClientSession = createServerFn({ method: "POST" })
       };
     }
 
-    const { operationalFieldsForNewSession } = await import("./operations.server");
+    const { operationalFieldsForNewSession, assertOperationOpen } =
+      await import("./operations.server");
+    // Só bloqueia aqui (comanda NOVA) — uma comanda "unverified" que já existia de antes (bloco
+    // `if (existing)` acima) continua sendo reaproveitada mesmo que a operação já tenha fechado
+    // nesse meio-tempo; ela não está sendo criada agora.
+    const operationCheck = await assertOperationOpen();
+    if (!operationCheck.ok) {
+      return {
+        ok: false as const,
+        message: "O bar ainda não abriu. Tente novamente em instantes.",
+      };
+    }
     const operationalFields = await operationalFieldsForNewSession();
     const { data: inserted, error } = await admin()
       .from("fastbar_sessions")

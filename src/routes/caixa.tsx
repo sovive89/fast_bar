@@ -20,7 +20,7 @@ import {
   Users,
 } from "lucide-react";
 import { checkBarAccess, lockBarPanel } from "@/lib/bar-gate.functions";
-import { getOperationStatus, openOperation, closeOperation } from "@/lib/operations.functions";
+import { getOperationStatus, closeOperation } from "@/lib/operations.functions";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { UpdateBanner } from "@/components/shared/UpdateBanner";
 import {
@@ -125,10 +125,8 @@ function OperationBar() {
   const [status, setStatus] = useState<OperationStatus | null>(null);
   const [now, setNow] = useState(() => new Date());
   const [confirmingClose, setConfirmingClose] = useState(false);
-  const [confirmingOpen, setConfirmingOpen] = useState(false);
 
   const loadStatus = useServerFn(getOperationStatus);
-  const doOpen = useServerFn(openOperation);
   const doClose = useServerFn(closeOperation);
 
   async function refresh() {
@@ -159,15 +157,6 @@ function OperationBar() {
     hour: "2-digit",
     minute: "2-digit",
   }).format(now);
-
-  async function handleOpen(password: string) {
-    const result = await doOpen({ data: { password } });
-    if (result.ok) {
-      setConfirmingOpen(false);
-      await refresh();
-    }
-    return result;
-  }
 
   async function handleClose(password: string) {
     const result = await doClose({ data: { password } });
@@ -212,22 +201,17 @@ function OperationBar() {
             Encerrar operação
           </button>
         )
-      ) : confirmingOpen ? (
-        <div className="w-full max-w-xs sm:w-auto">
-          <PasswordConfirm
-            message="Confirme a senha da equipe para abrir a operação."
-            confirmLabel="Abrir operação"
-            onCancel={() => setConfirmingOpen(false)}
-            onConfirm={handleOpen}
-          />
-        </div>
       ) : (
-        <button
-          onClick={() => setConfirmingOpen(true)}
+        // Abrir a operação sempre passa pela conferência de estoque — "conferência de estoque
+        // obrigatória antes de abrir comandas" (P1 do CLAUDE.md) — por isso vira navegação para
+        // uma tela própria, não um PasswordConfirm aqui mesmo: a lista de produtos a contar pode
+        // ser longa, e cabe melhor numa tela cheia do que num cartão no cabeçalho.
+        <Link
+          to="/caixa/abertura"
           className="rounded-full bg-primary px-3 py-1.5 text-xs font-semibold text-primary-foreground"
         >
           Abrir operação
-        </button>
+        </Link>
       )}
     </div>
   );

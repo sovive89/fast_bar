@@ -592,6 +592,101 @@ export type Database = {
         }
         Relationships: []
       }
+      fastbar_stock_counts: {
+        Row: {
+          created_at: string
+          id: string
+          motivo_pulo: string | null
+          operacao_id: string
+          realizado_por: string
+          status: string
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          motivo_pulo?: string | null
+          operacao_id: string
+          realizado_por?: string
+          status: string
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          motivo_pulo?: string | null
+          operacao_id?: string
+          realizado_por?: string
+          status?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_stock_counts_operacao_id_fkey"
+            columns: ["operacao_id"]
+            isOneToOne: true
+            referencedRelation: "fastbar_operations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fastbar_stock_count_items: {
+        Row: {
+          created_at: string
+          divergencia: number
+          id: string
+          motivo: string | null
+          observacao: string | null
+          product_id: string | null
+          product_name: string
+          quantidade_contada: number
+          quantidade_esperada: number
+          stock_count_id: string
+          unit: string
+        }
+        Insert: {
+          created_at?: string
+          divergencia?: number
+          id?: string
+          motivo?: string | null
+          observacao?: string | null
+          product_id?: string | null
+          product_name: string
+          quantidade_contada: number
+          quantidade_esperada: number
+          stock_count_id: string
+          unit: string
+        }
+        Update: {
+          created_at?: string
+          divergencia?: number
+          id?: string
+          motivo?: string | null
+          observacao?: string | null
+          product_id?: string | null
+          product_name?: string
+          quantidade_contada?: number
+          quantidade_esperada?: number
+          stock_count_id?: string
+          unit?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fastbar_stock_count_items_stock_count_id_fkey"
+            columns: ["stock_count_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_stock_counts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fastbar_stock_count_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "fastbar_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fastbar_product_categories: {
         Row: {
           created_at: string

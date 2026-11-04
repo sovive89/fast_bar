@@ -108,6 +108,46 @@ export async function getOpenOperation(): Promise<OperationRow | null> {
 }
 
 /**
+ * Insere a linha ABERTA. Único lugar que escreve em fastbar_operations — usado tanto pela
+ * conferência de estoque (stock-count.server.ts, caminho normal e o de pular) quanto por qualquer
+ * código futuro que precise abrir a operação. O índice único parcial do banco
+ * (fastbar_operations_one_open_per_tenant) garante que não existam duas ABERTA mesmo com dois
+ * cliques quase simultâneos — por isso o "já existe uma aberta" abaixo também cobre a corrida, não
+ * só a checagem prévia.
+ */
+export async function createOperationRow(): Promise<
+  { ok: true; operationId: string; dataOperacional: string } | { ok: false; message: string }
+> {
+  const { admin } = await import("./fastbar.server");
+  const existing = await getOpenOperation();
+  if (existing) {
+    return { ok: false, message: "Já existe uma operação aberta." };
+  }
+
+  const config = await loadOperationConfig();
+  const now = new Date();
+  const dataOperacional = computeDataOperacional(now, config);
+
+  const { data: inserted, error } = await admin()
+    .from("fastbar_operations")
+    .insert({
+      data_operacional: dataOperacional,
+      inicio_operacional: now.toISOString(),
+      status: "ABERTA",
+      aberto_em: now.toISOString(),
+      aberto_por: "equipe",
+    })
+    .select("id")
+    .single();
+
+  if (error || !inserted) {
+    // Corrida com outro clique quase simultâneo — o índice único do banco barrou; não é bug.
+    return { ok: false, message: "Já existe uma operação aberta." };
+  }
+  return { ok: true, operationId: inserted.id, dataOperacional };
+}
+
+/**
  * Campos operacionais pra anexar em toda comanda nova (fastbar_sessions): operacao_id da operação
  * aberta agora (ou null, se a equipe ainda não abriu o expediente) + a data_operacional calculada
  * — essa sempre é preenchida, mesmo sem operação aberta, porque relatório e regra de virada não
@@ -125,8 +165,25 @@ export async function operationalFieldsForNewSession(): Promise<{
   return { operacao_id: operacaoId, data_operacional: dataOperacional };
 }
 
-// Os três server functions (getOperationStatus, openOperation, closeOperation) moraram aqui antes
-// e agora ficam em operations.functions.ts — mesma separação já usada em
+/**
+ * Trava "conferência de estoque obrigatória antes de abrir comandas" (P1.1 do CLAUDE.md): abrir a
+ * operação agora sempre passa pela conferência (ver stock-count.server.ts, caminho normal ou o de
+ * pular com senha+motivo) — então bastar checar se existe operação ABERTA já garante que a
+ * conferência aconteceu (ou foi pulada, auditada) antes da primeira venda do turno. Chamada no
+ * início de toda rota que cria comanda (openSessionByTeam, openWalkInSession, openClientSession).
+ */
+export async function assertOperationOpen(): Promise<
+  { ok: true } | { ok: false; message: string }
+> {
+  const open = await getOpenOperation();
+  if (!open) {
+    return { ok: false, message: "Nenhuma operação aberta. Abra o caixa antes de criar comandas." };
+  }
+  return { ok: true };
+}
+
+// getOperationStatus e closeOperation moraram aqui antes e agora ficam em operations.functions.ts
+// (abrir a operação sempre passa por stock-count.functions.ts agora) — mesma separação já usada em
 // integrations.functions.ts/verification/service.server.ts: este arquivo chama admin() direto
 // (service role) fora de qualquer createServerFn, então nunca pode ser importado no topo de um
 // arquivo que o bundler do client também processa (como uma rota) — só via `await import(...)`
