@@ -22,6 +22,7 @@ Lovable).
    - `20261104094700_fastbar_operations_rls_service_role.sql`
    - `20261104102500_fechamento_operacao.sql`
    - `20261104110000_stock_count_items_kinds.sql`
+   - `20261104120000_session_payments.sql` (livro de pagamentos; sem ela o pagamento da comanda falha)
 2. **Testar o fluxo real** no app (roteiro em `docs/ROTEIRO_TESTE_OPERACAO.md`, quando existir):
    abrir operação com conferência, lançar numa comanda, encerrar com os três destinos.
 3. **Baseline do esquema — Codex, em revisão**: `fastbar_sessions` (e outras tabelas base) nunca foi criada por
@@ -44,8 +45,10 @@ Lovable).
 1. Testes automáticos de abertura e fechamento de operação (`tests/operacao-*.test.ts`).
 2. Roteiro de teste manual (`docs/ROTEIRO_TESTE_OPERACAO.md`).
 3. ~~Separar "Fechadas nesta operação" de "Histórico" na lista de comandas~~ (feito).
-4. Item 3 do roadmap (crédito e pagamento): crédito pela maquininha, pagamento parcial vira
-   pendência, crédito recuperado ao reabrir comanda.
+4. Item 3 do roadmap (crédito e pagamento), em PRs separados:
+   - ~~Livro de pagamentos + pagamento parcial vira pendência~~ (feito neste PR).
+   - Crédito da comanda, consumido item a item (livro de crédito, desfazer item devolve crédito).
+   - Crédito pela maquininha (só dá para testar no terminal real) e recuperação ao reabrir.
 
 ## Arquivos compartilhados (cuidado)
 

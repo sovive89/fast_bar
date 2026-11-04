@@ -50,28 +50,19 @@ export async function listClosureCandidates(): Promise<{
   const pending = (sessions ?? []).filter((session) => !reviewedIds.has(session.id));
   if (pending.length === 0) return { operationId: operation.id, candidates: [] };
 
-  const { data: items } = await admin()
-    .from("fastbar_tab_items")
-    .select("session_id, unit_price, quantity")
-    .in(
-      "session_id",
-      pending.map((session) => session.id),
-    );
-
-  const { tabTotals } = await import("@/services/supabase/tabItems");
-  const itemsBySession = new Map<string, { unit_price: number; quantity: number }[]>();
-  for (const item of items ?? []) {
-    const list = itemsBySession.get(item.session_id) ?? [];
-    list.push({ unit_price: item.unit_price, quantity: item.quantity });
-    itemsBySession.set(item.session_id, list);
+  // O valor de cada candidata é o SALDO (total menos o que já foi recebido): uma comanda com
+  // pagamento parcial só deve R$ X, e cortesia/inadimplência incidem sobre isso, não sobre o total.
+  const { loadSessionBalance } = await import("./session-payments.server");
+  const candidates: ClosureCandidate[] = [];
+  for (const session of pending) {
+    const loaded = await loadSessionBalance(session.id);
+    candidates.push({
+      sessionId: session.id,
+      customerName: session.customer_name,
+      status: session.status as "open" | "closed",
+      total: loaded?.balance.balance ?? 0,
+    });
   }
-
-  const candidates: ClosureCandidate[] = pending.map((session) => ({
-    sessionId: session.id,
-    customerName: session.customer_name,
-    status: session.status as "open" | "closed",
-    total: tabTotals(itemsBySession.get(session.id) ?? [], 0, 0).total,
-  }));
 
   return { operationId: operation.id, candidates };
 }
@@ -122,12 +113,8 @@ export async function resolveClosureCandidate(params: {
     return { ok: false, message: "Esta comanda já recebeu um destino." };
   }
 
-  const { data: items } = await admin()
-    .from("fastbar_tab_items")
-    .select("unit_price, quantity")
-    .eq("session_id", session.id);
-  const { tabTotals } = await import("@/services/supabase/tabItems");
-  const total = tabTotals(items ?? [], 0, 0).total;
+  const { loadSessionBalance } = await import("./session-payments.server");
+  const total = (await loadSessionBalance(session.id))?.balance.balance ?? 0;
 
   const nowIso = new Date().toISOString();
   if (params.destino === "cortesia") {
