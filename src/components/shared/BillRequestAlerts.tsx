@@ -107,8 +107,6 @@ export function BillRequestAlerts() {
     }
   }
 
-  const waiting = requests.filter((r) => r.status === "pedida").length;
-
   // A faixa entra deslizando de cima e sai do mesmo jeito quando o último pedido é concluído.
   return (
     <AnimatePresence initial={false}>
@@ -121,20 +119,20 @@ export function BillRequestAlerts() {
           transition={{ duration: 0.2 }}
           role="alert"
           aria-live="assertive"
-          className={`px-4 py-4 text-amber-950 ${waiting > 0 ? "bg-amber-300" : "bg-amber-200"}`}
+          className="px-4 pb-3 pt-1"
         >
           <div className="mx-auto flex max-w-2xl items-center justify-between gap-3">
-            <p className="flex items-center gap-3 text-xl font-extrabold leading-tight">
-              <BellRing className="h-7 w-7 shrink-0" aria-hidden />
+            <p className="flex items-center gap-2 text-lg font-semibold">
+              <BellRing className="h-5 w-5 shrink-0 text-primary" aria-hidden />
               {requests.length === 1 ? "Pedido de conta" : `${requests.length} pedidos de conta`}
             </p>
             <button
               type="button"
               onClick={toggleMute}
               aria-label={muted ? "Ligar o som do alerta" : "Silenciar o som do alerta"}
-              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/60 text-amber-950"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border"
             >
-              {muted ? <VolumeX className="h-6 w-6" /> : <Volume2 className="h-6 w-6" />}
+              {muted ? <VolumeX className="h-5 w-5" /> : <Volume2 className="h-5 w-5" />}
             </button>
           </div>
           {/* Altura limitada: o alerta mora na faixa fixa do topo e, com vários pedidos, não pode cobrir
@@ -150,8 +148,8 @@ export function BillRequestAlerts() {
                   animate={{ opacity: 1, scale: 1, y: 0 }}
                   exit={{ opacity: 0, x: 60 }}
                   transition={{ type: "spring", stiffness: 500, damping: 28 }}
-                  className={`rounded-2xl border-4 bg-white p-4 shadow-md ${
-                    request.status === "pedida" ? "alert-pulse-border" : "border-amber-500"
+                  className={`rounded-2xl border-4 bg-card p-5 ${
+                    request.status === "pedida" ? "alert-pulse-border" : "border-border"
                   }`}
                 >
                   <Link
@@ -159,10 +157,10 @@ export function BillRequestAlerts() {
                     params={{ sessionId: request.sessionId }}
                     className="block min-w-0"
                   >
-                    <span className="block break-words text-2xl font-bold leading-tight">
+                    <span className="block break-words text-2xl font-bold">
                       {request.customerName}
                     </span>
-                    <span className="mt-1 block text-base font-medium text-amber-900">
+                    <span className="mt-1 block text-base text-muted-foreground">
                       {request.status === "pedida" ? "Pediu a conta" : "Em atendimento"} ·{" "}
                       {hhmm(request.createdAt)}
                     </span>
@@ -173,12 +171,12 @@ export function BillRequestAlerts() {
                         type="button"
                         disabled={busyId === request.id}
                         onClick={() => void act(request.id, "atender")}
-                        className="h-14 rounded-xl bg-amber-600 text-lg font-bold text-white disabled:opacity-60"
+                        className="h-14 rounded-xl bg-primary text-lg font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
                       >
                         Atender
                       </button>
                     ) : (
-                      <span className="flex h-14 items-center justify-center rounded-xl bg-amber-100 text-lg font-semibold text-amber-900">
+                      <span className="flex h-14 items-center justify-center rounded-xl bg-muted text-lg font-medium text-muted-foreground">
                         Atendendo...
                       </span>
                     )}
@@ -186,7 +184,7 @@ export function BillRequestAlerts() {
                       type="button"
                       disabled={busyId === request.id}
                       onClick={() => void act(request.id, "concluir")}
-                      className="h-14 rounded-xl border-2 border-amber-700 text-lg font-bold disabled:opacity-60"
+                      className="h-14 rounded-xl border border-border text-lg font-medium disabled:opacity-60"
                     >
                       Concluir
                     </button>
