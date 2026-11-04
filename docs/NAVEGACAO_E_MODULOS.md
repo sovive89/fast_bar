@@ -1,0 +1,64 @@
+# Navegação, abas e módulos — estado real e decisões (04/11/2026)
+
+Mapa do painel da equipe (`/caixa`) como está no código hoje, o que o `CLAUDE.md` (seção 4) pede, e as
+decisões já tomadas. Legenda: **Feito** = está no código; **Decidido** = o dono decidiu, falta fazer;
+**Proposta** = sugestão minha, aguarda o dono.
+
+## 1. Menu lateral hoje (`src/routes/caixa.tsx`)
+
+| Ordem | Item | Rota | Observação |
+| --- | --- | --- | --- |
+| 1 | Comandas | `/caixa` | Tem as quatro abas abaixo |
+| 2 | Cardápio | `/caixa/cardapio` | |
+| 3 | Estoque | `/caixa/estoque` | Abas: Bebidas, Ingredientes, Fornecedores, Relatórios |
+| 4 | Produção | `/caixa/producao` | Fichas técnicas, ordens, itens produzidos |
+| 5 | CRM | `/caixa/crm` | Clientes, análises |
+| 6 | Relatórios Vendas | `/caixa/relatorios` | |
+| 7 | Alertas | `/caixa/alertas` | |
+| 8 | Conexões | `/caixa/conexoes` | Maquininha etc. |
+| 9 | Configurações | `/caixa/configuracoes` | |
+
+Fora do menu, acessadas por botões no cabeçalho do caixa: **Abertura** (`/caixa/abertura`) e
+**Fechamento** (`/caixa/fechamento`). Marca/cardápio público em `/caixa/marca`.
+
+## 2. Abas da tela Comandas (**Feito**, `src/lib/comanda-views.ts`)
+
+1. **Em aberto** — comandas em uso (inclui "conta pedida", que aguarda pagamento).
+2. **Fechadas nesta operação** — desfechos da operação atual; na operação seguinte passam ao Histórico.
+3. **Histórico** — comandas arquivadas (só as **sem saldo devido**, decisão de 04/11).
+4. **Inadimplentes** — dívida preservada; sai daqui quando o cliente volta (reabre) ou paga.
+
+## 3. Decisões sobre fluxo entre abas (04/11/2026)
+
+- **Arquivo ≠ Inadimplência ≠ Cortesia ≠ Fechar conta**: quatro coisas diferentes (ver `DECISOES.md`).
+  "Fechar conta" é ação **parcial**: a comanda segue em "Em aberto" aguardando pagamento.
+- Comandas de operações anteriores entram no Fechamento e só podem ir a Arquivo (quitada) ou
+  Inadimplência (deve). **Feito.**
+- Inadimplente reabre quando o cliente volta (mesmo celular/documento). **Feito.**
+
+## 4. O que o `CLAUDE.md` pede para a navegação e ainda **não** existe
+
+| Pedido | Estado | Prioridade sugerida |
+| --- | --- | --- |
+| Módulo principal **Empresa** (Perfil, Marca e cardápio público, Operação, Presença digital, Documentos e legal, Unidades) | Não existe; hoje há `/caixa/marca`, `/caixa/conexoes` e `/caixa/configuracoes` separados | **Decidido** (CLAUDE.md §4); fazer em PR próprio |
+| Abertura/Fechamento dentro de "Operação" | Estão como botões soltos no cabeçalho | **Proposta**: mover para Empresa → Operação quando o módulo existir |
+| Cozinha/KDS desligável | Não existe; **decisão pendente do dono**: aba própria ou dentro de Produção | Pendente |
+| Separar categoria interna × seção pública do cardápio | Não verificado no código nesta sessão | Verificar antes de dizer que está pronto |
+| Alternar visão operacional/pública nas comandas | Não existe | P5+ |
+| Relatórios com filtro de período em todos | Não verificado | Verificar |
+
+## 5. Realocações de páginas/módulos propostas (**Proposta** — nada foi movido)
+
+1. Criar **Empresa** e mover para dentro dela: Marca, Conexões, Configurações, Abertura, Fechamento.
+   O menu lateral fica: Comandas, Cardápio, Estoque, Produção, CRM, Relatórios, Alertas, **Empresa**.
+2. Renomear "Relatórios Vendas" para "Relatórios" quando entrarem custos, CMV e perdas.
+3. Estoque: separar bebidas / ingredientes / produzidos / suprimentos / utensílios (item 4 do roadmap,
+   com o Codex) — hoje só Bebidas e Ingredientes.
+4. Patrimônio (bens duráveis) fica **separado** do Estoque, em módulo próprio.
+5. Mover só com redirecionamento das rotas antigas, para não quebrar favoritos nem o PWA instalado.
+
+## 6. Regras para qualquer mudança de navegação
+
+- Um PR por movimentação; nada de reorganizar tudo de uma vez (`CLAUDE.md` §9).
+- Validar em tela de celular estreita (UX mobile é prioridade absoluta).
+- Atualizar este arquivo e o `DECISOES.md` no mesmo PR.

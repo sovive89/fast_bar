@@ -29,9 +29,13 @@ export const getCustomerTab = createServerFn({ method: "POST" })
     // estado, nunca dados internos.
     const { getActiveBillRequest } = await import("./bill-requests.server");
     const billRequest = await getActiveBillRequest(data.sessionId);
+    // Celular ainda não confirmado pelo código: quem digitou pode não ser o dono do número. Com a
+    // reabertura de comanda inadimplente, a comanda nesse estado pode carregar o consumo de uma
+    // visita anterior, então os itens só vão para o aparelho depois da verificação.
+    const hideItems = session?.status === "unverified";
     return {
       session: session ?? null,
-      items: items ?? [],
+      items: hideItems ? [] : (items ?? []),
       billRequest: billRequest ? { status: billRequest.status } : null,
     };
   });

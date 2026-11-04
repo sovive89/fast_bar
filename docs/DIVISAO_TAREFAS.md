@@ -92,6 +92,14 @@ Lovable).
      rodada grátis, com regras próprias (horário, itens, desconto ou item grátis), acionada por um botão
      da equipe na hora, com **aviso no celular dos clientes**. Push para cliente exige **consentimento**
      do cliente (LGPD), separado da inscrição da equipe; reaproveita a base de push.
+7. Fechamento com seleção em massa e inadimplência (pedido do dono em 04/11, decisões em
+   `docs/DECISOES.md`), branch `feat/fechamento-selecao-em-massa`:
+   - Caixas de seleção e cinco destinos (Arquivo, Cortesia, Inadimplência, Fechar conta, Manter
+     aberta); comandas de operações anteriores entram no fechamento.
+   - Comanda inadimplente reabre quando o cliente volta (`src/lib/debt-reopen.server.ts`).
+   - Migration `20261104190000_fechamento_destinos_arquivo_conta_pedida.sql` **aplicada em produção
+     em 04/11/2026** (projeto `evjoxkllaaxgxdaupees`, registrada como `fechamento_destinos_arquivo_conta_pedida`;
+     não reaplicar). Só amplia as regras; o código atual continua funcionando.
 6. Item 5 do roadmap (Produção), em PRs separados:
    - ~~Itens produzidos + fichas de produção + ordens de produção~~ (feito; tela `/caixa/producao`).
    - ~~Item produzido na conferência de estoque (`listCountableItems`)~~ (feito; migration `20261104160000_stock_count_produced_items.sql`).
