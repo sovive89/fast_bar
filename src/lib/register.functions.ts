@@ -119,6 +119,12 @@ export const openSessionByTeam = createServerFn({ method: "POST" })
       return { ok: false as const, message: "Senha incorreta." };
     }
 
+    const { assertOperationOpen } = await import("./operations.server");
+    const operationCheck = await assertOperationOpen();
+    if (!operationCheck.ok) {
+      return { ok: false as const, message: operationCheck.message };
+    }
+
     const name = sanitizeName(data.name);
     if (!name) {
       return { ok: false as const, message: "Informe o nome completo." };
@@ -213,6 +219,12 @@ export const openWalkInSession = createServerFn({ method: "POST" })
     await assertRegisterAccess();
     if (!(await teamPasswordMatches(data.password))) {
       return { ok: false as const, message: "Senha incorreta." };
+    }
+
+    const { assertOperationOpen } = await import("./operations.server");
+    const operationCheck = await assertOperationOpen();
+    if (!operationCheck.ok) {
+      return { ok: false as const, message: operationCheck.message };
     }
 
     const now = new Date();
