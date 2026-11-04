@@ -38,7 +38,10 @@ export function parseAmount(value: string): number | null {
   return null;
 }
 
-export function formatPhone(value: string) {
+/** Aceita vazio: cliente cadastrado só com CPF/RG tem `phone` nulo no banco — antes isso
+ * derrubava Alertas, a lista de clientes e a ficha do cliente com "reading 'replace'". */
+export function formatPhone(value: string | null | undefined) {
+  if (!value) return "";
   const d = digits(value).slice(0, 11);
   if (d.length <= 2) return d;
   if (d.length <= 6) return `(${d.slice(0, 2)}) ${d.slice(2)}`;

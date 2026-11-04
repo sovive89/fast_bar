@@ -33,10 +33,21 @@ export function SegmentDistributionChart({
     return <p className="mt-3 text-sm text-muted-foreground">{emptyLabel}</p>;
   }
 
+  // Espaço à direita para o rótulo da maior barra: fixo em 40px cortava valores em R$
+  // ("R$ 50.000,00") no celular. ~7px por caractere a 12px semibold, com folga.
+  const longestLabel = Math.max(
+    ...data.map((row) => `${formatValue(row.value)}${tooltipSuffix}`.length),
+  );
+  const rightMargin = Math.max(40, longestLabel * 7 + 8);
+
   return (
     <div className="mt-3" style={{ height: data.length * 44 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} layout="vertical" margin={{ top: 4, bottom: 4, left: -10, right: 40 }}>
+        <BarChart
+          data={data}
+          layout="vertical"
+          margin={{ top: 4, bottom: 4, left: -10, right: rightMargin }}
+        >
           <XAxis type="number" hide allowDecimals={false} />
           <YAxis
             type="category"

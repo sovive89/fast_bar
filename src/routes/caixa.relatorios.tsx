@@ -189,8 +189,10 @@ function Reports() {
         <Loading className="mt-6" label="Carregando relatório..." />
       ) : (
         <div className="mt-6 space-y-6">
-          <div className="grid grid-cols-3 gap-3">
-            <div className="rounded-2xl border border-border bg-card p-4">
+          {/* Celular: 2 colunas com o faturamento na linha inteira — em 3 colunas de ~105px
+              valores como "R$ 128.456,78" eram cortados. Do sm pra cima volta a 3. */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+            <div className="col-span-2 rounded-2xl border border-border bg-card p-4 sm:col-span-1">
               <p className="text-xs text-muted-foreground">Faturamento</p>
               <p className="mt-1 text-lg font-bold">{brl(overview.totalRevenue)}</p>
             </div>
@@ -213,7 +215,8 @@ function Reports() {
                 custo da mercadoria vendida
               </span>
             </div>
-            <div className="mt-3 grid grid-cols-3 gap-3">
+            {/* Mesmo motivo: em 3 colunas os três valores em R$ se sobrepunham no celular. */}
+            <div className="mt-3 grid grid-cols-2 gap-3 sm:grid-cols-3">
               <div>
                 <p className="text-xs text-muted-foreground">CMV</p>
                 <p className="mt-0.5 text-lg font-bold">{brl(overview.totalCost)}</p>
@@ -232,7 +235,7 @@ function Reports() {
                   {overview.marginPercent.toFixed(1)}% de margem
                 </p>
               </div>
-              <div>
+              <div className="col-span-2 sm:col-span-1">
                 <p className="text-xs text-muted-foreground">Faturamento</p>
                 <p className="mt-0.5 text-lg font-bold">{brl(overview.totalRevenue)}</p>
               </div>
