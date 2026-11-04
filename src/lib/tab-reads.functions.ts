@@ -34,7 +34,8 @@ export const getRegisterTab = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
-    const [{ data: session }, { data: items }, { data: payments }] = await Promise.all([
+    const [{ data: session }, { data: items }, { data: payments }, { data: credits }] =
+      await Promise.all([
       admin()
         .from("fastbar_sessions")
         .select(REGISTER_SESSION_COLUMNS)
@@ -51,11 +52,17 @@ export const getRegisterTab = createServerFn({ method: "POST" })
         .select("id, amount, method, motivo, saldo_apos, created_at")
         .eq("session_id", data.sessionId)
         .order("created_at"),
+      admin()
+        .from("fastbar_session_credits")
+        .select("id, amount, method, created_at")
+        .eq("session_id", data.sessionId)
+        .order("created_at"),
     ]);
     return {
       session: session ?? null,
       items: items ?? [],
       payments: (payments ?? []).map((payment) => ({ ...payment, amount: Number(payment.amount) })),
+      credits: (credits ?? []).map((credit) => ({ ...credit, amount: Number(credit.amount) })),
     };
   });
 

@@ -24,6 +24,12 @@ export function round2(value: number): number {
 
 export interface SessionBalance {
   total: number;
+  /** Crédito adiantado recebido nesta comanda (soma das entradas). */
+  creditTotal: number;
+  /** Quanto do crédito já foi consumido pelos itens: menor entre o crédito e o total. */
+  creditUsed: number;
+  /** Crédito que ainda sobra para os próximos itens. */
+  creditLeft: number;
   paid: number;
   balance: number;
 }
@@ -34,6 +40,7 @@ export function computeBalance(
   discountPercent: number | null | undefined,
   serviceFeePercent: number | null | undefined,
   payments: { amount: number }[],
+  credits: { amount: number }[],
   tabTotals: (
     items: { unit_price: number; quantity: number }[],
     discount?: number,
@@ -42,7 +49,19 @@ export function computeBalance(
 ): SessionBalance {
   const total = round2(tabTotals(items, discountPercent ?? 0, serviceFeePercent ?? 0).total);
   const paid = round2(payments.reduce((sum, payment) => sum + Number(payment.amount), 0));
-  return { total, paid, balance: Math.max(0, round2(total - paid)) };
+  // Consumo do crédito é derivado dos itens, nunca gravado: lançar um item gasta crédito na hora e
+  // remover/desfazer devolve, sem mexer nas funções de lançamento. O crédito cobre o consumo antes
+  // de qualquer dinheiro: o que o cliente já pagou em dinheiro/cartão é descontado do que sobra.
+  const creditTotal = round2(credits.reduce((sum, credit) => sum + Number(credit.amount), 0));
+  const creditUsed = Math.min(creditTotal, Math.max(0, round2(total - paid)));
+  return {
+    total,
+    creditTotal,
+    creditUsed,
+    creditLeft: round2(creditTotal - creditUsed),
+    paid,
+    balance: Math.max(0, round2(total - paid - creditUsed)),
+  };
 }
 
 export async function loadSessionBalance(sessionId: string): Promise<{
@@ -62,6 +81,7 @@ export async function loadSessionBalance(sessionId: string): Promise<{
     saldo_apos: number;
     created_at: string;
   }[];
+  credits: { id: string; amount: number; method: string; created_at: string }[];
   balance: SessionBalance;
 } | null> {
   const { admin } = await import("./fastbar.server");
@@ -74,24 +94,35 @@ export async function loadSessionBalance(sessionId: string): Promise<{
     .maybeSingle();
   if (!session) return null;
 
-  const [{ data: items }, { data: payments }] = await Promise.all([
+  const [{ data: items }, { data: payments }, { data: credits }] = await Promise.all([
     admin().from("fastbar_tab_items").select("unit_price, quantity").eq("session_id", sessionId),
     admin()
       .from("fastbar_session_payments")
       .select("id, amount, method, motivo, saldo_apos, created_at")
       .eq("session_id", sessionId)
       .order("created_at"),
+    admin()
+      .from("fastbar_session_credits")
+      .select("id, amount, method, created_at")
+      .eq("session_id", sessionId)
+      .order("created_at"),
   ]);
 
+  const creditRows = (credits ?? []).map((credit) => ({
+    ...credit,
+    amount: Number(credit.amount),
+  }));
   const rows = (payments ?? []).map((payment) => ({ ...payment, amount: Number(payment.amount) }));
   return {
     session,
     payments: rows,
+    credits: creditRows,
     balance: computeBalance(
       items ?? [],
       session.discount_percent,
       session.service_fee_percent,
       rows,
+      creditRows,
       tabTotals,
     ),
   };
@@ -141,7 +172,8 @@ export async function recordSessionPayment(params: {
         status: "paid",
         closed_at: session.closed_at ?? nowIso,
         paid_at: nowIso,
-        payment_method: params.method,
+        // Quitada só pelo crédito adiantado: o relatório precisa mostrar que o canal foi o crédito.
+        payment_method: balance.creditUsed > 0 && balance.paid === 0 ? "credito" : params.method,
       })
       .eq("id", session.id)
       .neq("status", "cancelled");
@@ -210,4 +242,43 @@ export async function recordSessionPayment(params: {
 
   if (!partial) await registerCustomerSpend(session.id);
   return { ok: true, settled: !partial, balanceAfter };
+}
+
+export type AddCreditResult = { ok: true; creditLeft: number } | { ok: false; message: string };
+
+/**
+ * Recebe um valor adiantado como crédito da comanda. Só em comanda aberta: o crédito existe para
+ * ser consumido por novos pedidos, e uma comanda fechada/paga/cancelada não recebe mais pedido.
+ * (Quem quer pagar uma conta fechada usa o pagamento, não o crédito.)
+ */
+export async function addSessionCredit(params: {
+  sessionId: string;
+  amount: number;
+  method: PaymentMethod;
+  realizadoPor: string;
+}): Promise<AddCreditResult> {
+  const { admin } = await import("./fastbar.server");
+
+  const amount = round2(Number(params.amount));
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return { ok: false, message: "Informe um valor maior que zero." };
+  }
+  if (amount > 100000) return { ok: false, message: "Valor alto demais para um crédito." };
+
+  const loaded = await loadSessionBalance(params.sessionId);
+  if (!loaded) return { ok: false, message: "Comanda inválida." };
+  if (loaded.session.status !== "open") {
+    return { ok: false, message: "Só dá para adicionar crédito em comanda aberta." };
+  }
+
+  const { error } = await admin().from("fastbar_session_credits").insert({
+    session_id: params.sessionId,
+    operacao_id: loaded.session.operacao_id,
+    amount,
+    method: params.method,
+    realizado_por: params.realizadoPor,
+  });
+  if (error) return { ok: false, message: "Não foi possível registrar o crédito." };
+
+  return { ok: true, creditLeft: round2(loaded.balance.creditLeft + amount) };
 }

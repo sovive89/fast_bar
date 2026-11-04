@@ -100,7 +100,7 @@ describe("pagamento parcial", () => {
     expect(session("ana")?.status).toBe("inadimplente");
     expect(session("ana")?.paid_at).toBeNull();
     // A dívida continua calculável: total 30 − recebido 10.
-    expect((await loadSessionBalance("ana"))?.balance).toEqual({
+    expect((await loadSessionBalance("ana"))?.balance).toMatchObject({
       total: 30,
       paid: 10,
       balance: 20,

@@ -15,6 +15,7 @@ exato ou print) e o horário.
    - `20261104102500_fechamento_operacao.sql`
    - `20261104110000_stock_count_items_kinds.sql`
    - `20261104120000_session_payments.sql`
+   - `20261104130000_session_credits.sql`
 2. O último deploy do `master` terminou no Amplify.
 3. Não há operação aberta. Se houver, ela foi aberta antes da mudança: encerre-a pelo fluxo novo
    (passo 5) antes de começar.
@@ -103,7 +104,21 @@ Abra uma comanda, lance itens que somem R$ 30 e feche a conta.
 | Registre o saldo (campo vazio) | Comanda vira "Paga"; saída de Inadimplentes |
 | Em outra parcial, toque "Reabrir comanda" | Reabre, e o saldo a receber continua mostrando o que faltava |
 
-## 9. Auditoria no banco (quem tem acesso ao Supabase)
+## 9. Crédito da comanda
+
+Com a operação aberta, abra uma comanda nova.
+
+| Ação | Resultado esperado |
+| --- | --- |
+| Em "Adicionar crédito à comanda", escolha Dinheiro, digite 100 e toque "Adicionar" | Aparece "Crédito usado (de R$ 100,00) −R$ 0,00" e "Crédito restante R$ 100,00" |
+| Lance itens que somem R$ 30 | "Crédito usado −R$ 30,00" e "Crédito restante R$ 70,00" (cai a cada item) |
+| Remova um item de R$ 10 (com senha) | O crédito restante sobe R$ 10 |
+| Feche a comanda e toque "Registrar pagamento" | Paga sem pedir dinheiro; forma de pagamento "credito" no relatório; sobram R$ 80 de crédito na comanda |
+| Reabra a comanda | O crédito que sobrou continua lá; novos itens voltam a gastá-lo |
+| Em outra comanda, adicione R$ 20 de crédito e lance R$ 50 | Crédito usado R$ 20, restante R$ 0 e "Saldo a receber R$ 30,00" |
+| Tente adicionar crédito numa comanda fechada | A seção de crédito nem aparece (só em comanda aberta) |
+
+## 10. Auditoria no banco (quem tem acesso ao Supabase)
 
 Confirme que ficou gravado:
 
@@ -116,6 +131,11 @@ order by c.created_at desc limit 5;
 -- Itens da conferência do passo 2: diferença -2, motivo perda_quebra, com o tipo do item
 select item_kind, product_name, quantidade_esperada, quantidade_contada, divergencia, motivo, observacao
 from fastbar_stock_count_items order by created_at desc limit 10;
+
+-- Entradas de crédito do passo 9
+select s.customer_name, c.amount, c.method, c.created_at
+from fastbar_session_credits c join fastbar_sessions s on s.id = c.session_id
+order by c.created_at desc limit 10;
 
 -- Pagamentos do passo 8: parcial com motivo e saldo_apos > 0, depois o restante com saldo_apos = 0
 select s.customer_name, p.amount, p.method, p.saldo_apos, p.motivo, p.created_at
