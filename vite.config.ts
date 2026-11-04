@@ -19,7 +19,7 @@ export default defineConfig({
     // mesmo com a produção já correta.
     define: {
       __BUILD_ID__: JSON.stringify(
-        process.env["VERCEL_GIT_COMMIT_SHA"] || `dev-${Date.now().toString(36)}`,
+        process.env["AWS_COMMIT_ID"] || `dev-${Date.now().toString(36)}`,
       ),
     },
     plugins: [
@@ -51,8 +51,8 @@ export default defineConfig({
           // skipWaiting/clientsClaim pra que um service worker novo assuma as abas já abertas na
           // hora, em vez de esperar a próxima navegação.
           //
-          // ATENÇÃO: hoje este plugin escreve em `dist/`, e o que a Vercel publica é
-          // `.output/public/` — ou seja, NENHUM service worker chega à produção e este bloco está
+          // ATENÇÃO: hoje este plugin escreve em `dist/`, e o que vai pro ar é o que o Nitro gera
+          // (`.output/public/` ou `.amplify-hosting/static/`) — ou seja, NENHUM service worker chega à produção e este bloco está
           // inerte. O manifest que vale é o `public/manifest.webmanifest`, escrito à mão. Por isso
           // a detecção de versão nova é feita no app (ver src/lib/app-version.functions.ts), e não
           // via ciclo de vida do service worker: não dá pra depender de um SW que não existe.
@@ -65,9 +65,9 @@ export default defineConfig({
   // Runtime do servidor na AWS Amplify: Node 22 (o padrão do Nitro é Node 20, que não tem
   // WebSocket nativo — e o supabase-js precisa dele, o que travava o login do caixa).
   //
-  // Sem `preset` de propósito: o Nitro detecta sozinho onde está buildando (Amplify, Vercel,
-  // Lovable). Fixar "aws-amplify" aqui quebraria os deploys da Vercel e da Lovable; `awsAmplify`
-  // só é lido quando o preset da Amplify está ativo, então nos outros lugares não faz nada.
+  // Sem `preset` de propósito: o Nitro detecta sozinho onde está buildando (Amplify ou o preview
+  // da Lovable, que exige Cloudflare). Fixar "aws-amplify" aqui quebraria o preview da Lovable;
+  // `awsAmplify` só é lido quando o preset da Amplify está ativo.
   //
   // O cast existe porque o tipo do @lovable.dev/vite-tanstack-config só lista algumas opções do
   // Nitro, mas ele repassa o objeto inteiro para o nitro().

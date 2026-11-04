@@ -10,12 +10,13 @@
 /** "@bar", "instagram.com/bar/", "https://www.instagram.com/bar?igsh=x" → "bar". */
 export function sanitizeInstagramUser(value: string | null | undefined): string | null {
   if (!value) return null;
-  const withoutUrl = value
-    .trim()
-    .replace(/^https?:\/\//i, "")
-    .replace(/^www\./i, "")
-    .replace(/^instagram\.com\//i, "")
-    .split(/[/?#]/)[0] ?? "";
+  const withoutUrl =
+    value
+      .trim()
+      .replace(/^https?:\/\//i, "")
+      .replace(/^www\./i, "")
+      .replace(/^instagram\.com\//i, "")
+      .split(/[/?#]/)[0] ?? "";
   const handle = withoutUrl.replace(/^@+/, "").trim();
   // Regra do próprio Instagram: letras, números, ponto e underline, até 30 caracteres.
   if (!/^[A-Za-z0-9._]{1,30}$/.test(handle)) return null;
@@ -44,12 +45,13 @@ export function instagramLink(user: string): string {
 /**
  * URL pública fixa do app, usada pra gerar o QR code do balcão.
  *
- * Nunca window.location.origin: o gestor pode abrir o painel por uma URL de deploy específico da
- * Vercel (fast-bar-abc123.vercel.app), e o QR sairia impresso apontando pra um endereço que
- * expira — o QR colado no balcão quebraria sem ninguém perceber. Configurável por env pra quando
- * o domínio próprio entrar, com a URL estável de produção como padrão.
+ * Nunca window.location.origin: o gestor pode abrir o painel por uma URL de branch ou de preview
+ * (ex.: feat-x.d22ipucenoerv1.amplifyapp.com), e o QR sairia impresso apontando pra um endereço que
+ * some quando a branch for apagada — o QR colado no balcão quebraria sem ninguém perceber.
+ * Configurável por env (VITE_PUBLIC_BASE_URL) pra quando o domínio próprio entrar, com a URL
+ * estável de produção (branch master na AWS Amplify) como padrão.
  */
 export function publicBaseUrl(): string {
   const configured = import.meta.env["VITE_PUBLIC_BASE_URL"] as string | undefined;
-  return (configured?.trim() || "https://fast-bar-two.vercel.app").replace(/\/+$/, "");
+  return (configured?.trim() || "https://master.d22ipucenoerv1.amplifyapp.com").replace(/\/+$/, "");
 }
