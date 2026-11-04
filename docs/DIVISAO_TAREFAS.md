@@ -72,7 +72,16 @@ Lovable).
    - ~~Crédito da comanda, consumido item a item~~ (feito: entradas em `fastbar_session_credits`, consumo derivado dos itens).
    - ~~Crédito pela maquininha~~ (feito; só o teste no terminal real fica com o dono) e recuperação ao reabrir (já vem de graça: o crédito é da comanda).
    - Pendente: devolver o crédito que sobrar (estorno) e mostrar o crédito na tela do cliente.
-5. Item 5 do roadmap (Produção), em PRs separados:
+5. Pedido de conta pelo celular e alertas (P2/P7 do `CLAUDE.md`), em PRs separados:
+   - ~~Pedido de conta + alerta grande no caixa (banner, som, vibração)~~ (feito; migration
+     `20261104170000_bill_requests.sql`).
+   - Próximos: **notificação push** (celular da equipe com o app fechado) e o **alerta de apoio**
+     (mulheres e LGBTQIA+, desligado por configuração até a revisão de privacidade/jurídica).
+     Atenção: hoje **nenhum service worker chega à produção** (ver comentário em `vite.config.ts`;
+     o manifest que vale é o `public/manifest.webmanifest`). Push exige um `public/sw.js` servido de
+     verdade, chaves VAPID nas variáveis do Amplify e uma tabela de inscrições. iPhone só recebe push
+     com o app instalado na tela inicial (iOS 16.4+).
+6. Item 5 do roadmap (Produção), em PRs separados:
    - ~~Itens produzidos + fichas de produção + ordens de produção~~ (feito; tela `/caixa/producao`).
    - ~~Item produzido na conferência de estoque (`listCountableItems`)~~ (feito; migration `20261104160000_stock_count_produced_items.sql`).
    - Próximos: usar o item produzido em fichas de drink / cardápio (mexe nas funções SQL de venda e estoque; fazer com cuidado), editar/desativar ficha, lote e validade do item produzido, Cozinha/KDS, sugestão do chef.

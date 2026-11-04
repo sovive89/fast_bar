@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { checkBarAccess, lockBarPanel } from "@/lib/bar-gate.functions";
 import { getOperationStatus } from "@/lib/operations.functions";
+import { BillRequestAlerts } from "@/components/shared/BillRequestAlerts";
 import { UpdateBanner } from "@/components/shared/UpdateBanner";
 import {
   Sidebar,
@@ -247,6 +248,8 @@ function RegisterLayout() {
             <SidebarTrigger />
             <OperationBar />
           </div>
+          {/* Fica na faixa fixa: o pedido de conta aparece em qualquer tela do caixa. */}
+          <BillRequestAlerts />
         </div>
         <Outlet />
       </SidebarInset>

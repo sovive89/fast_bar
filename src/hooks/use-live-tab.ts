@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useServerFn } from "@tanstack/react-start";
 import { getCustomerTab, getRegisterTab } from "@/lib/tab-reads.functions";
-import type { BarSession, BarTabItem, SessionCredit, SessionPayment } from "@/types/fastbar";
+import type {
+  BarSession,
+  BarTabItem,
+  BillRequestState,
+  SessionCredit,
+  SessionPayment,
+} from "@/types/fastbar";
 
 const POLL_MS = 10000;
 
@@ -11,6 +17,7 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
   const [items, setItems] = useState<BarTabItem[]>([]);
   const [payments, setPayments] = useState<SessionPayment[]>([]);
   const [credits, setCredits] = useState<SessionCredit[]>([]);
+  const [billRequest, setBillRequest] = useState<BillRequestState | null>(null);
   const [loading, setLoading] = useState(true);
   // Só vira true quando o PRIMEIRO carregamento falha (ainda não há dado nenhum pra mostrar).
   // Falha em refresh posterior mantém a tela como está e não liga isso.
@@ -31,6 +38,7 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
       setItems((result.items as BarTabItem[] | null) ?? []);
       setPayments("payments" in result ? (result.payments as SessionPayment[]) : []);
       setCredits("credits" in result ? (result.credits as SessionCredit[]) : []);
+      setBillRequest("billRequest" in result ? (result.billRequest as BillRequestState | null) : null);
       hasLoaded.current = true;
       loggedFailure.current = false;
       setLoadFailed(false);
@@ -67,6 +75,7 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
     setItems([]);
     setPayments([]);
     setCredits([]);
+    setBillRequest(null);
     setLoading(true);
     setLoadFailed(false);
     setLoadError(null);
@@ -79,5 +88,5 @@ export function useLiveTab(sessionId: string, scope: "customer" | "register" = "
     };
   }, [reload, sessionId]);
 
-  return { session, items, payments, credits, loading, loadFailed, loadError, now, reload };
+  return { session, items, payments, credits, billRequest, loading, loadFailed, loadError, now, reload };
 }

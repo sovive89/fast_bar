@@ -1,5 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useLiveTab } from "@/hooks/use-live-tab";
+import { requestMyBill } from "@/lib/bill-requests.functions";
 import CustomerTabView from "@/features/client/components/CustomerTabView";
 
 export const Route = createFileRoute("/c/$sessionId")({
@@ -22,7 +24,15 @@ export const Route = createFileRoute("/c/$sessionId")({
 
 function CustomerTab() {
   const { sessionId } = Route.useParams();
-  const { session, items, loading, loadFailed, now } = useLiveTab(sessionId);
+  const { session, items, billRequest, loading, loadFailed, now, reload } = useLiveTab(sessionId);
+  const requestBill = useServerFn(requestMyBill);
+
+  async function onRequestBill() {
+    const result = await requestBill({ data: { sessionId } });
+    // Recarrega para o botão virar "A equipe foi avisada" na hora, sem esperar o ciclo de 10 s.
+    await reload();
+    return result.ok ? { ok: true } : { ok: false, message: result.message };
+  }
 
   return (
     <CustomerTabView
@@ -31,6 +41,8 @@ function CustomerTab() {
       session={session}
       items={items}
       now={now}
+      billRequest={billRequest}
+      onRequestBill={onRequestBill}
     />
   );
 }

@@ -505,6 +505,9 @@ export const closeSession = createServerFn({ method: "POST" })
       .eq("id", data.sessionId)
       .eq("status", "open");
     if (error) return { ok: false as const, message: "Não foi possível fechar a comanda." };
+    // Fechar a comanda é a resposta natural a "o cliente pediu a conta": conclui o alerta.
+    const { completeBillRequestsForSession } = await import("./bill-requests.server");
+    await completeBillRequestsForSession(data.sessionId, "equipe");
     return { ok: true as const };
   });
 
