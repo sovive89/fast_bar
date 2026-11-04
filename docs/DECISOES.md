@@ -115,6 +115,28 @@ o NØUS Motion é exatamente; esta é a leitura proposta, **não implementada**:
   `src/components/motion/` ou **convive** com ela (por exemplo, `@nous/motion` só no editor de
   personalização e a camada atual no resto).
 
+## 04/11/2026 — módulo Empresa, estoque subdividido e Fiscal (pedido do dono)
+
+- **Empresa é o primeiro item do menu** e reúne tudo o que é da empresa: configurações de operação,
+  marca, documentação fiscal, societária e jurídica. As Configurações atuais entram nele.
+  **Feito:** módulo e navegação (PR "Empresa"). Código: `src/routes/caixa.empresa*.tsx`,
+  `src/components/empresa/`.
+- **Inventário** (patrimônio: bens duráveis da empresa) fica **dentro de Empresa**, separado do
+  Estoque. **Preparado**, sem função ainda.
+- **Gestão**, dentro de Empresa: controle de **freelancers**, **custos fixos** (luz, água, aluguel e
+  qualquer outro), **férias** da equipe fixa e **legislação**. **Preparado**, sem função ainda.
+- **Fiscal** é um **módulo separado**, no menu, não uma aba de Empresa. **Preparado**: hoje o sistema
+  não emite nota fiscal.
+- **Estoque será subdividido** (ainda **não feito**, PR próprio): itens produzidos; bebidas
+  **alcoólicas** e **não alcoólicas**; ingredientes; insumos; e **utensílios** (copos, utensílios,
+  limpeza e consumo durável como gás e material de cozinha).
+- **Cardápio do cliente (PWA)**: **feito** pelos PRs #71 e #72 (ver a seção "cardápio da PWA e apoio
+  por adesão voluntária", abaixo): barra fixa e translúcida, logo pequena à esquerda, categorias em
+  rolagem horizontal e atalhos de localização, contato e Instagram. O alerta de apoio foi entregue
+  com adesão voluntária.
+- **Pendente de definição:** integrar o **Notion** a Configurações/Marca. Falta o dono dizer o que
+  deve fluir (marca, textos, documentos) e em que sentido (Notion → FastBar ou o contrário).
+
 ## 04/11/2026 — cardápio da PWA e apoio por adesão voluntária
 
 - **Pedido do dono:** cardápio com logo pequena à esquerda, cabeçalho translúcido persistente,

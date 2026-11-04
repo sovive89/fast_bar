@@ -10,6 +10,6 @@ import { createFileRoute, redirect } from "@tanstack/react-router";
  */
 export const Route = createFileRoute("/caixa/marca")({
   beforeLoad: () => {
-    throw redirect({ to: "/caixa/configuracoes" });
+    throw redirect({ to: "/caixa/empresa/configuracoes" });
   },
 });

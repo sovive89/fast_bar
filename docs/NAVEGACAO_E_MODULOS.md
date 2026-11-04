@@ -8,18 +8,23 @@ decisões já tomadas. Legenda: **Feito** = está no código; **Decidido** = o d
 
 | Ordem | Item | Rota | Observação |
 | --- | --- | --- | --- |
-| 1 | Comandas | `/caixa` | Tem as quatro abas abaixo |
-| 2 | Cardápio | `/caixa/cardapio` | |
-| 3 | Estoque | `/caixa/estoque` | Abas: Bebidas, Ingredientes, Fornecedores, Relatórios |
-| 4 | Produção | `/caixa/producao` | Fichas técnicas, ordens, itens produzidos |
-| 5 | CRM | `/caixa/crm` | Clientes, análises |
-| 6 | Relatórios Vendas | `/caixa/relatorios` | |
-| 7 | Alertas | `/caixa/alertas` | |
-| 8 | Conexões | `/caixa/conexoes` | Maquininha etc. |
-| 9 | Configurações | `/caixa/configuracoes` | |
+| 1 | **Empresa** | `/caixa/empresa` | **Novo (04/11).** Abas: Visão geral, Configurações, Conexões, Inventário, Gestão, Documentos (as três últimas **preparadas**, ainda sem função) |
+| 2 | Comandas | `/caixa` | Tem as quatro abas abaixo |
+| 3 | Cardápio | `/caixa/cardapio` | |
+| 4 | Estoque | `/caixa/estoque` | Abas: Bebidas, Ingredientes, Fornecedores, Relatórios |
+| 5 | Produção | `/caixa/producao` | Fichas técnicas, ordens, itens produzidos |
+| 6 | CRM | `/caixa/crm` | Clientes, análises |
+| 7 | Relatórios Vendas | `/caixa/relatorios` | |
+| 8 | Alertas | `/caixa/alertas` | |
+| 9 | Segurança | `/caixa/seguranca` | Apoio (histórico privado) e ocorrências; ver seção 8 |
+| 10 | **Fiscal** | `/caixa/fiscal` | **Novo (04/11).** Módulo separado, **preparado**: não emite nota nenhuma |
+
+Configurações e Conexões **saíram do menu** e moram em Empresa (`/caixa/empresa/configuracoes` e
+`/caixa/empresa/conexoes`). As URLs antigas (`/caixa/configuracoes`, `/caixa/conexoes`,
+`/caixa/marca`) redirecionam, então favoritos e o app instalado continuam funcionando.
 
 Fora do menu, acessadas por botões no cabeçalho do caixa: **Abertura** (`/caixa/abertura`) e
-**Fechamento** (`/caixa/fechamento`). Marca/cardápio público em `/caixa/marca`.
+**Fechamento** (`/caixa/fechamento`).
 
 ## 2. Abas da tela Comandas (**Feito**, `src/lib/comanda-views.ts`)
 
@@ -40,7 +45,7 @@ Fora do menu, acessadas por botões no cabeçalho do caixa: **Abertura** (`/caix
 
 | Pedido | Estado | Prioridade sugerida |
 | --- | --- | --- |
-| Módulo principal **Empresa** (Perfil, Marca e cardápio público, Operação, Presença digital, Documentos e legal, Unidades) | Não existe; hoje há `/caixa/marca`, `/caixa/conexoes` e `/caixa/configuracoes` separados | **Decidido** (CLAUDE.md §4); fazer em PR próprio |
+| Módulo principal **Empresa** (Perfil, Marca e cardápio público, Operação, Presença digital, Documentos e legal, Unidades) | **Feito em parte (04/11):** o módulo existe com Configurações e Conexões dentro; Inventário, Gestão e Documentos são páginas preparadas. Faltam Presença digital e Unidades | Continuar por PRs pequenos |
 | Abertura/Fechamento dentro de "Operação" | Estão como botões soltos no cabeçalho | **Proposta**: mover para Empresa → Operação quando o módulo existir |
 | Cozinha/KDS desligável | Não existe; **decisão pendente do dono**: aba própria ou dentro de Produção | Pendente |
 | Separar categoria interna × seção pública do cardápio | Não verificado no código nesta sessão | Verificar antes de dizer que está pronto |
