@@ -23,8 +23,10 @@ import { Route as CaixaCardapioRouteImport } from './routes/caixa.cardapio'
 import { Route as CaixaConexoesRouteImport } from './routes/caixa.conexoes'
 import { Route as CaixaConfiguracoesRouteImport } from './routes/caixa.configuracoes'
 import { Route as CaixaCrmRouteImport } from './routes/caixa.crm'
+import { Route as CaixaEmpresaRouteImport } from './routes/caixa.empresa'
 import { Route as CaixaEstoqueRouteImport } from './routes/caixa.estoque'
 import { Route as CaixaFechamentoRouteImport } from './routes/caixa.fechamento'
+import { Route as CaixaFiscalRouteImport } from './routes/caixa.fiscal'
 import { Route as CaixaMarcaRouteImport } from './routes/caixa.marca'
 import { Route as CaixaProducaoRouteImport } from './routes/caixa.producao'
 import { Route as CaixaRelatoriosRouteImport } from './routes/caixa.relatorios'
@@ -35,6 +37,12 @@ import { Route as CSessionIdVerificarRouteImport } from './routes/c.$sessionId_.
 import { Route as CaixaCrmIndexRouteImport } from './routes/caixa.crm.index'
 import { Route as CaixaCrmAnalisesRouteImport } from './routes/caixa.crm.analises'
 import { Route as CaixaCrmClientesRouteImport } from './routes/caixa.crm.clientes'
+import { Route as CaixaEmpresaIndexRouteImport } from './routes/caixa.empresa.index'
+import { Route as CaixaEmpresaConexoesRouteImport } from './routes/caixa.empresa.conexoes'
+import { Route as CaixaEmpresaConfiguracoesRouteImport } from './routes/caixa.empresa.configuracoes'
+import { Route as CaixaEmpresaDocumentosRouteImport } from './routes/caixa.empresa.documentos'
+import { Route as CaixaEmpresaGestaoRouteImport } from './routes/caixa.empresa.gestao'
+import { Route as CaixaEmpresaInventarioRouteImport } from './routes/caixa.empresa.inventario'
 import { Route as CaixaCrmClientesCustomerIdRouteImport } from './routes/caixa.crm.clientes_.$customerId'
 
 const IndexRoute = IndexRouteImport.update({
@@ -107,6 +115,11 @@ const CaixaCrmRoute = CaixaCrmRouteImport.update({
   path: '/crm',
   getParentRoute: () => CaixaRoute,
 } as any)
+const CaixaEmpresaRoute = CaixaEmpresaRouteImport.update({
+  id: '/empresa',
+  path: '/empresa',
+  getParentRoute: () => CaixaRoute,
+} as any)
 const CaixaEstoqueRoute = CaixaEstoqueRouteImport.update({
   id: '/estoque',
   path: '/estoque',
@@ -115,6 +128,11 @@ const CaixaEstoqueRoute = CaixaEstoqueRouteImport.update({
 const CaixaFechamentoRoute = CaixaFechamentoRouteImport.update({
   id: '/fechamento',
   path: '/fechamento',
+  getParentRoute: () => CaixaRoute,
+} as any)
+const CaixaFiscalRoute = CaixaFiscalRouteImport.update({
+  id: '/fiscal',
+  path: '/fiscal',
   getParentRoute: () => CaixaRoute,
 } as any)
 const CaixaMarcaRoute = CaixaMarcaRouteImport.update({
@@ -167,6 +185,37 @@ const CaixaCrmClientesRoute = CaixaCrmClientesRouteImport.update({
   path: '/clientes',
   getParentRoute: () => CaixaCrmRoute,
 } as any)
+const CaixaEmpresaIndexRoute = CaixaEmpresaIndexRouteImport.update({
+  id: '/',
+  path: '/',
+  getParentRoute: () => CaixaEmpresaRoute,
+} as any)
+const CaixaEmpresaConexoesRoute = CaixaEmpresaConexoesRouteImport.update({
+  id: '/conexoes',
+  path: '/conexoes',
+  getParentRoute: () => CaixaEmpresaRoute,
+} as any)
+const CaixaEmpresaConfiguracoesRoute =
+  CaixaEmpresaConfiguracoesRouteImport.update({
+    id: '/configuracoes',
+    path: '/configuracoes',
+    getParentRoute: () => CaixaEmpresaRoute,
+  } as any)
+const CaixaEmpresaDocumentosRoute = CaixaEmpresaDocumentosRouteImport.update({
+  id: '/documentos',
+  path: '/documentos',
+  getParentRoute: () => CaixaEmpresaRoute,
+} as any)
+const CaixaEmpresaGestaoRoute = CaixaEmpresaGestaoRouteImport.update({
+  id: '/gestao',
+  path: '/gestao',
+  getParentRoute: () => CaixaEmpresaRoute,
+} as any)
+const CaixaEmpresaInventarioRoute = CaixaEmpresaInventarioRouteImport.update({
+  id: '/inventario',
+  path: '/inventario',
+  getParentRoute: () => CaixaEmpresaRoute,
+} as any)
 const CaixaCrmClientesCustomerIdRoute =
   CaixaCrmClientesCustomerIdRouteImport.update({
     id: '/clientes_/$customerId',
@@ -188,8 +237,10 @@ export interface FileRoutesByFullPath {
   '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
+  '/caixa/empresa': typeof CaixaEmpresaRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/fechamento': typeof CaixaFechamentoRoute
+  '/caixa/fiscal': typeof CaixaFiscalRoute
   '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/producao': typeof CaixaProducaoRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
@@ -200,7 +251,13 @@ export interface FileRoutesByFullPath {
   '/c/$sessionId/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
+  '/caixa/empresa/conexoes': typeof CaixaEmpresaConexoesRoute
+  '/caixa/empresa/configuracoes': typeof CaixaEmpresaConfiguracoesRoute
+  '/caixa/empresa/documentos': typeof CaixaEmpresaDocumentosRoute
+  '/caixa/empresa/gestao': typeof CaixaEmpresaGestaoRoute
+  '/caixa/empresa/inventario': typeof CaixaEmpresaInventarioRoute
   '/caixa/crm/': typeof CaixaCrmIndexRoute
+  '/caixa/empresa/': typeof CaixaEmpresaIndexRoute
   '/caixa/crm/clientes/$customerId': typeof CaixaCrmClientesCustomerIdRoute
 }
 export interface FileRoutesByTo {
@@ -217,6 +274,7 @@ export interface FileRoutesByTo {
   '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/fechamento': typeof CaixaFechamentoRoute
+  '/caixa/fiscal': typeof CaixaFiscalRoute
   '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/producao': typeof CaixaProducaoRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
@@ -227,7 +285,13 @@ export interface FileRoutesByTo {
   '/c/$sessionId/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
+  '/caixa/empresa/conexoes': typeof CaixaEmpresaConexoesRoute
+  '/caixa/empresa/configuracoes': typeof CaixaEmpresaConfiguracoesRoute
+  '/caixa/empresa/documentos': typeof CaixaEmpresaDocumentosRoute
+  '/caixa/empresa/gestao': typeof CaixaEmpresaGestaoRoute
+  '/caixa/empresa/inventario': typeof CaixaEmpresaInventarioRoute
   '/caixa/crm': typeof CaixaCrmIndexRoute
+  '/caixa/empresa': typeof CaixaEmpresaIndexRoute
   '/caixa/crm/clientes/$customerId': typeof CaixaCrmClientesCustomerIdRoute
 }
 export interface FileRoutesById {
@@ -245,8 +309,10 @@ export interface FileRoutesById {
   '/caixa/conexoes': typeof CaixaConexoesRoute
   '/caixa/configuracoes': typeof CaixaConfiguracoesRoute
   '/caixa/crm': typeof CaixaCrmRouteWithChildren
+  '/caixa/empresa': typeof CaixaEmpresaRouteWithChildren
   '/caixa/estoque': typeof CaixaEstoqueRoute
   '/caixa/fechamento': typeof CaixaFechamentoRoute
+  '/caixa/fiscal': typeof CaixaFiscalRoute
   '/caixa/marca': typeof CaixaMarcaRoute
   '/caixa/producao': typeof CaixaProducaoRoute
   '/caixa/relatorios': typeof CaixaRelatoriosRoute
@@ -257,7 +323,13 @@ export interface FileRoutesById {
   '/c/$sessionId_/verificar': typeof CSessionIdVerificarRoute
   '/caixa/crm/analises': typeof CaixaCrmAnalisesRoute
   '/caixa/crm/clientes': typeof CaixaCrmClientesRoute
+  '/caixa/empresa/conexoes': typeof CaixaEmpresaConexoesRoute
+  '/caixa/empresa/configuracoes': typeof CaixaEmpresaConfiguracoesRoute
+  '/caixa/empresa/documentos': typeof CaixaEmpresaDocumentosRoute
+  '/caixa/empresa/gestao': typeof CaixaEmpresaGestaoRoute
+  '/caixa/empresa/inventario': typeof CaixaEmpresaInventarioRoute
   '/caixa/crm/': typeof CaixaCrmIndexRoute
+  '/caixa/empresa/': typeof CaixaEmpresaIndexRoute
   '/caixa/crm/clientes_/$customerId': typeof CaixaCrmClientesCustomerIdRoute
 }
 export interface FileRouteTypes {
@@ -276,8 +348,10 @@ export interface FileRouteTypes {
     | '/caixa/conexoes'
     | '/caixa/configuracoes'
     | '/caixa/crm'
+    | '/caixa/empresa'
     | '/caixa/estoque'
     | '/caixa/fechamento'
+    | '/caixa/fiscal'
     | '/caixa/marca'
     | '/caixa/producao'
     | '/caixa/relatorios'
@@ -288,7 +362,13 @@ export interface FileRouteTypes {
     | '/c/$sessionId/verificar'
     | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
+    | '/caixa/empresa/conexoes'
+    | '/caixa/empresa/configuracoes'
+    | '/caixa/empresa/documentos'
+    | '/caixa/empresa/gestao'
+    | '/caixa/empresa/inventario'
     | '/caixa/crm/'
+    | '/caixa/empresa/'
     | '/caixa/crm/clientes/$customerId'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -305,6 +385,7 @@ export interface FileRouteTypes {
     | '/caixa/configuracoes'
     | '/caixa/estoque'
     | '/caixa/fechamento'
+    | '/caixa/fiscal'
     | '/caixa/marca'
     | '/caixa/producao'
     | '/caixa/relatorios'
@@ -315,7 +396,13 @@ export interface FileRouteTypes {
     | '/c/$sessionId/verificar'
     | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
+    | '/caixa/empresa/conexoes'
+    | '/caixa/empresa/configuracoes'
+    | '/caixa/empresa/documentos'
+    | '/caixa/empresa/gestao'
+    | '/caixa/empresa/inventario'
     | '/caixa/crm'
+    | '/caixa/empresa'
     | '/caixa/crm/clientes/$customerId'
   id:
     | '__root__'
@@ -332,8 +419,10 @@ export interface FileRouteTypes {
     | '/caixa/conexoes'
     | '/caixa/configuracoes'
     | '/caixa/crm'
+    | '/caixa/empresa'
     | '/caixa/estoque'
     | '/caixa/fechamento'
+    | '/caixa/fiscal'
     | '/caixa/marca'
     | '/caixa/producao'
     | '/caixa/relatorios'
@@ -344,7 +433,13 @@ export interface FileRouteTypes {
     | '/c/$sessionId_/verificar'
     | '/caixa/crm/analises'
     | '/caixa/crm/clientes'
+    | '/caixa/empresa/conexoes'
+    | '/caixa/empresa/configuracoes'
+    | '/caixa/empresa/documentos'
+    | '/caixa/empresa/gestao'
+    | '/caixa/empresa/inventario'
     | '/caixa/crm/'
+    | '/caixa/empresa/'
     | '/caixa/crm/clientes_/$customerId'
   fileRoutesById: FileRoutesById
 }
@@ -461,6 +556,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CaixaCrmRouteImport
       parentRoute: typeof CaixaRoute
     }
+    '/caixa/empresa': {
+      id: '/caixa/empresa'
+      path: '/empresa'
+      fullPath: '/caixa/empresa'
+      preLoaderRoute: typeof CaixaEmpresaRouteImport
+      parentRoute: typeof CaixaRoute
+    }
     '/caixa/estoque': {
       id: '/caixa/estoque'
       path: '/estoque'
@@ -473,6 +575,13 @@ declare module '@tanstack/react-router' {
       path: '/fechamento'
       fullPath: '/caixa/fechamento'
       preLoaderRoute: typeof CaixaFechamentoRouteImport
+      parentRoute: typeof CaixaRoute
+    }
+    '/caixa/fiscal': {
+      id: '/caixa/fiscal'
+      path: '/fiscal'
+      fullPath: '/caixa/fiscal'
+      preLoaderRoute: typeof CaixaFiscalRouteImport
       parentRoute: typeof CaixaRoute
     }
     '/caixa/marca': {
@@ -545,6 +654,48 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof CaixaCrmClientesRouteImport
       parentRoute: typeof CaixaCrmRoute
     }
+    '/caixa/empresa/': {
+      id: '/caixa/empresa/'
+      path: '/'
+      fullPath: '/caixa/empresa/'
+      preLoaderRoute: typeof CaixaEmpresaIndexRouteImport
+      parentRoute: typeof CaixaEmpresaRoute
+    }
+    '/caixa/empresa/conexoes': {
+      id: '/caixa/empresa/conexoes'
+      path: '/conexoes'
+      fullPath: '/caixa/empresa/conexoes'
+      preLoaderRoute: typeof CaixaEmpresaConexoesRouteImport
+      parentRoute: typeof CaixaEmpresaRoute
+    }
+    '/caixa/empresa/configuracoes': {
+      id: '/caixa/empresa/configuracoes'
+      path: '/configuracoes'
+      fullPath: '/caixa/empresa/configuracoes'
+      preLoaderRoute: typeof CaixaEmpresaConfiguracoesRouteImport
+      parentRoute: typeof CaixaEmpresaRoute
+    }
+    '/caixa/empresa/documentos': {
+      id: '/caixa/empresa/documentos'
+      path: '/documentos'
+      fullPath: '/caixa/empresa/documentos'
+      preLoaderRoute: typeof CaixaEmpresaDocumentosRouteImport
+      parentRoute: typeof CaixaEmpresaRoute
+    }
+    '/caixa/empresa/gestao': {
+      id: '/caixa/empresa/gestao'
+      path: '/gestao'
+      fullPath: '/caixa/empresa/gestao'
+      preLoaderRoute: typeof CaixaEmpresaGestaoRouteImport
+      parentRoute: typeof CaixaEmpresaRoute
+    }
+    '/caixa/empresa/inventario': {
+      id: '/caixa/empresa/inventario'
+      path: '/inventario'
+      fullPath: '/caixa/empresa/inventario'
+      preLoaderRoute: typeof CaixaEmpresaInventarioRouteImport
+      parentRoute: typeof CaixaEmpresaRoute
+    }
     '/caixa/crm/clientes_/$customerId': {
       id: '/caixa/crm/clientes_/$customerId'
       path: '/clientes/$customerId'
@@ -573,6 +724,28 @@ const CaixaCrmRouteWithChildren = CaixaCrmRoute._addFileChildren(
   CaixaCrmRouteChildren,
 )
 
+interface CaixaEmpresaRouteChildren {
+  CaixaEmpresaConexoesRoute: typeof CaixaEmpresaConexoesRoute
+  CaixaEmpresaConfiguracoesRoute: typeof CaixaEmpresaConfiguracoesRoute
+  CaixaEmpresaDocumentosRoute: typeof CaixaEmpresaDocumentosRoute
+  CaixaEmpresaGestaoRoute: typeof CaixaEmpresaGestaoRoute
+  CaixaEmpresaInventarioRoute: typeof CaixaEmpresaInventarioRoute
+  CaixaEmpresaIndexRoute: typeof CaixaEmpresaIndexRoute
+}
+
+const CaixaEmpresaRouteChildren: CaixaEmpresaRouteChildren = {
+  CaixaEmpresaConexoesRoute: CaixaEmpresaConexoesRoute,
+  CaixaEmpresaConfiguracoesRoute: CaixaEmpresaConfiguracoesRoute,
+  CaixaEmpresaDocumentosRoute: CaixaEmpresaDocumentosRoute,
+  CaixaEmpresaGestaoRoute: CaixaEmpresaGestaoRoute,
+  CaixaEmpresaInventarioRoute: CaixaEmpresaInventarioRoute,
+  CaixaEmpresaIndexRoute: CaixaEmpresaIndexRoute,
+}
+
+const CaixaEmpresaRouteWithChildren = CaixaEmpresaRoute._addFileChildren(
+  CaixaEmpresaRouteChildren,
+)
+
 interface CaixaRouteChildren {
   CaixaSessionIdRoute: typeof CaixaSessionIdRoute
   CaixaAberturaRoute: typeof CaixaAberturaRoute
@@ -581,8 +754,10 @@ interface CaixaRouteChildren {
   CaixaConexoesRoute: typeof CaixaConexoesRoute
   CaixaConfiguracoesRoute: typeof CaixaConfiguracoesRoute
   CaixaCrmRoute: typeof CaixaCrmRouteWithChildren
+  CaixaEmpresaRoute: typeof CaixaEmpresaRouteWithChildren
   CaixaEstoqueRoute: typeof CaixaEstoqueRoute
   CaixaFechamentoRoute: typeof CaixaFechamentoRoute
+  CaixaFiscalRoute: typeof CaixaFiscalRoute
   CaixaMarcaRoute: typeof CaixaMarcaRoute
   CaixaProducaoRoute: typeof CaixaProducaoRoute
   CaixaRelatoriosRoute: typeof CaixaRelatoriosRoute
@@ -597,8 +772,10 @@ const CaixaRouteChildren: CaixaRouteChildren = {
   CaixaConexoesRoute: CaixaConexoesRoute,
   CaixaConfiguracoesRoute: CaixaConfiguracoesRoute,
   CaixaCrmRoute: CaixaCrmRouteWithChildren,
+  CaixaEmpresaRoute: CaixaEmpresaRouteWithChildren,
   CaixaEstoqueRoute: CaixaEstoqueRoute,
   CaixaFechamentoRoute: CaixaFechamentoRoute,
+  CaixaFiscalRoute: CaixaFiscalRoute,
   CaixaMarcaRoute: CaixaMarcaRoute,
   CaixaProducaoRoute: CaixaProducaoRoute,
   CaixaRelatoriosRoute: CaixaRelatoriosRoute,

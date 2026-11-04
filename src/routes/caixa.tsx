@@ -14,9 +14,9 @@ import {
   ClipboardList,
   LogOut,
   Package,
+  Building2,
   CookingPot,
-  Plug,
-  Settings,
+  Receipt,
   UtensilsCrossed,
   Users,
 } from "lucide-react";
@@ -52,6 +52,7 @@ export const Route = createFileRoute("/caixa")({
 // Um módulo por item de menu. Adicionar um módulo novo ao caixa é só adicionar uma linha aqui —
 // a sidebar, o estado ativo e o modo colapsado (ícone) seguem tudo daqui.
 const MODULES = [
+  { key: "empresa", label: "Empresa", to: "/caixa/empresa", icon: Building2 },
   { key: "comandas", label: "Comandas", to: "/caixa", icon: ClipboardList },
   { key: "cardapio", label: "Cardápio", to: "/caixa/cardapio", icon: UtensilsCrossed },
   { key: "estoque", label: "Estoque", to: "/caixa/estoque", icon: Package },
@@ -59,8 +60,7 @@ const MODULES = [
   { key: "crm", label: "CRM", to: "/caixa/crm", icon: Users },
   { key: "relatorios", label: "Relatórios Vendas", to: "/caixa/relatorios", icon: BarChart3 },
   { key: "alertas", label: "Alertas", to: "/caixa/alertas", icon: AlertTriangle },
-  { key: "conexoes", label: "Conexões", to: "/caixa/conexoes", icon: Plug },
-  { key: "configuracoes", label: "Configurações", to: "/caixa/configuracoes", icon: Settings },
+  { key: "fiscal", label: "Fiscal", to: "/caixa/fiscal", icon: Receipt },
 ] as const;
 
 function useActiveModuleKey() {
