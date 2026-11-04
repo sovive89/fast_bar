@@ -11,6 +11,9 @@ importers:
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.7.1(ajv@8.20.0)(react-hook-form@7.84.0(react@19.2.8))(zod@3.25.76)
+      '@nous/motion':
+        specifier: file:vendor/nous-motion/nous-motion-0.1.0-28d145f.tgz
+        version: file:vendor/nous-motion/nous-motion-0.1.0-28d145f.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       '@radix-ui/react-accordion':
         specifier: ^1.2.12
         version: 1.2.20(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
@@ -257,6 +260,13 @@ importers:
         version: 5.0.3(@types/node@22.20.1)(vite@8.1.5(@types/node@22.20.1)(jiti@2.7.0)(terser@5.49.2))
 
 packages:
+
+  '@nous/motion@file:vendor/nous-motion/nous-motion-0.1.0-28d145f.tgz':
+    resolution: {integrity: sha512-CweP+Jw/DvzFY1LiE3XBwW0U9h/X9et9N7qZ9ln+sNPh6crujuKBCtFLyPk9I2QUh545pkmRSC/IGPJPUDq3Hw==, tarball: file:vendor/nous-motion/nous-motion-0.1.0-28d145f.tgz}
+    version: 0.1.0
+    peerDependencies:
+      react: '>=18'
+      react-dom: '>=18'
 
   '@apideck/better-ajv-errors@0.3.7':
     resolution: {integrity: sha512-TajUJwGWbDwkCx/CZi7tRE8PVB7simCvKJfHUsSdvps+aTM/PDPP4gkLmKnc+x3CE//y9i/nj74GqdL/hwk7Iw==}
@@ -5050,8 +5060,12 @@ packages:
       react-dom:
         optional: true
 
-
 snapshots:
+
+  '@nous/motion@file:vendor/nous-motion/nous-motion-0.1.0-28d145f.tgz(react-dom@19.2.8(react@19.2.8))(react@19.2.8)':
+    dependencies:
+      react: 19.2.8
+      react-dom: 19.2.8(react@19.2.8)
 
   '@apideck/better-ajv-errors@0.3.7(ajv@8.20.0)':
     dependencies:

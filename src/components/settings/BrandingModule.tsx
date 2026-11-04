@@ -5,6 +5,8 @@ import { Download, ExternalLink, Instagram, MessageCircle, Palette } from "lucid
 import type { IntegrationRow } from "@/lib/integrations.functions";
 import {
   brandingStyle,
+  sanitizeBrandBackground,
+  sanitizeCardOpacity,
   hasReadableContrast,
   publicBaseUrl,
   sanitizeInstagramUser,
@@ -13,6 +15,8 @@ import {
   whatsappLink,
   HEX_COLOR_PATTERN,
 } from "@/lib/branding";
+
+import { DEFAULT_SUPPORT_POLICY } from "@/lib/support-policy";
 
 const DEFAULT_PRIMARY_COLOR = "#f97316";
 
@@ -25,9 +29,11 @@ const DEFAULT_PRIMARY_COLOR = "#f97316";
  */
 /** Reduz a imagem antes de subir — logo de celular vem com megabytes que não servem pra nada num
  * avatar de 40px, e o upload trafega em base64 (cresce ~33%). */
-async function compressImageForUpload(file: File): Promise<{ base64: string; contentType: string }> {
+async function compressImageForUpload(
+  file: File,
+  maxSide = 512,
+): Promise<{ base64: string; contentType: string }> {
   const bitmap = await createImageBitmap(file);
-  const maxSide = 512;
   const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height));
   const canvas = document.createElement("canvas");
   canvas.width = Math.round(bitmap.width * scale);
@@ -54,6 +60,11 @@ export function BrandingModule({
   const [primaryColor, setPrimaryColor] = useState(config["primaryColor"] ?? "");
   const [instagramUser, setInstagramUser] = useState(config["instagramUser"] ?? "");
   const [whatsappNumber, setWhatsappNumber] = useState(config["whatsappNumber"] ?? "");
+  const [supportPolicy, setSupportPolicy] = useState(config["supportPolicy"] ?? "");
+  const [backgroundUrl, setBackgroundUrl] = useState(config["backgroundUrl"] ?? "");
+  const [cardOpacity, setCardOpacity] = useState(sanitizeCardOpacity(config["cardOpacity"]));
+  const [backgroundUploading, setBackgroundUploading] = useState(false);
+  const [backgroundError, setBackgroundError] = useState("");
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [savedMsg, setSavedMsg] = useState(false);
@@ -96,12 +107,37 @@ export function BrandingModule({
     }
   }
 
+  async function handleBackgroundFile(file: File) {
+    setBackgroundUploading(true);
+    setBackgroundError("");
+    try {
+      const compressed = await compressImageForUpload(file, 1600);
+      const result = await uploadLogo({
+        data: {
+          fileName: `background-${file.name}`,
+          base64: compressed.base64,
+          contentType: compressed.contentType,
+        },
+      });
+      if (result.ok) setBackgroundUrl(result.url);
+      else setBackgroundError(result.message);
+    } catch {
+      setBackgroundError("Não foi possível enviar a imagem de fundo.");
+    } finally {
+      setBackgroundUploading(false);
+    }
+  }
+
   async function handleSave() {
     setSaving(true);
     try {
       // Grava já normalizado: o cliente lê direto do banco pra montar o link, então guardar
       // "@bar" ou "(61) 9..." aqui viraria link quebrado lá na frente.
       await onSave(row?.enabled ?? true, {
+        ...config,
+        supportPolicy: supportPolicy.trim().slice(0, 2000),
+        backgroundUrl: sanitizeBrandBackground(backgroundUrl) ?? "",
+        cardOpacity: String(cardOpacity),
         brandName,
         logoUrl,
         primaryColor,
@@ -230,6 +266,10 @@ export function BrandingModule({
         </div>
 
         <div className="mt-4 space-y-3">
+          <p className="text-xs text-muted-foreground">
+            Endereço, telefone e CNPJ exibidos na PWA vêm dos dados do estabelecimento, nesta mesma
+            aba de Perfil.
+          </p>
           <div>
             <label className="text-xs font-medium text-muted-foreground">Instagram</label>
             <div className="mt-1 flex items-center gap-2 rounded-lg border border-border bg-background px-3 focus-within:border-primary">
@@ -285,6 +325,85 @@ export function BrandingModule({
             )}
           </div>
         </div>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <label htmlFor="brand-background" className="text-sm font-semibold">
+          Fundo do cardápio da marca
+        </label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          O fundo aparece atrás dos cards translúcidos na PWA do cliente.
+        </p>
+        <input
+          id="brand-background"
+          type="url"
+          value={backgroundUrl}
+          onChange={(event) => setBackgroundUrl(event.target.value)}
+          placeholder="https://… imagem de fundo"
+          className="mt-3 w-full rounded-lg border border-border bg-background px-3 py-2 text-sm"
+        />
+        <label className="mt-3 block text-xs font-medium">
+          {backgroundUploading ? "Enviando fundo…" : "Enviar imagem de fundo"}
+          <input
+            type="file"
+            accept="image/*"
+            disabled={backgroundUploading}
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              if (file) void handleBackgroundFile(file);
+              event.target.value = "";
+            }}
+            className="mt-1 block w-full text-xs"
+          />
+        </label>
+        {backgroundError && (
+          <p role="alert" className="mt-2 text-xs text-destructive">
+            {backgroundError}
+          </p>
+        )}
+        {backgroundUrl && !sanitizeBrandBackground(backgroundUrl) && (
+          <p className="mt-1 text-xs text-destructive">
+            Informe uma URL HTTPS válida ou envie uma imagem.
+          </p>
+        )}
+        <label htmlFor="brand-card-opacity" className="mt-4 block text-sm font-medium">
+          Opacidade dos cards: {Math.round(cardOpacity * 100)}%
+        </label>
+        <input
+          id="brand-card-opacity"
+          type="range"
+          min="0.6"
+          max="1"
+          step="0.01"
+          value={cardOpacity}
+          onChange={(event) => setCardOpacity(Number(event.target.value))}
+          className="mt-2 w-full"
+        />
+        <p className="text-xs text-muted-foreground">
+          Menor opacidade mostra mais o fundo; confira a leitura dos nomes e preços.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <label htmlFor="support-policy" className="text-sm font-semibold">
+          Política de acolhimento e proteção
+        </label>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Exibida antes da adesão ao botão de apoio. Descreva o atendimento que a equipe do bar está
+          preparada para oferecer.
+        </p>
+        <textarea
+          id="support-policy"
+          value={supportPolicy}
+          onChange={(event) => setSupportPolicy(event.target.value)}
+          maxLength={2000}
+          rows={5}
+          placeholder={DEFAULT_SUPPORT_POLICY}
+          className="mt-3 w-full rounded-xl border border-border bg-background p-3 text-sm"
+        />
+        <p className="text-xs text-muted-foreground">
+          Em branco, usa o texto padrão de acolhimento. A adesão não pergunta gênero.
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-[1fr_auto]">

@@ -130,10 +130,57 @@ o NØUS Motion é exatamente; esta é a leitura proposta, **não implementada**:
 - **Estoque será subdividido** (ainda **não feito**, PR próprio): itens produzidos; bebidas
   **alcoólicas** e **não alcoólicas**; ingredientes; insumos; e **utensílios** (copos, utensílios,
   limpeza e consumo durável como gás e material de cozinha).
-- **Cardápio do cliente (PWA)** (ainda **não feito**, PR próprio): barra fixa e translúcida no topo,
-  com a logo pequena à esquerda e as categorias numa faixa de rolagem horizontal; atalhos para
-  alerta de apoio, localização da empresa, contato e Instagram (abre direto o perfil). O cardápio
-  rola por baixo da barra. O alerta de apoio segue desligado até a revisão de privacidade.
+- **Cardápio do cliente (PWA)**: **feito** pelos PRs #71 e #72 (ver a seção "cardápio da PWA e apoio
+  por adesão voluntária", abaixo): barra fixa e translúcida, logo pequena à esquerda, categorias em
+  rolagem horizontal e atalhos de localização, contato e Instagram. O alerta de apoio foi entregue
+  com adesão voluntária.
 - **Pendente de definição:** integrar o **Notion** a Configurações/Marca. Falta o dono dizer o que
   deve fluir (marca, textos, documentos) e em que sentido (Notion → FastBar ou o contrário).
 
+## 04/11/2026 — cardápio da PWA e apoio por adesão voluntária
+
+- **Pedido do dono:** cardápio com logo pequena à esquerda, cabeçalho translúcido persistente,
+  categorias em rolagem horizontal e atalhos de localização, contato e Instagram. Os produtos
+  rolam por baixo. O endereço público é configurado em Marca, separado dos documentos da empresa.
+- **Implementado nesta branch:** cabeçalho sticky no cardápio da comanda e na página inicial,
+  links das categorias com compensação da altura do cabeçalho, WhatsApp, Instagram, mapa e
+  compartilhamento de localização quando configurados. Sem migration; mantém as permissões
+  existentes para editar Marca e retorna apenas o endereço destinado à exibição pública.
+- **Esclarecimento do dono:** “alerta” significa apoio/segurança e pertence à PWA de atendimento.
+  Uma tela explica as políticas de proteção do bar e a existência do botão. A pessoa escolhe
+  aderir; **não se pergunta gênero neste fluxo**, por minimização dos dados — não por uma proibição geral da LGPD. O botão só aparece para quem optar pelo recurso.
+- **Animação solicitada:** usar um template do NØUS Motion para esse botão. A biblioteca possui
+  `NousButton` com templates `alert` e `notification`; ainda não foi instalada neste app.
+  Este pedido autoriza a integração específica do botão, sem decidir a substituição da camada
+  de animação do restante do aplicativo. A proposta antiga de usar a biblioteca apenas nas
+  telas da equipe fica **substituída por esta exceção para o botão de apoio do cliente**.
+- **Pendente, em entrega própria:** tela de adesão, persistência da escolha, acionamento por
+  pressionar e segurar, ocorrência protegida, aviso prioritário e atendimento pela equipe,
+  confirmação real do envio e integração do template. A infraestrutura de push existente não
+  significa que esse fluxo já esteja implementado. Não mostrar confirmação de apoio enviado
+  sem registro real. Não expor preferências nem ocorrências no CRM público.
+
+## 04/11/2026 — apoio voluntário, conversa e Segurança
+
+- O dono confirmou botão de apoio **sobreposto, translúcido e com respiro**, usando NØUS Motion,
+  exclusivo de quem ativar voluntariamente após ler a política do bar; sem pergunta de gênero.
+- Cliente e equipe trocam mensagens com opções prontas e envio explícito. **Sem gravação de áudio.**
+- Apoio e pedido de conta são alertas diferentes. Apoio fica acima, com visual/som próprios,
+  prioridade progressiva enquanto ninguém assume e novo acionamento destacado para a gestão.
+- Segurança reúne o registro privado de atendimento e prepara abas de Ocorrências e Câmeras.
+  O dono esclareceu que **ocorrência formal é posterior e só se necessária**: equipe redige,
+  encaminha ao cliente e ele confirma ou pede correção. Não gerar documento automaticamente.
+- **Estado nesta branch:** implementação de apoio/chat, fila da equipe e histórico. Ocorrência
+  formal, assinatura, confirmação de relato e câmeras continuam não implementadas.
+- **Substitui a pendência de integração específica:** NØUS Motion instalado para o botão de apoio,
+  sem substituir a camada de animação do restante do app. Detalhes, permissões, retenção,
+  migration e roteiro: `docs/APOIO_E_SEGURANCA.md`.
+
+### Ajuste do dono — barra inferior e transparência no cardápio
+
+- **Substitui o endereço separado em Marca e os atalhos no cabeçalho do PR#71:** endereço, telefone
+  e CNPJ públicos vêm dos dados do estabelecimento; a barra inferior reúne contato, redes sociais,
+  Maps e compartilhamento da localização com aplicativos. Os campos continuam editáveis no painel.
+- O botão de apoio ativado fica na barra inferior da comanda. A logo pequena e as categorias
+  permanecem na barra superior. Cards têm transparência ajustável para mostrar o fundo da marca,
+  cuja imagem também pode ser configurada em Marca. Essa aparência se aplica à PWA do cliente.

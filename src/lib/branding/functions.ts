@@ -1,6 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { DEFAULT_BRAND_NAME, HEX_COLOR_PATTERN } from "./constants";
 import { sanitizeInstagramUser, sanitizeWhatsappNumber } from "./social";
+import { sanitizeBrandBackground, sanitizeCardOpacity } from "./background";
 import type { TenantBranding } from "./types";
 
 /**
@@ -28,7 +29,16 @@ export const getPublicBranding = createServerFn({ method: "GET" }).handler(
     // (ou editada direto no banco) continua chegando aqui do jeito que estiver.
     const instagramUser = sanitizeInstagramUser(config["instagramUser"]);
     const whatsappNumber = sanitizeWhatsappNumber(config["whatsappNumber"]);
-    return { brandName, logoUrl, primaryColor, instagramUser, whatsappNumber };
+    return {
+      brandName,
+      logoUrl,
+      primaryColor,
+      instagramUser,
+      whatsappNumber,
+      backgroundUrl: sanitizeBrandBackground(config["backgroundUrl"]),
+      cardOpacity: sanitizeCardOpacity(config["cardOpacity"]),
+      supportPolicy: config["supportPolicy"]?.trim().slice(0, 2000) || null,
+    };
   },
 );
 

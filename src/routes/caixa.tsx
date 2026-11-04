@@ -17,11 +17,13 @@ import {
   Building2,
   CookingPot,
   Receipt,
+  Shield,
   UtensilsCrossed,
   Users,
 } from "lucide-react";
 import { checkBarAccess, lockBarPanel } from "@/lib/bar-gate.functions";
 import { getOperationStatus } from "@/lib/operations.functions";
+import { SupportRequestAlerts } from "@/components/shared/SupportRequestAlerts";
 import { BillRequestAlerts } from "@/components/shared/BillRequestAlerts";
 import { PushToggle } from "@/components/shared/PushToggle";
 import { UpdateBanner } from "@/components/shared/UpdateBanner";
@@ -60,6 +62,7 @@ const MODULES = [
   { key: "crm", label: "CRM", to: "/caixa/crm", icon: Users },
   { key: "relatorios", label: "Relatórios Vendas", to: "/caixa/relatorios", icon: BarChart3 },
   { key: "alertas", label: "Alertas", to: "/caixa/alertas", icon: AlertTriangle },
+  { key: "seguranca", label: "Segurança", to: "/caixa/seguranca", icon: Shield },
   { key: "fiscal", label: "Fiscal", to: "/caixa/fiscal", icon: Receipt },
 ] as const;
 
@@ -251,6 +254,7 @@ function RegisterLayout() {
             <PushToggle />
           </div>
           {/* Fica na faixa fixa: o pedido de conta aparece em qualquer tela do caixa. */}
+          <SupportRequestAlerts />
           <BillRequestAlerts />
         </div>
         <Outlet />

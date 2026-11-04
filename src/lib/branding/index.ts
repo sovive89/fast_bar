@@ -5,3 +5,5 @@ export * from "./social";
 export * from "./theme";
 export * from "./functions";
 export * from "./BrandingProvider";
+
+export * from "./background";
