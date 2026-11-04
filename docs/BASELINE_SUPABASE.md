@@ -18,6 +18,10 @@ A versão `20261013052000_restore_team_password.sql` foi preservada, sem reaplic
 o reparo antigo de senha. Ele era específico de um ambiente e usava um slug anterior
 à renomeação. Configure a senha em cada ambiente pelo fluxo do aplicativo.
 
+O Preview não herda os grants antigos de tabelas. A migration
+`fastbar_service_role_table_grants` concede acesso explícito ao servidor nas tabelas
+que antes dependiam desse padrão. As políticas RLS e os papéis públicos não mudam.
+
 ## Validação e aplicação
 
 Use um Supabase local ou um Preview descartável e aplique o histórico desde um banco
