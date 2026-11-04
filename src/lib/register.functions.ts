@@ -539,50 +539,37 @@ export const setSessionServiceFee = createServerFn({ method: "POST" })
 const PAYMENT_METHODS = ["dinheiro", "cartao", "pix"] as const;
 export type PaymentMethod = (typeof PAYMENT_METHODS)[number];
 
+/**
+ * Registra um recebimento da comanda. Sem `amount`, quita o saldo inteiro (o fluxo de sempre).
+ * Com `amount` menor que o saldo é pagamento parcial: exige `password` e `motivo`, e o que faltou
+ * vira dívida (comanda 'inadimplente') — nunca desconto. A regra mora em session-payments.server.ts.
+ */
 export const registerPayment = createServerFn({ method: "POST" })
-  .inputValidator((data: { sessionId: string; method: PaymentMethod }) => data)
+  .inputValidator(
+    (data: {
+      sessionId: string;
+      method: PaymentMethod;
+      amount?: number | undefined;
+      motivo?: string | undefined;
+      password?: string | undefined;
+    }) => data,
+  )
   .handler(async ({ data }) => {
-    const { admin, assertRegisterAccess, registerCustomerSpend } = await import(
-      "./fastbar.server"
-    );
+    const { assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
     if (!PAYMENT_METHODS.includes(data.method)) {
       return { ok: false as const, message: "Forma de pagamento inválida." };
     }
-    const nowIso = new Date().toISOString();
-    const { data: session } = await admin()
-      .from("fastbar_sessions")
-      .select("id, status, closed_at")
-      .eq("id", data.sessionId)
-      .maybeSingle();
-    if (!session || session.status === "pending") {
-      return { ok: false as const, message: "Comanda inválida." };
-    }
-    // Cancelada é terminal: aceitar pagamento aqui a jogaria no faturamento, que é exatamente o
-    // que o cancelamento existe para impedir. A condição vai no próprio UPDATE, não só no if
-    // acima — checar antes e gravar depois deixa uma janela para um cancelamento concorrente
-    // entrar no meio e ser sobrescrito.
-    if (session.status === "cancelled") {
-      return { ok: false as const, message: "Comanda cancelada não pode receber pagamento." };
-    }
-    const { data: updated, error } = await admin()
-      .from("fastbar_sessions")
-      .update({
-        status: "paid",
-        closed_at: session.closed_at ?? nowIso,
-        paid_at: nowIso,
-        payment_method: data.method,
-      })
-      .eq("id", session.id)
-      .neq("status", "cancelled")
-      .select("id");
-    if (error) return { ok: false as const, message: "Não foi possível registrar o pagamento." };
-    if (!updated || updated.length === 0) {
-      return { ok: false as const, message: "Comanda cancelada não pode receber pagamento." };
-    }
-    // Só credita o gasto no CRM depois de confirmar que o pagamento foi mesmo gravado.
-    await registerCustomerSpend(session.id);
-    return { ok: true as const };
+    const { teamPasswordMatches } = await import("./bar-gate.server");
+    const { recordSessionPayment } = await import("./session-payments.server");
+    return recordSessionPayment({
+      sessionId: data.sessionId,
+      method: data.method,
+      amount: data.amount,
+      motivo: data.motivo,
+      realizadoPor: "equipe",
+      authorize: () => teamPasswordMatches(data.password ?? ""),
+    });
   });
 
 /**
@@ -600,25 +587,19 @@ export const startMachineCharge = createServerFn({ method: "POST" })
 
     const { data: session } = await admin()
       .from("fastbar_sessions")
-      .select("id, status, discount_percent, service_fee_percent")
+      .select("id, status")
       .eq("id", data.sessionId)
       .maybeSingle();
-    if (!session || !["open", "closed"].includes(session.status)) {
+    if (!session || !["open", "closed", "inadimplente"].includes(session.status)) {
       return { ok: false as const, message: "Comanda inválida para cobrança." };
     }
 
-    const { data: items } = await admin()
-      .from("fastbar_tab_items")
-      .select("unit_price, quantity")
-      .eq("session_id", data.sessionId);
-    // Mesma conta da tela e do pagamento manual (desconto primeiro, taxa sobre o que sobrou) — o
-    // valor que vai pra maquininha tem que ser exatamente o que o cliente acabou de ver.
-    const { tabTotals } = await import("@/services/supabase/tabItems");
-    const { total: amount } = tabTotals(
-      items ?? [],
-      session.discount_percent,
-      session.service_fee_percent,
-    );
+    // Cobra o SALDO (total menos o que já foi recebido), não o total: depois de um pagamento
+    // parcial a maquininha tem que cobrar só o que falta. Mesma conta da tela e do pagamento
+    // manual (desconto primeiro, taxa sobre o que sobrou).
+    const { loadSessionBalance } = await import("./session-payments.server");
+    const loaded = await loadSessionBalance(data.sessionId);
+    const amount = loaded?.balance.balance ?? 0;
     if (amount <= 0) return { ok: false as const, message: "Comanda sem valor a cobrar." };
 
     const { startPointCharge } = await import("./mercadopago/service.server");

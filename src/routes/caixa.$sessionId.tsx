@@ -46,13 +46,20 @@ export const Route = createFileRoute("/caixa/$sessionId")({
 function RegisterTabDetail() {
   const { sessionId } = Route.useParams();
   const navigate = useNavigate();
-  const { session, items, loading, loadFailed, loadError, now, reload } = useLiveTab(sessionId, "register");
+  const { session, items, payments, loading, loadFailed, loadError, now, reload } = useLiveTab(
+    sessionId,
+    "register",
+  );
   const [products, setProducts] = useState<BarProduct[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("dinheiro");
   const [paymentMode, setPaymentMode] = useState<"manual" | "maquina">("manual");
   const [machineConfigured, setMachineConfigured] = useState(false);
+  // Pagamento parcial: vazio = quitar o saldo; menor que o saldo exige motivo + senha.
+  const [amountText, setAmountText] = useState("");
+  const [partialMotivo, setPartialMotivo] = useState("");
+  const [partialPassword, setPartialPassword] = useState("");
 
   const add = useServerFn(addTabItem);
   const removeMany = useServerFn(removeTabItems);
@@ -149,6 +156,14 @@ function RegisterTabDetail() {
   const isPending = session.status === "pending";
   const totals = tabTotals(items, session.discount_percent, session.service_fee_percent);
   const totalValue = totals.total;
+  // Saldo = total − o que já foi recebido (livro de pagamentos). Centavos arredondados pra um
+  // resíduo de ponto flutuante não deixar a comanda "devendo" 0,00.
+  const paidSoFar = Math.round(payments.reduce((sum, p) => sum + p.amount, 0) * 100) / 100;
+  const balanceValue = Math.max(0, Math.round((totalValue - paidSoFar) * 100) / 100);
+  const typedAmount = amountText.trim() === "" ? null : Number(amountText.replace(",", "."));
+  const amountInvalid =
+    typedAmount !== null && (!Number.isFinite(typedAmount) || typedAmount <= 0 || typedAmount > balanceValue);
+  const isPartial = typedAmount !== null && !amountInvalid && typedAmount < balanceValue;
   const hasServiceFee = totals.serviceFee > 0;
   // A taxa só pode mudar enquanto a comanda não foi paga — depois, mexer no valor cobrado
   // desalinharia comanda, faturamento e o gasto já somado no CRM.
@@ -207,6 +222,19 @@ function RegisterTabDetail() {
           <p className="mt-1 text-xs font-medium text-success">
             Cliente novo com cadastro completo.
           </p>
+        )}
+
+        {paidSoFar > 0 && (
+          <div className="mt-3 space-y-1 border-t border-border pt-3 text-sm">
+            <div className="flex justify-between text-muted-foreground">
+              <span>Já recebido</span>
+              <span>−{brl(paidSoFar)}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>Saldo a receber</span>
+              <span>{brl(balanceValue)}</span>
+            </div>
+          </div>
         )}
 
         {canChangeServiceFee && (
@@ -354,7 +382,7 @@ function RegisterTabDetail() {
                     disabled={busy}
                     className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
                   >
-                    {busy ? "Enviando pra maquininha..." : `Cobrar ${brl(totalValue)} na maquininha`}
+                    {busy ? "Enviando pra maquininha..." : `Cobrar ${brl(balanceValue)} na maquininha`}
                   </button>
                 ) : (
                   <>
@@ -380,17 +408,75 @@ function RegisterTabDetail() {
                         </button>
                       ))}
                     </div>
+                    <div className="space-y-2 rounded-xl border border-border p-3">
+                      <label className="block text-xs text-muted-foreground">
+                        Valor recebido (deixe vazio para quitar {brl(balanceValue)})
+                        <input
+                          inputMode="decimal"
+                          value={amountText}
+                          onChange={(event) => setAmountText(event.target.value)}
+                          placeholder={String(balanceValue).replace(".", ",")}
+                          disabled={busy}
+                          className="mt-1 h-10 w-full rounded-lg border border-border bg-background px-3 text-base text-foreground"
+                        />
+                      </label>
+                      {amountInvalid && (
+                        <p className="text-xs text-destructive">
+                          Informe um valor entre R$ 0,01 e {brl(balanceValue)}.
+                        </p>
+                      )}
+                      {isPartial && (
+                        <>
+                          <p className="text-xs text-muted-foreground">
+                            Pagamento parcial: faltam {brl(balanceValue - (typedAmount ?? 0))}, que
+                            ficam como dívida em Inadimplentes (não é desconto).
+                          </p>
+                          <input
+                            value={partialMotivo}
+                            onChange={(event) => setPartialMotivo(event.target.value)}
+                            placeholder="Motivo (obrigatório)"
+                            disabled={busy}
+                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-base"
+                          />
+                          <input
+                            type="password"
+                            value={partialPassword}
+                            onChange={(event) => setPartialPassword(event.target.value)}
+                            placeholder="Senha da equipe"
+                            disabled={busy}
+                            className="h-10 w-full rounded-lg border border-border bg-background px-3 text-base"
+                          />
+                        </>
+                      )}
+                    </div>
                     <button
                       onClick={async () => {
                         const ok = await run(() =>
-                          pay({ data: { sessionId: session.id, method: paymentMethod } }),
+                          pay({
+                            data: {
+                              sessionId: session.id,
+                              method: paymentMethod,
+                              ...(isPartial
+                                ? {
+                                    amount: typedAmount ?? 0,
+                                    motivo: partialMotivo,
+                                    password: partialPassword,
+                                  }
+                                : {}),
+                            },
+                          }),
                         );
-                        if (ok) await navigate({ to: "/caixa" });
+                        if (ok) {
+                          setAmountText("");
+                          setPartialMotivo("");
+                          setPartialPassword("");
+                          await navigate({ to: "/caixa" });
+                        }
                       }}
-                      disabled={busy}
+                      disabled={busy || amountInvalid || (isPartial && partialMotivo.trim().length < 5)}
                       className="h-12 w-full rounded-xl bg-primary text-base font-semibold text-primary-foreground shadow-soft disabled:opacity-60"
                     >
-                      Registrar pagamento
+                      {isPartial ? "Registrar pagamento parcial" : "Registrar pagamento"}
                     </button>
                   </>
                 )}

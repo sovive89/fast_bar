@@ -14,6 +14,7 @@ exato ou print) e o horário.
    - `20261104094700_fastbar_operations_rls_service_role.sql`
    - `20261104102500_fechamento_operacao.sql`
    - `20261104110000_stock_count_items_kinds.sql`
+   - `20261104120000_session_payments.sql`
 2. O último deploy do `master` terminou no Amplify.
 3. Não há operação aberta. Se houver, ela foi aberta antes da mudança: encerre-a pelo fluxo novo
    (passo 5) antes de começar.
@@ -86,7 +87,23 @@ As abas são: **Em aberto**, **Fechadas nesta operação**, **Histórico** e **I
 | Motivo curto ("abc") + senha | Recusa: "Descreva o motivo de pular a conferência." |
 | Motivo de verdade + senha | Abre a operação normalmente |
 
-## 8. Auditoria no banco (quem tem acesso ao Supabase)
+## 8. Pagamento parcial
+
+Abra uma comanda, lance itens que somem R$ 30 e feche a conta.
+
+| Ação | Resultado esperado |
+| --- | --- |
+| Em "Registrar pagamento", deixe "Valor recebido" vazio e registre | Comanda paga pelo valor total (como sempre), sem pedir senha |
+| Noutra comanda de R$ 30, digite 10 em "Valor recebido" | Aparece o aviso "faltam R$ 20,00, que ficam como dívida em Inadimplentes (não é desconto)" e os campos Motivo e Senha |
+| Tente registrar com motivo "ok" | Botão desabilitado (motivo precisa de 5+ letras) |
+| Motivo de verdade + senha errada | "Senha incorreta."; nada é gravado |
+| Motivo + senha certa | Volta ao caixa; a comanda está em "Inadimplentes" |
+| Abra a comanda inadimplente | Mostra "Já recebido −R$ 10,00" e "Saldo a receber R$ 20,00" |
+| Digite 25 em "Valor recebido" | Aviso de valor inválido (maior que o saldo); botão desabilitado |
+| Registre o saldo (campo vazio) | Comanda vira "Paga"; saída de Inadimplentes |
+| Em outra parcial, toque "Reabrir comanda" | Reabre, e o saldo a receber continua mostrando o que faltava |
+
+## 9. Auditoria no banco (quem tem acesso ao Supabase)
 
 Confirme que ficou gravado:
 
@@ -99,6 +116,11 @@ order by c.created_at desc limit 5;
 -- Itens da conferência do passo 2: diferença -2, motivo perda_quebra, com o tipo do item
 select item_kind, product_name, quantidade_esperada, quantidade_contada, divergencia, motivo, observacao
 from fastbar_stock_count_items order by created_at desc limit 10;
+
+-- Pagamentos do passo 8: parcial com motivo e saldo_apos > 0, depois o restante com saldo_apos = 0
+select s.customer_name, p.amount, p.method, p.saldo_apos, p.motivo, p.created_at
+from fastbar_session_payments p join fastbar_sessions s on s.id = p.session_id
+order by p.created_at desc limit 10;
 
 -- Destinos do passo 5: cortesia e inadimplência com motivo e valor; mantida_aberta sem os dois
 select session_customer_name, destino, motivo, valor, created_at

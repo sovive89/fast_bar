@@ -34,7 +34,7 @@ export const getRegisterTab = createServerFn({ method: "POST" })
   .handler(async ({ data }) => {
     const { admin, assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
-    const [{ data: session }, { data: items }] = await Promise.all([
+    const [{ data: session }, { data: items }, { data: payments }] = await Promise.all([
       admin()
         .from("fastbar_sessions")
         .select(REGISTER_SESSION_COLUMNS)
@@ -45,8 +45,18 @@ export const getRegisterTab = createServerFn({ method: "POST" })
         .select("id, session_id, product_id, name, unit_price, quantity, added_at")
         .eq("session_id", data.sessionId)
         .order("added_at"),
+      // Recebimentos já feitos nesta comanda (pagamento parcial): a tela mostra o saldo que falta.
+      admin()
+        .from("fastbar_session_payments")
+        .select("id, amount, method, motivo, saldo_apos, created_at")
+        .eq("session_id", data.sessionId)
+        .order("created_at"),
     ]);
-    return { session: session ?? null, items: items ?? [] };
+    return {
+      session: session ?? null,
+      items: items ?? [],
+      payments: (payments ?? []).map((payment) => ({ ...payment, amount: Number(payment.amount) })),
+    };
   });
 
 export const getRegisterOverview = createServerFn({ method: "POST" }).handler(async () => {

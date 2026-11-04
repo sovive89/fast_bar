@@ -44,6 +44,16 @@ export type BarTabItem = {
   added_at: string;
 };
 
+/** Um recebimento da comanda (fastbar_session_payments). O saldo = total − soma destes valores. */
+export type SessionPayment = {
+  id: string;
+  amount: number;
+  method: string;
+  motivo: string | null;
+  saldo_apos: number;
+  created_at: string;
+};
+
 export type BarProduct = {
   id: string;
   name: string;
