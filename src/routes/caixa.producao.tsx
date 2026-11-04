@@ -123,7 +123,7 @@ function Producao() {
 
   if (loadError && !data) {
     return (
-      <main className="mx-auto max-w-2xl p-6">
+      <main className="mx-auto w-full max-w-2xl p-6">
         <p className="text-sm text-destructive">{loadError}</p>
         <button type="button" onClick={() => void refresh()} className="mt-3 text-sm underline">
           Tentar de novo

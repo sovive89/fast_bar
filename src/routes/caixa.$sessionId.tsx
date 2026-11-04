@@ -125,7 +125,7 @@ function RegisterTabDetail() {
 
   if (loadFailed && !session) {
     return (
-      <main className="mx-auto max-w-2xl p-6">
+      <main className="mx-auto w-full max-w-2xl p-6">
         <h1 className="text-2xl font-bold">Não foi possível carregar a comanda</h1>
         <p className="mt-2 text-sm text-muted-foreground">
           Vamos tentar de novo sozinhos a cada poucos segundos.
@@ -152,7 +152,7 @@ function RegisterTabDetail() {
 
   if (!session) {
     return (
-      <main className="mx-auto max-w-2xl p-6">
+      <main className="mx-auto w-full max-w-2xl p-6">
         <h1 className="text-2xl font-bold">Comanda não encontrada</h1>
         <Link to="/caixa" className="mt-4 inline-block text-sm text-primary underline">
           Voltar às comandas

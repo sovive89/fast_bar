@@ -126,7 +126,7 @@ function CustomerDetail() {
 
   if (!customer) {
     return (
-      <main className="mx-auto max-w-2xl p-6">
+      <main className="mx-auto w-full max-w-2xl p-6">
         <h1 className="text-2xl font-bold">Cliente não encontrado</h1>
         <Link to="/caixa/crm/clientes" className="mt-4 inline-block text-sm text-primary underline">
           Voltar aos clientes

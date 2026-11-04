@@ -197,7 +197,7 @@ function FechamentoOperacao() {
 
   if (!data) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-8">
+      <main className="mx-auto w-full max-w-lg px-4 py-8">
         <Loading label="Carregando…" />
       </main>
     );
@@ -205,7 +205,7 @@ function FechamentoOperacao() {
 
   if (!data.operationId) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-8">
+      <main className="mx-auto w-full max-w-lg px-4 py-8">
         <SectionCard title="Nenhuma operação aberta">
           <p className="text-sm text-muted-foreground">Não há o que encerrar agora.</p>
           <button
@@ -222,7 +222,7 @@ function FechamentoOperacao() {
   const chosen = destino ? DESTINO_BY_ID[destino] : null;
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4 px-4 py-6 pb-40">
+    <main className="mx-auto w-full max-w-2xl space-y-4 px-4 py-6 pb-40">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-destructive">
           Encerrar operação

@@ -138,7 +138,7 @@ function AberturaOperacao() {
 
   if (auditWarning) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-8">
+      <main className="mx-auto w-full max-w-lg px-4 py-8">
         <SectionCard title="Operação aberta">
           <p className="text-sm text-amber-700 dark:text-amber-400">{auditWarning}</p>
           <button
@@ -154,14 +154,14 @@ function AberturaOperacao() {
 
   if (!candidates) {
     return (
-      <main className="mx-auto max-w-lg px-4 py-8">
+      <main className="mx-auto w-full max-w-lg px-4 py-8">
         <Loading label="Carregando…" />
       </main>
     );
   }
 
   return (
-    <main className="mx-auto max-w-2xl space-y-4 px-4 py-6">
+    <main className="mx-auto w-full max-w-2xl space-y-4 px-4 py-6">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-primary">
           Abertura de operação
