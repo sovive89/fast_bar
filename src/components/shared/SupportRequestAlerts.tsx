@@ -10,6 +10,7 @@ import {
 } from "@/lib/support-requests.functions";
 import { playSupportAlert, unlockAlertSound, vibrateSupportAlert } from "@/lib/alert-sound";
 import { supportPriority, type SupportPriorityLevel } from "@/lib/support-priority";
+import { STAFF_SUPPORT_PRESETS } from "@/lib/support-presets";
 import { hhmm } from "@/lib/format";
 
 const POLL_MS = 5000;
@@ -373,7 +374,6 @@ function SupportChatPanel({ requestId, staffName }: { requestId: string; staffNa
   const load = useServerFn(getSupportMessages);
   const send = useServerFn(sendSupportMessage);
   const [messages, setMessages] = useState<Awaited<ReturnType<typeof getSupportMessages>>>([]);
-  const [body, setBody] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [stale, setStale] = useState(false);
   const [sending, setSending] = useState(false);
@@ -404,14 +404,10 @@ function SupportChatPanel({ requestId, staffName }: { requestId: string; staffNa
     };
   }, [refresh]);
 
-  async function sendMessage() {
+  async function sendMessage(text: string) {
     if (busy.current) return;
     if (staffName.trim().length < 2) {
       setError("Informe seu nome acima antes de enviar uma mensagem.");
-      return;
-    }
-    if (!body.trim()) {
-      setError("Escreva uma mensagem antes de enviar.");
       return;
     }
     busy.current = true;
@@ -419,18 +415,17 @@ function SupportChatPanel({ requestId, staffName }: { requestId: string; staffNa
     setError(null);
     try {
       const result = await send({
-        data: { requestId, body: body.trim(), staffName: staffName.trim() },
+        data: { requestId, body: text, staffName: staffName.trim() },
       });
       if (!alive.current) return;
       if (!result.ok) {
         setError(result.message);
       } else {
-        setBody("");
         await refresh();
       }
     } catch {
       if (alive.current)
-        setError("Não foi possível enviar. Sua mensagem continua aqui para tentar novamente.");
+        setError("Não foi possível enviar. Toque na mensagem para tentar novamente.");
     } finally {
       busy.current = false;
       if (alive.current) setSending(false);
@@ -469,16 +464,12 @@ function SupportChatPanel({ requestId, staffName }: { requestId: string; staffNa
         aria-label="Respostas prontas da equipe"
         className="mt-2 flex flex-wrap gap-2"
       >
-        {[
-          "Recebemos seu pedido. Como podemos ajudar?",
-          "Estamos indo até você.",
-          "Você consegue vir até o balcão com segurança?",
-        ].map((preset) => (
+        {STAFF_SUPPORT_PRESETS.map((preset) => (
           <button
             key={preset}
             type="button"
             disabled={sending}
-            onClick={() => setBody(preset)}
+            onClick={() => void sendMessage(preset)}
             className="min-h-11 max-w-full rounded-lg border border-border px-2 py-2 text-left text-xs font-medium disabled:opacity-60"
           >
             {preset}
@@ -486,33 +477,13 @@ function SupportChatPanel({ requestId, staffName }: { requestId: string; staffNa
         ))}
       </div>
       <p className="mt-1 text-xs text-muted-foreground">
-        Escolha uma resposta e toque em Enviar mensagem para confirmar.
+        Tocar em uma resposta envia a mensagem para a pessoa.
       </p>
-      <label htmlFor={`support-message-${requestId}`} className="mt-2 block text-xs font-medium">
-        Mensagem para a pessoa
-      </label>
-      <textarea
-        id={`support-message-${requestId}`}
-        value={body}
-        onChange={(event) => setBody(event.target.value)}
-        maxLength={1000}
-        rows={3}
-        disabled={sending}
-        className="mt-1 w-full rounded-lg border border-border bg-background p-2 text-sm"
-      />
       {error && (
         <p role="alert" className="mt-2 text-sm text-destructive">
           {error}
         </p>
       )}
-      <button
-        type="button"
-        disabled={sending}
-        onClick={() => void sendMessage()}
-        className="mt-2 min-h-11 w-full rounded-lg bg-primary px-3 text-sm font-semibold text-primary-foreground disabled:opacity-60"
-      >
-        {sending ? "Enviando..." : "Enviar mensagem"}
-      </button>
     </div>
   );
 }

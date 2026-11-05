@@ -13,17 +13,11 @@ import {
   requestMySupport,
   sendMySupportMessage,
 } from "@/lib/support-requests.functions";
+import { CUSTOMER_SUPPORT_PRESETS } from "@/lib/support-presets";
 import type { PublicSupportRequest } from "@/lib/support-requests.types";
 
 const HOLD_MS = 2000;
-const CUSTOMER_MESSAGES = [
-  "Preciso que alguém venha até mim.",
-  "Não consigo falar agora.",
-  "Quero ir para um local mais reservado.",
-  "Posso encontrar a equipe no balcão.",
-  "Ainda preciso de apoio.",
-  "Estou em segurança agora, obrigado.",
-];
+const CUSTOMER_MESSAGES = CUSTOMER_SUPPORT_PRESETS;
 type Choice = "enabled" | "declined";
 type Messages = Awaited<ReturnType<typeof getMySupportMessages>>;
 const buttonClass =
@@ -54,7 +48,6 @@ export function SupportWidget({
   const [chatSyncError, setChatSyncError] = useState(false);
   const [syncError, setSyncError] = useState(false);
   const [messages, setMessages] = useState<Messages>([]);
-  const [draft, setDraft] = useState("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sentByHold = useRef(false);
   const submitting = useRef(false);
@@ -196,21 +189,19 @@ export function SupportWidget({
     }, HOLD_MS);
   }
 
-  async function submitMessage(e: React.FormEvent) {
-    e.preventDefault();
-    if (!request || sendingRef.current || !draft.trim()) return;
+  async function submitMessage(text: string) {
+    if (!request || sendingRef.current) return;
     sendingRef.current = true;
     setSending(true);
     setMessageError("");
     try {
       const result = await sendMessage({
-        data: { sessionId, requestId: request.id, body: draft.trim() },
+        data: { sessionId, requestId: request.id, body: text },
       });
       if (!result.ok) {
         setMessageError(result.message);
         return;
       }
-      setDraft("");
       const sequence = ++chatSequence.current;
       const updatedMessages = await loadMessages({ data: { sessionId, requestId: request.id } });
       if (sequence === chatSequence.current) setMessages(updatedMessages);
@@ -391,7 +382,7 @@ export function SupportWidget({
           <DialogDescription>
             {request
               ? statusText
-              : "Confirme para pedir apoio de forma discreta. Você poderá conversar por texto com a equipe."}
+              : "Confirme para pedir apoio de forma discreta. Você poderá responder à equipe com mensagens prontas."}
           </DialogDescription>
           {syncError && (
             <p role="status" className="text-xs text-muted-foreground">
@@ -423,7 +414,7 @@ export function SupportWidget({
               >
                 {messages.length === 0 && (
                   <li className="text-xs text-muted-foreground">
-                    Nenhuma mensagem ainda. Você pode escrever para a equipe abaixo.
+                    Nenhuma mensagem ainda. Toque em uma resposta pronta abaixo.
                   </li>
                 )}
                 {messages.map((message) => (
@@ -439,37 +430,21 @@ export function SupportWidget({
                 ))}
               </ol>
               {request.status !== "completed" ? (
-                <form onSubmit={(event) => void submitMessage(event)} className="space-y-2">
-                  <div role="group" aria-label="Mensagens prontas" className="flex flex-wrap gap-2">
+                <div className="space-y-2">
+                  <div role="group" aria-label="Mensagens prontas" className="flex flex-col gap-2">
                     {CUSTOMER_MESSAGES.map((text) => (
                       <button
                         key={text}
                         type="button"
                         disabled={sending}
-                        onClick={() => setDraft(text)}
+                        onClick={() => void submitMessage(text)}
                         className={`${buttonClass} text-left`}
                       >
                         {text}
                       </button>
                     ))}
                   </div>
-                  <label htmlFor={`${helpId}-message`} className="text-sm font-medium">
-                    Sua mensagem
-                  </label>
-                  <textarea
-                    id={`${helpId}-message`}
-                    value={draft}
-                    onChange={(event) => setDraft(event.target.value)}
-                    maxLength={1000}
-                    disabled={sending}
-                    rows={2}
-                    className="w-full resize-none rounded-xl border border-border bg-background p-3 text-base"
-                    placeholder="Escreva o que precisa…"
-                  />
-                  <button type="submit" className={buttonClass} disabled={sending || !draft.trim()}>
-                    {sending ? "Enviando…" : "Enviar mensagem"}
-                  </button>
-                </form>
+                </div>
               ) : (
                 <button
                   type="button"

@@ -1,3 +1,4 @@
+import { isSupportPreset } from "./support-presets";
 /** Private support records. Never use the anon client, CRM or console logs for these data. */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -310,8 +311,8 @@ export async function sendSupportChat(
   const staffName = typeof input.staffName === "string" ? input.staffName.trim() : null;
   if (!validId(input.requestId) || (sender === "customer" && !validId(input.sessionId)))
     return { ok: false, message: "Atendimento inválido." };
-  if (body.length < 1 || body.length > 1000)
-    return { ok: false, message: "Escreva uma mensagem de até 1000 caracteres." };
+  if (!isSupportPreset(sender, body))
+    return { ok: false, message: "Escolha uma das mensagens prontas." };
   if (sender === "staff" && (!staffName || staffName.length < 2 || staffName.length > 80))
     return { ok: false, message: "Informe seu nome (2 a 80 caracteres)." };
   const { db, tenantId } = await context();

@@ -281,17 +281,44 @@ describe("chat privado entre cliente e equipe", () => {
         p_request_id: REQUEST,
         p_session_id: SESSION,
         p_sender: "customer",
-        p_body: "oi",
+        p_body: "Preciso que alguém venha até mim.",
         p_staff_name: null,
       });
       return { ok: true };
     });
     expect(
       await sendSupportChat(
-        { requestId: REQUEST, sessionId: SESSION, body: " oi ", staffName: "tentativa" },
+        {
+          requestId: REQUEST,
+          sessionId: SESSION,
+          body: " Preciso que alguém venha até mim. ",
+          staffName: "tentativa",
+        },
         "customer",
       ),
     ).toEqual({ ok: true });
+  });
+  it("recusa texto livre: só mensagens prontas passam, para cliente e equipe", async () => {
+    const rpc = vi.fn(() => ({ ok: true }));
+    holder.db.rpcHandlers.set("fastbar_send_support_message", rpc);
+    expect(
+      (
+        await sendSupportChat(
+          { requestId: REQUEST, sessionId: SESSION, body: "texto livre" },
+          "customer",
+        )
+      ).ok,
+    ).toBe(false);
+    // frase pronta da equipe não vale como mensagem do cliente
+    expect(
+      (
+        await sendSupportChat(
+          { requestId: REQUEST, sessionId: SESSION, body: "Estamos indo até você." },
+          "customer",
+        )
+      ).ok,
+    ).toBe(false);
+    expect(rpc).not.toHaveBeenCalled();
   });
   it("recusa vazio, texto longo e staff sem responsável", async () => {
     expect(
@@ -309,15 +336,22 @@ describe("chat privado entre cliente e equipe", () => {
   });
   it("falha do RPC e rate limit não mostram sucesso", async () => {
     expect(
-      (await sendSupportChat({ requestId: REQUEST, sessionId: SESSION, body: "oi" }, "customer"))
-        .ok,
+      (
+        await sendSupportChat(
+          { requestId: REQUEST, sessionId: SESSION, body: "Preciso que alguém venha até mim." },
+          "customer",
+        )
+      ).ok,
     ).toBe(false);
     holder.db.rpcHandlers.set("fastbar_send_support_message", () => ({
       ok: false,
       message: "Aguarde um segundo antes de enviar outra mensagem.",
     }));
     expect(
-      await sendSupportChat({ requestId: REQUEST, sessionId: SESSION, body: "oi" }, "customer"),
+      await sendSupportChat(
+        { requestId: REQUEST, sessionId: SESSION, body: "Preciso que alguém venha até mim." },
+        "customer",
+      ),
     ).toEqual({ ok: false, message: "Aguarde um segundo antes de enviar outra mensagem." });
   });
 });
