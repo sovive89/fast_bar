@@ -66,7 +66,8 @@ export const getCrmDashboard = createServerFn({ method: "POST" }).handler(async 
   const howFoundOutCounts: Record<string, number> = {};
   for (const customer of rows) {
     if (!customer.how_found_out) continue;
-    howFoundOutCounts[customer.how_found_out] = (howFoundOutCounts[customer.how_found_out] ?? 0) + 1;
+    howFoundOutCounts[customer.how_found_out] =
+      (howFoundOutCounts[customer.how_found_out] ?? 0) + 1;
   }
 
   const marketingOptInCount = rows.filter((c) => c.marketing_opt_in).length;
@@ -93,7 +94,9 @@ export const getCrmAlerts = createServerFn({ method: "POST" }).handler(async () 
 
   const { data: customers } = await admin()
     .from("fastbar_customers")
-    .select("id, name, phone, total_visits, total_spent, last_seen_at, birthday_day, birthday_month");
+    .select(
+      "id, name, phone, total_visits, total_spent, last_seen_at, birthday_day, birthday_month",
+    );
   const rows = customers ?? [];
   const threshold = vipSpendThreshold(rows);
   const now = Date.now();
@@ -127,9 +130,7 @@ export const getRetentionCohorts = createServerFn({ method: "POST" }).handler(as
   const { monthKey, monthsBetween } = await import("./analytics");
   await assertRegisterAccess();
 
-  const { data: customers } = await admin()
-    .from("fastbar_customers")
-    .select("id, first_seen_at");
+  const { data: customers } = await admin().from("fastbar_customers").select("id, first_seen_at");
   const { data: sessions } = await admin()
     .from("fastbar_sessions")
     .select("customer_id, paid_at")
@@ -279,9 +280,7 @@ export const getCustomerDetail = createServerFn({ method: "POST" })
     // O corte de VIP e a fatia do faturamento são relativos à base inteira, então a ficha precisa
     // consultar todos os clientes — senão o mesmo cliente apareceria com um segmento aqui e outro
     // na lista, ou uma fatia calculada contra o número errado.
-    const { data: allCustomers } = await admin()
-      .from("fastbar_customers")
-      .select("total_spent");
+    const { data: allCustomers } = await admin().from("fastbar_customers").select("total_spent");
     const threshold = vipSpendThreshold(allCustomers ?? []);
     const totalBaseSpend = (allCustomers ?? []).reduce((sum, c) => sum + Number(c.total_spent), 0);
     const now = Date.now();
@@ -313,4 +312,12 @@ export const updateCustomerNotes = createServerFn({ method: "POST" })
       .eq("id", data.customerId);
     if (error) return { ok: false as const, message: "Não foi possível salvar a nota." };
     return { ok: true as const };
+  });
+
+/** Apaga os dados pessoais do cliente do CRM (admin, mediante senha). As vendas ficam. */
+export const eraseCustomerFn = createServerFn({ method: "POST" })
+  .inputValidator((data: { customerId: string; password: string }) => data)
+  .handler(async ({ data }) => {
+    const { eraseCustomer } = await import("./customer-erasure.server");
+    return eraseCustomer(data.customerId, data.password);
   });
