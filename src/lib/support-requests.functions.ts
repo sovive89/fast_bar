@@ -70,3 +70,15 @@ export const getSupportOccurrenceDetail = createServerFn({ method: "POST" })
     const { getSupportOccurrence } = await import("./support-requests.server");
     return getSupportOccurrence(data.requestId);
   });
+export const presumeMySupportResolved = createServerFn({ method: "POST" })
+  .inputValidator(
+    z.object({
+      sessionId: z.string().uuid(),
+      requestId: z.string().uuid(),
+      reason: z.enum(["no_answer", "false_alarm"]),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const { presumeSupportResolved } = await import("./support-requests.server");
+    return presumeSupportResolved(data);
+  });

@@ -1,3 +1,4 @@
+import { isSupportPreset, sanitizeSupportPlaces, STEP_ANSWERS } from "./support-presets";
 /** Private support records. Never use the anon client, CRM or console logs for these data. */
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/integrations/supabase/types";
@@ -298,6 +299,84 @@ export async function getStaffSupportMessages(requestId: string): Promise<Suppor
   const { db, tenantId } = await context();
   return messages(db, tenantId, requestId);
 }
+async function supportPlaces(): Promise<string[]> {
+  const { db } = await context();
+  const { data } = await db
+    .from("fastbar_integrations")
+    .select("config")
+    .eq("key", "branding")
+    .maybeSingle();
+  const config = (data?.config ?? {}) as Record<string, unknown>;
+  return sanitizeSupportPlaces(config["supportPlaces"]);
+}
+
+const IDLE_BEFORE_PRESUME_MS = 5 * 60 * 1000;
+
+/**
+ * Pedido sem resposta da pessoa: depois de várias perguntas sem retorno (ou se ela disse que foi
+ * engano), o sistema presume resolvido. Fica registrado como "Sistema", nunca como equipe, e só
+ * vale enquanto ninguém da equipe assumiu o atendimento.
+ */
+export async function presumeSupportResolved(input: {
+  sessionId: string;
+  requestId: string;
+  reason: "no_answer" | "false_alarm";
+}): Promise<SupportResult> {
+  if (!validId(input.sessionId) || !validId(input.requestId))
+    return { ok: false, message: "Atendimento inválido." };
+  const { db, tenantId } = await context();
+  if (!(await ownedRequest(db, tenantId, input.sessionId, input.requestId)))
+    return { ok: false, message: "Atendimento não encontrado." };
+  const { data: request } = await db
+    .from("fastbar_support_requests")
+    .select("id,status,created_at")
+    .eq("tenant_id", tenantId)
+    .eq("id", input.requestId)
+    .maybeSingle();
+  if (!request || request.status !== "requested")
+    return { ok: false, message: "Esse atendimento não está aguardando resposta." };
+  const { data: rows } = await db
+    .from("fastbar_support_messages")
+    .select("sender,body,created_at")
+    .eq("tenant_id", tenantId)
+    .eq("request_id", input.requestId)
+    .limit(200);
+  const mine = (rows ?? []).filter((row) => row.sender === "customer");
+  let note: string;
+  if (input.reason === "false_alarm") {
+    if (!mine.some((row) => row.body === STEP_ANSWERS.falseAlarm))
+      return { ok: false, message: "Não foi possível confirmar o engano." };
+    note = "Pessoa informou que foi engano. Encerrado pelo sistema.";
+  } else {
+    const last = Math.max(
+      Date.parse(request.created_at),
+      ...mine.map((row) => Date.parse(row.created_at)),
+    );
+    if (Date.now() - last < IDLE_BEFORE_PRESUME_MS)
+      return { ok: false, message: "Ainda aguardando a resposta." };
+    note =
+      "Sem resposta da pessoa após as perguntas automáticas; presumido resolvido pelo sistema.";
+  }
+  const now = new Date().toISOString();
+  const { data, error } = await db
+    .from("fastbar_support_requests")
+    .update({
+      status: "completed",
+      attended_at: now,
+      attended_by: "Sistema",
+      completed_at: now,
+      completed_by: "Sistema",
+      completion_note: note,
+    })
+    .eq("tenant_id", tenantId)
+    .eq("id", input.requestId)
+    .eq("status", "requested")
+    .select("id");
+  if (error) return failure();
+  if (!data?.length) return { ok: false, message: "O atendimento mudou." };
+  return { ok: true };
+}
+
 export async function sendSupportChat(
   input: { requestId: string; sessionId?: string; body: string; staffName?: string },
   sender: "customer" | "staff",
@@ -310,8 +389,8 @@ export async function sendSupportChat(
   const staffName = typeof input.staffName === "string" ? input.staffName.trim() : null;
   if (!validId(input.requestId) || (sender === "customer" && !validId(input.sessionId)))
     return { ok: false, message: "Atendimento inválido." };
-  if (body.length < 1 || body.length > 1000)
-    return { ok: false, message: "Escreva uma mensagem de até 1000 caracteres." };
+  if (!isSupportPreset(sender, body, sender === "customer" ? await supportPlaces() : []))
+    return { ok: false, message: "Escolha uma das mensagens prontas." };
   if (sender === "staff" && (!staffName || staffName.length < 2 || staffName.length > 80))
     return { ok: false, message: "Informe seu nome (2 a 80 caracteres)." };
   const { db, tenantId } = await context();
