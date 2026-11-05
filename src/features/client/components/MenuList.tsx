@@ -3,8 +3,23 @@ import { getCardapioCliente } from "@/lib/menu-cliente.functions";
 import { useBranding } from "@/lib/branding";
 import { CompanyFooter } from "./CompanyFooter";
 import { brl } from "@/lib/format";
+import { sanitizeCardShape, sanitizeCategoryShape } from "@/lib/branding/background";
 import { loadWithFallback } from "@/lib/async-result";
 import type { ItemCardapioCliente } from "@/lib/menu-cliente.functions";
+
+// Só raio de borda e respiro lateral: a grade e a altura mínima de toque (44px) não mudam.
+const CARD_CLASS = {
+  rounded: "rounded-xl px-4",
+  square: "rounded-md px-4",
+  pill: "rounded-3xl px-5",
+  oval: "rounded-[2rem] px-6",
+} as const;
+const CATEGORY_CLASS = {
+  pill: "rounded-full border-border",
+  square: "rounded-none border-border",
+  rounded: "rounded-xl border-border",
+  outline: "rounded-lg border-2 border-primary bg-transparent",
+} as const;
 
 const POLL_MS = 15000;
 
@@ -12,6 +27,8 @@ export function MenuList({
   supportSlotRef,
 }: { supportSlotRef?: RefCallback<HTMLDivElement> | undefined } = {}) {
   const { branding } = useBranding();
+  const cardShape = sanitizeCardShape(branding.cardShape);
+  const categoryShape = sanitizeCategoryShape(branding.categoryShape);
   const menuId = useId();
   const [products, setProducts] = useState<ItemCardapioCliente[]>([]);
   const [hasLoaded, setHasLoaded] = useState(false);
@@ -131,7 +148,7 @@ export function MenuList({
                 <a
                   key={category}
                   href={`#${menuId}-categoria-${index}`}
-                  className="flex min-h-11 shrink-0 items-center rounded-full border border-border px-4 text-sm font-medium hover:bg-muted"
+                  className={`flex min-h-11 shrink-0 items-center border px-4 text-sm font-medium hover:bg-muted ${CATEGORY_CLASS[categoryShape]}`}
                 >
                   {category}
                 </a>
@@ -195,7 +212,7 @@ export function MenuList({
                           style={{
                             background: `color-mix(in srgb, var(--card) ${Math.round((branding.cardOpacity ?? 0.82) * 100)}%, transparent)`,
                           }}
-                          className={`flex items-center gap-3 rounded-xl border border-border bg-card px-4 py-3 ${
+                          className={`flex items-center gap-3 border border-border bg-card py-3 ${CARD_CLASS[cardShape]} ${
                             soldOut ? "opacity-50" : ""
                           }`}
                         >

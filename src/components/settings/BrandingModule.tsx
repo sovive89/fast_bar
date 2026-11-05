@@ -7,6 +7,12 @@ import {
   brandingStyle,
   sanitizeBrandBackground,
   sanitizeCardOpacity,
+  sanitizeCardShape,
+  sanitizeCategoryShape,
+  CARD_SHAPES,
+  CARD_SHAPE_LABELS,
+  CATEGORY_SHAPES,
+  CATEGORY_SHAPE_LABELS,
   hasReadableContrast,
   publicBaseUrl,
   sanitizeInstagramUser,
@@ -63,6 +69,10 @@ export function BrandingModule({
   const [supportPolicy, setSupportPolicy] = useState(config["supportPolicy"] ?? "");
   const [backgroundUrl, setBackgroundUrl] = useState(config["backgroundUrl"] ?? "");
   const [cardOpacity, setCardOpacity] = useState(sanitizeCardOpacity(config["cardOpacity"]));
+  const [cardShape, setCardShape] = useState(sanitizeCardShape(config["cardShape"]));
+  const [categoryShape, setCategoryShape] = useState(
+    sanitizeCategoryShape(config["categoryShape"]),
+  );
   const [backgroundUploading, setBackgroundUploading] = useState(false);
   const [backgroundError, setBackgroundError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -138,6 +148,8 @@ export function BrandingModule({
         supportPolicy: supportPolicy.trim().slice(0, 2000),
         backgroundUrl: sanitizeBrandBackground(backgroundUrl) ?? "",
         cardOpacity: String(cardOpacity),
+        cardShape,
+        categoryShape,
         brandName,
         logoUrl,
         primaryColor,
@@ -382,6 +394,36 @@ export function BrandingModule({
         <p className="text-xs text-muted-foreground">
           Menor opacidade mostra mais o fundo; confira a leitura dos nomes e preços.
         </p>
+        <label htmlFor="brand-card-shape" className="mt-4 block text-sm font-medium">
+          Formato dos cards de produto
+        </label>
+        <select
+          id="brand-card-shape"
+          value={cardShape}
+          onChange={(event) => setCardShape(sanitizeCardShape(event.target.value))}
+          className="mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
+        >
+          {CARD_SHAPES.map((shape) => (
+            <option key={shape} value={shape}>
+              {CARD_SHAPE_LABELS[shape]}
+            </option>
+          ))}
+        </select>
+        <label htmlFor="brand-category-shape" className="mt-4 block text-sm font-medium">
+          Formato dos botões de categoria
+        </label>
+        <select
+          id="brand-category-shape"
+          value={categoryShape}
+          onChange={(event) => setCategoryShape(sanitizeCategoryShape(event.target.value))}
+          className="mt-1 min-h-11 w-full rounded-lg border border-border bg-background px-3 text-sm"
+        >
+          {CATEGORY_SHAPES.map((shape) => (
+            <option key={shape} value={shape}>
+              {CATEGORY_SHAPE_LABELS[shape]}
+            </option>
+          ))}
+        </select>
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-4">
