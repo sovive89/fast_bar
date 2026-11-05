@@ -7,6 +7,7 @@ import { getCustomerDetail, updateCustomerNotes } from "@/lib/customers.function
 import { SEGMENT_HINT, SEGMENT_LABEL, SEGMENT_STYLE, type LeadSegment } from "@/lib/crm";
 import type { SessionStatus } from "@/types/fastbar";
 import { Loading } from "@/components/motion/Loading";
+import { EraseCustomerButton } from "@/components/crm/EraseCustomerButton";
 
 export const Route = createFileRoute("/caixa/crm/clientes_/$customerId")({
   head: () => ({
@@ -348,6 +349,7 @@ function CustomerDetail() {
           ))}
         </ul>
       )}
+      <EraseCustomerButton customerId={customerId} />
     </main>
   );
 }
