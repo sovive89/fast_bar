@@ -26,7 +26,13 @@ export const subscribePush = createServerFn({ method: "POST" })
     const { assertRegisterAccess } = await import("./fastbar.server");
     await assertRegisterAccess();
     const { saveSubscription } = await import("./push.server");
-    return saveSubscription(data.subscription, data.userAgent?.slice(0, 300) ?? null);
+    const { currentActor } = await import("./staff-users.server");
+    const actor = await currentActor();
+    return saveSubscription(
+      data.subscription,
+      data.userAgent?.slice(0, 300) ?? null,
+      actor.staffId,
+    );
   });
 
 export const unsubscribePush = createServerFn({ method: "POST" })

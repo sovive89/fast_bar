@@ -103,6 +103,35 @@ describe("guardar inscrições", () => {
   });
 });
 
+describe("avisos só para administradores", () => {
+  it("guarda o dono do aparelho e só avisa aparelhos de admins ativos", async () => {
+    holder.db.seed("fastbar_staff_users", [
+      { id: "adm", role: "admin", status: "ativo" },
+      { id: "adm-off", role: "admin", status: "inativo" },
+      { id: "func", role: "atendimento", status: "ativo" },
+    ]);
+    await saveSubscription(subscription(1), "ua", "adm");
+    await saveSubscription(subscription(2), "ua", "func");
+    await saveSubscription(subscription(3), "ua", "adm-off");
+    await saveSubscription(subscription(4), "ua"); // senha única: sem dono
+    const result = await notifyStaff(payload, { onlyAdmins: true });
+    expect(result.sent).toBe(1);
+    const sent = webpush.sendNotification.mock.calls.map(
+      (c) => (c[0] as { endpoint: string }).endpoint,
+    );
+    expect(sent).toEqual([subscription(1).endpoint]);
+  });
+  it("sem nenhum admin ativo inscrito, não manda para ninguém", async () => {
+    await saveSubscription(subscription(1), "ua");
+    expect((await notifyStaff(payload, { onlyAdmins: true })).sent).toBe(0);
+  });
+  it("sem a opção, continua avisando todos os aparelhos", async () => {
+    await saveSubscription(subscription(1), "ua");
+    await saveSubscription(subscription(2), "ua", "func");
+    expect((await notifyStaff(payload)).sent).toBe(2);
+  });
+});
+
 describe("avisar a equipe", () => {
   it("sem chaves configuradas não faz nada e não falha", async () => {
     delete process.env["VAPID_PRIVATE_KEY"];

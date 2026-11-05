@@ -15,7 +15,7 @@
  * Sem elas o push fica desligado e o resto do app funciona igual.
  */
 
-export type PushKind = "conta" | "apoio";
+export type PushKind = "conta" | "apoio" | "equipe";
 
 export interface PushPayload {
   kind: PushKind;
@@ -76,6 +76,7 @@ export function validateSubscription(
 export async function saveSubscription(
   input: unknown,
   userAgent: string | null,
+  staffId: string | null = null,
 ): Promise<{ ok: true } | { ok: false; message: string }> {
   const checked = validateSubscription(input);
   if (!checked.ok) return checked;
@@ -92,17 +93,27 @@ export async function saveSubscription(
   if (existing) {
     const { error } = await admin()
       .from("fastbar_push_subscriptions")
-      .update({ p256dh: keys.p256dh, auth: keys.auth, user_agent: userAgent, last_seen_at: nowIso })
+      .update({
+        p256dh: keys.p256dh,
+        auth: keys.auth,
+        user_agent: userAgent,
+        last_seen_at: nowIso,
+        // Só troca o dono quando quem inscreve tem usuário próprio; a senha única não apaga o dono.
+        ...(staffId ? { staff_id: staffId } : {}),
+      })
       .eq("id", existing.id);
     if (error) return { ok: false, message: "Não foi possível ativar as notificações." };
     return { ok: true };
   }
-  const { error } = await admin().from("fastbar_push_subscriptions").insert({
-    endpoint,
-    p256dh: keys.p256dh,
-    auth: keys.auth,
-    user_agent: userAgent,
-  });
+  const { error } = await admin()
+    .from("fastbar_push_subscriptions")
+    .insert({
+      endpoint,
+      p256dh: keys.p256dh,
+      auth: keys.auth,
+      user_agent: userAgent,
+      ...(staffId ? { staff_id: staffId } : {}),
+    });
   if (error) return { ok: false, message: "Não foi possível ativar as notificações." };
   return { ok: true };
 }
@@ -129,7 +140,7 @@ const GONE_STATUS = new Set([404, 410]);
  */
 export async function notifyStaff(
   payload: PushPayload,
-  options: { timeoutMs?: number } = {},
+  options: { timeoutMs?: number; onlyAdmins?: boolean } = {},
 ): Promise<NotifyResult> {
   const result: NotifyResult = { sent: 0, removed: 0, failed: 0 };
   try {
@@ -137,9 +148,19 @@ export async function notifyStaff(
     if (!config) return { ...result, skipped: "not_configured" };
 
     const { admin } = await import("./fastbar.server");
-    const { data: subscriptions } = await admin()
-      .from("fastbar_push_subscriptions")
-      .select("endpoint, p256dh, auth");
+    let query = admin().from("fastbar_push_subscriptions").select("endpoint, p256dh, auth");
+    if (options.onlyAdmins) {
+      // Avisos de gestão (ex.: login da equipe) vão só para aparelhos de administradores ativos.
+      const { data: admins } = await admin()
+        .from("fastbar_staff_users")
+        .select("id")
+        .eq("role", "admin")
+        .eq("status", "ativo");
+      const ids = (admins ?? []).map((row) => row.id);
+      if (ids.length === 0) return { ...result, skipped: "no_subscribers" };
+      query = query.in("staff_id", ids);
+    }
+    const { data: subscriptions } = await query;
     if (!subscriptions || subscriptions.length === 0)
       return { ...result, skipped: "no_subscribers" };
 
