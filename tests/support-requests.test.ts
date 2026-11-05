@@ -12,6 +12,10 @@ vi.mock("../src/lib/fastbar.server", () => ({
   getDefaultTenantId: async () => TENANT,
   assertRegisterAccess: () => gate(),
 }));
+const roleGate = vi.fn(async (..._roles: string[]) => ({ role: "admin", staffId: "adm" }));
+vi.mock("../src/lib/staff-users.server", () => ({
+  assertRole: (...roles: string[]) => roleGate(...roles),
+}));
 vi.mock("../src/lib/push.server", () => ({ notifyStaff: (p: unknown) => notify(p) }));
 const {
   requestSupport,
@@ -22,6 +26,7 @@ const {
   getStaffSupportMessages,
   sendSupportChat,
   presumeSupportResolved,
+  deleteSupportRequest,
   listSupportOccurrences,
   getSupportOccurrence,
 } = await import("../src/lib/support-requests.server");
@@ -464,5 +469,46 @@ describe("apoio: roteiro guiado, lugares e presunção de resolvido", () => {
       reason: "no_answer",
     });
     expect(result.ok).toBe(false);
+  });
+});
+
+describe("apoio: apagar atendimento", () => {
+  const seed = () =>
+    holder.db.seed("fastbar_support_requests", [
+      { ...row(), status: "completed", completion_note: "nota sensível" },
+    ]);
+
+  it("só admin apaga; sem permissão nada é apagado", async () => {
+    seed();
+    roleGate.mockRejectedValueOnce(new Error("Seu perfil não tem permissão para esta ação."));
+    await expect(deleteSupportRequest(REQUEST)).rejects.toThrow("permissão");
+    expect(holder.db.table("fastbar_support_requests")).toHaveLength(1);
+    expect(roleGate).toHaveBeenCalledWith("admin");
+  });
+
+  it("apaga o atendimento e deixa auditoria sem dados da pessoa", async () => {
+    seed();
+    expect(await deleteSupportRequest(REQUEST)).toEqual({ ok: true });
+    expect(holder.db.table("fastbar_support_requests")).toHaveLength(0);
+    const audit = holder.db.table("fastbar_staff_audit");
+    expect(audit).toHaveLength(1);
+    expect(audit[0]).toMatchObject({ action: "apoio_apagado", target_id: REQUEST, actor: "adm" });
+    const text = JSON.stringify(audit);
+    expect(text).not.toContain("nota sensível");
+    expect(text).not.toContain("Nome privado");
+  });
+
+  it("id inválido ou registro inexistente não apaga nada", async () => {
+    seed();
+    expect((await deleteSupportRequest("bad")).ok).toBe(false);
+    expect((await deleteSupportRequest("00000000-0000-4000-8000-0000000000ff")).ok).toBe(false);
+    expect(holder.db.table("fastbar_support_requests")).toHaveLength(1);
+  });
+
+  it("falha na auditoria não desfaz a exclusão", async () => {
+    seed();
+    holder.db.failNext.set("fastbar_staff_audit:insert", "constraint");
+    expect(await deleteSupportRequest(REQUEST)).toEqual({ ok: true });
+    expect(holder.db.table("fastbar_support_requests")).toHaveLength(0);
   });
 });
