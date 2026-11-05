@@ -26,6 +26,8 @@ import {
 import { fetchProducts } from "@/services/supabase/products";
 import { tabTotals } from "@/services/supabase/tabItems";
 import type { BarProduct } from "@/types/fastbar";
+import { SessionMarkChip } from "@/components/comanda/SessionMarkChip";
+import { SessionMarkEditor } from "@/components/comanda/SessionMarkEditor";
 import { Loading } from "@/components/motion/Loading";
 
 export const Route = createFileRoute("/caixa/$sessionId")({
@@ -49,10 +51,19 @@ export const Route = createFileRoute("/caixa/$sessionId")({
 function RegisterTabDetail() {
   const { sessionId } = Route.useParams();
   const navigate = useNavigate();
-  const { session, items, payments, credits, loading, loadFailed, loadError, now, reload } = useLiveTab(
-    sessionId,
-    "register",
-  );
+  const {
+    session,
+    items,
+    payments,
+    credits,
+    loading,
+    loadFailed,
+    loadError,
+    now,
+    reload,
+    mark,
+    setMark,
+  } = useLiveTab(sessionId, "register");
   const [products, setProducts] = useState<BarProduct[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -196,7 +207,25 @@ function RegisterTabDetail() {
 
       <div className="mt-4 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="truncate text-2xl font-bold">{session.customer_name}</h1>
+          <div className="flex items-center gap-1">
+            <h1 className="truncate text-2xl font-bold">{session.customer_name}</h1>
+            <SessionMarkEditor
+              sessionId={session.id}
+              mark={mark}
+              onSaved={setMark}
+              className="h-11 w-11 shrink-0"
+            />
+          </div>
+          {mark && (
+            <div className="mt-1 flex flex-col items-start gap-1">
+              <SessionMarkChip mark={mark} />
+              {mark.note && (
+                <p className="whitespace-pre-wrap break-words text-xs text-muted-foreground">
+                  {mark.note}
+                </p>
+              )}
+            </div>
+          )}
           <p className="text-xs text-muted-foreground">
             {formatIdentifier(session.phone, session.document, session.document_type)}
             {session.started_at ? ` · abertura ${hhmm(session.started_at)}` : ""} ·{" "}
