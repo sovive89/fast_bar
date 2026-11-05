@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Construction } from "lucide-react";
 
 /**
@@ -11,6 +12,10 @@ export function PreparedArea(props: {
   willHave: { title: string; text: string }[];
   alreadyElsewhere?: string;
   rules?: string[];
+  /** Texto do selo quando a área já tem uma parte funcionando. */
+  badge?: string;
+  /** Parte que já funciona, mostrada antes do que ainda vem. */
+  children?: ReactNode;
 }) {
   return (
     <main className="mx-auto w-full max-w-3xl px-5 py-8">
@@ -18,10 +23,11 @@ export function PreparedArea(props: {
         <h1 className="text-3xl font-bold">{props.title}</h1>
         <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-xs font-semibold text-amber-600">
           <Construction className="h-3.5 w-3.5" aria-hidden="true" />
-          Preparado — ainda não funciona
+          {props.badge ?? "Preparado — ainda não funciona"}
         </span>
       </div>
       <p className="mt-2 text-sm text-muted-foreground">{props.intro}</p>
+      {props.children}
 
       <h2 className="mt-6 text-sm font-semibold">O que vai ter aqui</h2>
       <ul className="mt-3 space-y-3">

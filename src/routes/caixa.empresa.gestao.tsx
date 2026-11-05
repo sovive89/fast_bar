@@ -1,11 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { PreparedArea } from "@/components/empresa/PreparedArea";
+import { StaffPanel } from "@/components/empresa/StaffPanel";
 
 export const Route = createFileRoute("/caixa/empresa/gestao")({
   head: () => ({ meta: [{ title: "Gestão | Empresa | FastBar" }] }),
   component: () => (
     <PreparedArea
       title="Gestão"
+      badge="Equipe já funciona — o resto está preparado"
       intro="A parte administrativa da empresa: quem trabalha, quanto custa manter o bar aberto e o que a lei exige."
       willHave={[
         {
@@ -29,6 +31,8 @@ export const Route = createFileRoute("/caixa/empresa/gestao")({
         "Dados de pessoas (contratos, jornada, pagamentos) são sensíveis: acesso por perfil, nunca na tela pública.",
         "Insights só sugerem, nunca ajustam preço nem pagamento sozinhos.",
       ]}
-    />
+    >
+      <StaffPanel />
+    </PreparedArea>
   ),
 });
