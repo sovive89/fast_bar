@@ -41,3 +41,13 @@ export const setStaffStatusFn = createServerFn({ method: "POST" })
     const { setStaffStatus } = await import("./staff-users.server");
     return setStaffStatus(data.staffId, data.action);
   });
+
+export const listStaffLoginsFn = createServerFn({ method: "GET" }).handler(async () => {
+  const { listStaffLogins } = await import("./staff-users.server");
+  return listStaffLogins();
+});
+
+export const setBarNetworkFn = createServerFn({ method: "POST" }).handler(async () => {
+  const { setBarNetworkFromRequest } = await import("./staff-users.server");
+  return setBarNetworkFromRequest();
+});

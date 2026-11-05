@@ -21,6 +21,7 @@ self.addEventListener("activate", (event) => {
 const VIBRATION = {
   apoio: [600, 200, 600, 200, 600, 200, 600],
   conta: [200, 100, 200],
+  equipe: [100],
 };
 
 self.addEventListener("push", (event) => {
@@ -34,7 +35,7 @@ self.addEventListener("push", (event) => {
   // `json()` pode devolver null, texto ou número: só objeto vale, o resto vira aviso genérico.
   if (!data || typeof data !== "object") data = {};
 
-  const kind = data.kind === "apoio" ? "apoio" : "conta";
+  const kind = data.kind === "apoio" ? "apoio" : data.kind === "equipe" ? "equipe" : "conta";
   const title = typeof data.title === "string" && data.title ? data.title : "FastBar";
 
   event.waitUntil(
@@ -45,7 +46,8 @@ self.addEventListener("push", (event) => {
       tag: typeof data.tag === "string" && data.tag ? data.tag : kind,
       renotify: true,
       // Fica na tela até a equipe tocar: um pedido de conta não pode sumir sozinho.
-      requireInteraction: true,
+      // Aviso de login da equipe é informativo: some sozinho. Conta e apoio ficam até o toque.
+      requireInteraction: kind !== "equipe",
       vibrate: VIBRATION[kind],
       icon: "/icons/icon-192.png",
       badge: "/icons/icon-192.png",
@@ -74,7 +76,9 @@ self.addEventListener("notificationclick", (event) => {
     self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
       for (const client of windows) {
         if (new URL(client.url).origin === self.location.origin && "focus" in client) {
-          return client.focus().then(() => ("navigate" in client ? client.navigate(target.href) : undefined));
+          return client
+            .focus()
+            .then(() => ("navigate" in client ? client.navigate(target.href) : undefined));
         }
       }
       return self.clients.openWindow(target.href);

@@ -9,7 +9,13 @@ const sessionData: { data: Record<string, unknown>; update: ReturnType<typeof vi
     sessionData.data = { ...sessionData.data, ...next };
   }),
 };
-vi.mock("@tanstack/react-start/server", () => ({ useSession: async () => sessionData }));
+const requestHeaders = new Map<string, string>();
+vi.mock("@tanstack/react-start/server", () => ({
+  useSession: async () => sessionData,
+  getRequest: () => ({ headers: { get: (name: string) => requestHeaders.get(name) ?? null } }),
+}));
+const notify = vi.fn(async () => ({ sent: 1, removed: 0, failed: 0 }));
+vi.mock("../src/lib/push.server", () => ({ notifyStaff: (...args: unknown[]) => notify(...args) }));
 vi.mock("../src/lib/fastbar.server", () => ({
   admin: () => holder.db,
   getDefaultTenantId: async () => TENANT,
@@ -33,6 +39,9 @@ const anonymous = () => (sessionData.data = {});
 
 beforeEach(() => {
   holder.db = new FakeSupabase();
+  requestHeaders.clear();
+  notify.mockReset();
+  notify.mockResolvedValue({ sent: 1, removed: 0, failed: 0 });
   anonymous();
 });
 
@@ -159,5 +168,76 @@ describe("cadastro, aprovação e login", () => {
     expect(audit).not.toContain("52998224725");
     expect(audit).not.toContain("maria@bar.com");
     expect(audit).not.toContain("Maria");
+  });
+});
+
+describe("login registrado e avisado ao admin", () => {
+  const activeStaff = async (role = "atendimento") => {
+    asLegacy();
+    await server.registerStaff({ ...valid, role });
+    anonymous();
+    return String(holder.db.table("fastbar_staff_users")[0]!["id"]);
+  };
+
+  it("grava o login, avisa só admins e não guarda o IP", async () => {
+    await activeStaff();
+    requestHeaders.set("x-forwarded-for", "203.0.113.9, 10.0.0.1");
+    expect((await server.loginStaff("maria@bar.com", "Senha@123")).ok).toBe(true);
+    const logins = holder.db.table("fastbar_staff_logins");
+    expect(logins).toHaveLength(1);
+    expect(logins[0]!["on_bar_network"]).toBeNull();
+    expect(JSON.stringify(logins)).not.toContain("203.0.113.9");
+    expect(notify).toHaveBeenCalledTimes(1);
+    const [payload, options] = notify.mock.calls[0] as [
+      Record<string, string>,
+      Record<string, boolean>,
+    ];
+    expect(payload["kind"]).toBe("equipe");
+    expect(payload["body"]).toContain("Maria da Silva");
+    expect(options["onlyAdmins"]).toBe(true);
+  });
+
+  it("na rede do bar: sem aviso de fora; fora da rede: só avisa, nunca bloqueia", async () => {
+    await activeStaff();
+    holder.db.seed("fastbar_integrations", [{ key: "rede", config: { ip: "203.0.113.9" } }]);
+    requestHeaders.set("x-forwarded-for", "203.0.113.9");
+    expect((await server.loginStaff("maria@bar.com", "Senha@123")).ok).toBe(true);
+    expect(holder.db.table("fastbar_staff_logins")[0]!["on_bar_network"]).toBe(true);
+    expect((notify.mock.calls[0] as [Record<string, string>])[0]["body"]).not.toContain("fora");
+
+    anonymous();
+    requestHeaders.set("x-forwarded-for", "198.51.100.7");
+    expect((await server.loginStaff("maria@bar.com", "Senha@123")).ok).toBe(true);
+    expect(holder.db.table("fastbar_staff_logins")[1]!["on_bar_network"]).toBe(false);
+    expect((notify.mock.calls[1] as [Record<string, string>])[0]["body"]).toContain(
+      "fora do Wi-Fi do bar",
+    );
+  });
+
+  it("login de admin é registrado, mas não avisa", async () => {
+    await activeStaff("admin");
+    expect((await server.loginStaff("maria@bar.com", "Senha@123")).ok).toBe(true);
+    expect(holder.db.table("fastbar_staff_logins")).toHaveLength(1);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it("falha no push não derruba o login", async () => {
+    await activeStaff();
+    notify.mockRejectedValue(new Error("push fora do ar"));
+    expect((await server.loginStaff("maria@bar.com", "Senha@123")).ok).toBe(true);
+    expect(sessionData.data["unlocked"]).toBe(true);
+  });
+
+  it("só admin cadastra a rede do bar e lê o histórico de logins", async () => {
+    asAtendente();
+    await expect(server.setBarNetworkFromRequest()).rejects.toThrow("permissão");
+    await expect(server.listStaffLogins()).rejects.toThrow("permissão");
+    asAdmin();
+    requestHeaders.set("x-forwarded-for", "203.0.113.9");
+    expect((await server.setBarNetworkFromRequest()).ok).toBe(true);
+    expect(holder.db.table("fastbar_integrations")[0]).toMatchObject({
+      key: "rede",
+      config: { ip: "203.0.113.9" },
+    });
   });
 });

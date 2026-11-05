@@ -972,6 +972,30 @@ export type Database = {
         }
         Relationships: []
       }
+      fastbar_staff_logins: {
+        Row: {
+          id: string
+          logged_at: string
+          on_bar_network: boolean | null
+          staff_id: string
+          tenant_id: string
+        }
+        Insert: {
+          id?: string
+          logged_at?: string
+          on_bar_network?: boolean | null
+          staff_id: string
+          tenant_id: string
+        }
+        Update: {
+          id?: string
+          logged_at?: string
+          on_bar_network?: boolean | null
+          staff_id?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       fastbar_staff_users: {
         Row: {
           approved_at: string | null
@@ -1343,6 +1367,7 @@ export type Database = {
           id: string
           last_seen_at: string
           p256dh: string
+          staff_id: string | null
           tenant_id: string | null
           user_agent: string | null
         }
@@ -1353,6 +1378,7 @@ export type Database = {
           id?: string
           last_seen_at?: string
           p256dh: string
+          staff_id?: string | null
           tenant_id?: string | null
           user_agent?: string | null
         }
@@ -1363,6 +1389,7 @@ export type Database = {
           id?: string
           last_seen_at?: string
           p256dh?: string
+          staff_id?: string | null
           tenant_id?: string | null
           user_agent?: string | null
         }

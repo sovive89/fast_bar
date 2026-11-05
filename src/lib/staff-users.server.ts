@@ -1,5 +1,5 @@
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
-import { useSession } from "@tanstack/react-start/server";
+import { getRequest, useSession } from "@tanstack/react-start/server";
 import { sessionConfig, type GateSession } from "./bar-gate.server";
 import {
   LOCK_MINUTES,
@@ -180,7 +180,123 @@ export async function loginStaff(emailRaw: unknown, password: unknown): Promise<
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const session = await useSession<GateSession>(sessionConfig());
   await session.update({ unlocked: true, staffId: user.id, role: user.role });
+  await recordLogin(user.id, user.role);
   return { ok: true };
+}
+
+function requestIp(): string | null {
+  try {
+    const headers = getRequest().headers;
+    const forwarded = headers.get("x-forwarded-for")?.split(",")[0]?.trim();
+    return forwarded || headers.get("x-real-ip")?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
+/** IP público da rede do bar (o do Wi-Fi), cadastrado pelo admin. */
+async function loadBarIp(): Promise<string | null> {
+  const { db } = await ctx();
+  const { data } = await db
+    .from("fastbar_integrations")
+    .select("config")
+    .eq("key", "rede")
+    .maybeSingle();
+  const ip = (data?.config as Record<string, unknown> | null)?.["ip"];
+  return typeof ip === "string" && ip ? ip : null;
+}
+
+/**
+ * Registra o login e avisa os administradores (push). O IP não é guardado: só se a pessoa estava na
+ * rede do bar. Fora da rede ou antes de cadastrar a rede, o login NUNCA é bloqueado — só avisado.
+ * Falha de registro ou de push nunca derruba o login.
+ */
+async function recordLogin(staffId: string, role: string): Promise<void> {
+  try {
+    const { db, tenantId } = await ctx();
+    const barIp = await loadBarIp();
+    const ip = requestIp();
+    const onBarNetwork = barIp ? ip === barIp : null;
+    await db.from("fastbar_staff_logins").insert({
+      tenant_id: tenantId,
+      staff_id: staffId,
+      on_bar_network: onBarNetwork,
+    });
+    if (role === "admin") return;
+    const { data: person } = await db
+      .from("fastbar_staff_users")
+      .select("full_name")
+      .eq("id", staffId)
+      .maybeSingle();
+    const { notifyStaff } = await import("./push.server");
+    await notifyStaff(
+      {
+        kind: "equipe",
+        title: "Login da equipe",
+        body: `${person?.full_name ?? "Funcionário"} entrou${onBarNetwork === false ? " — fora do Wi-Fi do bar" : ""}.`,
+        tag: `login-${staffId}`,
+        url: "/caixa/empresa/gestao",
+      },
+      { onlyAdmins: true },
+    );
+  } catch {
+    /* O registro e o aviso nunca podem impedir a entrada. */
+  }
+}
+
+export type LoginEntry = {
+  id: string;
+  fullName: string;
+  role: StaffRole;
+  loggedAt: string;
+  onBarNetwork: boolean | null;
+};
+
+export async function listStaffLogins(): Promise<LoginEntry[]> {
+  await assertRole("admin");
+  const { db, tenantId } = await ctx();
+  const { data } = await db
+    .from("fastbar_staff_logins")
+    .select("id,staff_id,logged_at,on_bar_network")
+    .eq("tenant_id", tenantId)
+    .order("logged_at", { ascending: false })
+    .limit(100);
+  const rows = data ?? [];
+  if (rows.length === 0) return [];
+  const { data: people } = await db
+    .from("fastbar_staff_users")
+    .select("id,full_name,role")
+    .in("id", [...new Set(rows.map((row) => row.staff_id))]);
+  const byId = new Map((people ?? []).map((p) => [p.id, p]));
+  return rows.flatMap((row) => {
+    const person = byId.get(row.staff_id);
+    return person && isStaffRole(person.role)
+      ? [
+          {
+            id: row.id,
+            fullName: person.full_name,
+            role: person.role,
+            loggedAt: row.logged_at,
+            onBarNetwork: row.on_bar_network,
+          },
+        ]
+      : [];
+  });
+}
+
+/** Cadastra como "rede do bar" o IP público de onde o admin está acessando agora. */
+export async function setBarNetworkFromRequest(): Promise<StaffResult> {
+  await assertRole("admin");
+  const ip = requestIp();
+  if (!ip) return { ok: false, message: "Não foi possível identificar a rede desta conexão." };
+  const { db } = await ctx();
+  const { error } = await db
+    .from("fastbar_integrations")
+    .upsert(
+      { key: "rede", enabled: true, config: { ip }, updated_at: new Date().toISOString() },
+      { onConflict: "key" },
+    );
+  return error ? { ok: false, message: "Não foi possível salvar a rede do bar." } : { ok: true };
 }
 
 /** Lista da equipe: CPF, e-mail e telefone só chegam ao admin. */
