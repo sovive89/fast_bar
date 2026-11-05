@@ -5,6 +5,7 @@ create table public.fastbar_staff_users (
   id uuid primary key default gen_random_uuid(),
   tenant_id uuid not null references public.fastbar_tenants(id),
   role text not null check (role in ('admin','atendimento','cozinha','freelancer')),
+  employment text not null default 'fixo' check (employment in ('fixo','freelancer')),
   status text not null default 'pendente' check (status in ('pendente','ativo','inativo')),
   full_name text not null check (length(trim(full_name)) between 5 and 80),
   cpf text not null check (cpf ~ '^[0-9]{11}$'),

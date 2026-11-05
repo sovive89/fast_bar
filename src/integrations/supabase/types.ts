@@ -979,6 +979,7 @@ export type Database = {
           cpf: string
           created_at: string
           email: string
+          employment: string
           failed_logins: number
           full_name: string
           id: string
@@ -996,6 +997,7 @@ export type Database = {
           cpf: string
           created_at?: string
           email: string
+          employment?: string
           failed_logins?: number
           full_name: string
           id?: string
@@ -1013,6 +1015,7 @@ export type Database = {
           cpf?: string
           created_at?: string
           email?: string
+          employment?: string
           failed_logins?: number
           full_name?: string
           id?: string

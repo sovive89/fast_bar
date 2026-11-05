@@ -123,6 +123,7 @@ export async function registerStaff(raw: Record<string, unknown>): Promise<Staff
     .insert({
       tenant_id: tenantId,
       role: input.role,
+      employment: input.employment,
       status: byAdmin ? "ativo" : "pendente",
       full_name: input.fullName,
       cpf: input.cpf,

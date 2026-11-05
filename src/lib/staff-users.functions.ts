@@ -8,6 +8,7 @@ const registerSchema = z.object({
   phone: z.string().max(30),
   password: z.string().max(200),
   role: z.string().max(20),
+  employment: z.string().max(20).optional(),
 });
 
 export const registerStaffFn = createServerFn({ method: "POST" })

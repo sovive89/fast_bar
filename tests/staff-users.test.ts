@@ -22,7 +22,7 @@ const valid = {
   cpf: "529.982.247-25",
   email: "Maria@Bar.com",
   phone: "(61) 91234-5678",
-  password: "senha-segura-1",
+  password: "Senha@123",
   role: "atendimento",
 };
 const asLegacy = () => (sessionData.data = { unlocked: true });
@@ -46,7 +46,10 @@ describe("regras de cadastro", () => {
     expect(bad({ cpf: "529.982.247-26" })).toBe(false);
     expect(bad({ email: "sem-arroba" })).toBe(false);
     expect(bad({ phone: "123" })).toBe(false);
-    expect(bad({ password: "curta" })).toBe(false);
+    expect(bad({ password: "Ab@1" })).toBe(false);
+    expect(bad({ password: "senha@123" })).toBe(false);
+    expect(bad({ password: "Senha1234" })).toBe(false);
+    expect(bad({ password: "Ab@cde" })).toBe(true);
     expect(bad({ role: "dono" })).toBe(false);
   });
   it("normaliza CPF, telefone e e-mail", () => {
@@ -59,13 +62,25 @@ describe("regras de cadastro", () => {
   });
 });
 
+describe("vínculo", () => {
+  it("perfil freelancer é sempre vínculo freelancer; outros são fixos por padrão", () => {
+    const get = (patch: Record<string, unknown>) => {
+      const r = rules.validateStaffRegistration({ ...valid, ...patch });
+      return r.ok ? r.value.employment : null;
+    };
+    expect(get({})).toBe("fixo");
+    expect(get({ role: "freelancer", employment: "fixo" })).toBe("freelancer");
+    expect(get({ role: "cozinha", employment: "freelancer" })).toBe("freelancer");
+  });
+});
+
 describe("senha", () => {
   it("guarda só hash e confere a senha certa", () => {
-    const hash = server.hashPassword("minha-senha-123");
-    expect(hash).not.toContain("minha-senha-123");
-    expect(server.verifyPassword("minha-senha-123", hash)).toBe(true);
-    expect(server.verifyPassword("outra-senha-123", hash)).toBe(false);
-    expect(server.hashPassword("minha-senha-123")).not.toBe(hash);
+    const hash = server.hashPassword("Minha@senha1");
+    expect(hash).not.toContain("Minha@senha1");
+    expect(server.verifyPassword("Minha@senha1", hash)).toBe(true);
+    expect(server.verifyPassword("Outra@senha1", hash)).toBe(false);
+    expect(server.hashPassword("Minha@senha1")).not.toBe(hash);
   });
 });
 
@@ -74,8 +89,8 @@ describe("cadastro, aprovação e login", () => {
     expect((await server.registerStaff(valid)).ok).toBe(true);
     const row = holder.db.table("fastbar_staff_users")[0]!;
     expect(row["status"]).toBe("pendente");
-    expect(String(row["password_hash"])).not.toContain("senha-segura-1");
-    expect((await server.loginStaff("maria@bar.com", "senha-segura-1")).ok).toBe(false);
+    expect(String(row["password_hash"])).not.toContain("Senha@123");
+    expect((await server.loginStaff("maria@bar.com", "Senha@123")).ok).toBe(false);
     expect(sessionData.data["unlocked"]).toBeUndefined();
   });
 
@@ -112,7 +127,7 @@ describe("cadastro, aprovação e login", () => {
     asAdmin();
     expect((await server.setStaffStatus(id, "aprovar")).ok).toBe(true);
     anonymous();
-    expect((await server.loginStaff("MARIA@bar.com", "senha-segura-1")).ok).toBe(true);
+    expect((await server.loginStaff("MARIA@bar.com", "Senha@123")).ok).toBe(true);
     expect(sessionData.data).toMatchObject({ unlocked: true, staffId: id, role: "atendimento" });
   });
 
@@ -121,8 +136,8 @@ describe("cadastro, aprovação e login", () => {
     await server.registerStaff(valid);
     anonymous();
     for (let i = 0; i < rules.MAX_FAILED_LOGINS; i++)
-      await server.loginStaff("maria@bar.com", "errada-errada");
-    const result = await server.loginStaff("maria@bar.com", "senha-segura-1");
+      await server.loginStaff("maria@bar.com", "Errada@errada");
+    const result = await server.loginStaff("maria@bar.com", "Senha@123");
     expect(result.ok).toBe(false);
     expect(result.ok === false && result.message).toContain("bloqueado");
   });
@@ -133,7 +148,7 @@ describe("cadastro, aprovação e login", () => {
     const id = String(holder.db.table("fastbar_staff_users")[0]!["id"]);
     expect((await server.setStaffStatus(id, "desativar")).ok).toBe(true);
     anonymous();
-    expect((await server.loginStaff("maria@bar.com", "senha-segura-1")).ok).toBe(false);
+    expect((await server.loginStaff("maria@bar.com", "Senha@123")).ok).toBe(false);
     asAdmin();
     expect((await server.setStaffStatus("adm", "desativar")).ok).toBe(false);
   });
