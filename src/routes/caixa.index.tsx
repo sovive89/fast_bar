@@ -103,6 +103,10 @@ function RegisterList() {
   const [newDocument, setNewDocument] = useState("");
   const [documentMatch, setDocumentMatch] = useState<string | null>(null);
   const [phoneLookupStatus, setPhoneLookupStatus] = useState<"idle" | "loading" | "found">("idle");
+  // Celular para o qual a consulta já terminou (achou ou não). O nome só destrava depois disso:
+  // digitar antes marcaria o nome como "editado à mão" e a consulta nunca mais o preencheria.
+  const [lookedUpPhone, setLookedUpPhone] = useState<string | null>(null);
+  const nameLocked = !useDocument && lookedUpPhone !== newPhone;
 
   const navigate = useNavigate();
   const loadOverview = useServerFn(getRegisterOverview);
@@ -211,6 +215,7 @@ function RegisterList() {
   // de números anteriores; a abertura continua disponível se a consulta falhar.
   useEffect(() => {
     setPhoneLookupStatus("idle");
+    setLookedUpPhone(null);
     if (opening !== "manual") return;
 
     setNameDraft((current) => clearCustomerPhoneAutofill(current));
@@ -230,8 +235,13 @@ function RegisterList() {
           return;
         setNameDraft((current) => applyCustomerPhoneLookup(current, result.name));
         setPhoneLookupStatus(result.name ? "found" : "idle");
+        setLookedUpPhone(newPhone);
       } catch {
-        if (active) setPhoneLookupStatus("idle");
+        // Consulta falhou: destrava o nome para a abertura seguir digitando à mão.
+        if (active) {
+          setPhoneLookupStatus("idle");
+          setLookedUpPhone(newPhone);
+        }
       }
     }, 350);
 
@@ -336,16 +346,6 @@ function RegisterList() {
             Gera tudo igual ao QR code — cliente no cadastro e link de acompanhamento. Muda só quem
             digita. Se esse celular já tiver comanda em andamento, você vai direto pra ela.
           </p>
-          <input
-            value={newName}
-            onChange={(event) =>
-              setNameDraft((current) => editCustomerName(current, event.target.value))
-            }
-            placeholder="Nome completo"
-            autoFocus
-            maxLength={80}
-            className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
-          />
           {/* Celular fica sempre visível — CPF/RG é um complemento opcional, não uma troca de tela.
               Quem não tem celular deixa esse campo em branco e usa só o documento abaixo. */}
           <input
@@ -353,6 +353,7 @@ function RegisterList() {
             onChange={(event) => updatePhoneDraft(formatPhone(event.target.value))}
             placeholder="(11) 91234-5678"
             inputMode="tel"
+            autoFocus
             className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring"
           />
           {phoneLookupStatus !== "idle" && (
@@ -362,6 +363,16 @@ function RegisterList() {
                 : "Cliente encontrado no cadastro."}
             </p>
           )}
+          <input
+            value={newName}
+            onChange={(event) =>
+              setNameDraft((current) => editCustomerName(current, event.target.value))
+            }
+            placeholder={nameLocked ? "Digite o celular para liberar o nome" : "Nome completo"}
+            disabled={nameLocked}
+            maxLength={80}
+            className="h-11 w-full rounded-xl border border-border bg-background px-4 text-base outline-none placeholder:text-muted-foreground focus:border-ring disabled:cursor-not-allowed disabled:opacity-50"
+          />
           {!useDocument ? (
             <button
               type="button"

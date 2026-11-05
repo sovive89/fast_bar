@@ -1,6 +1,6 @@
 import { createHash, timingSafeEqual } from "node:crypto";
 
-export type GateSession = { unlocked?: boolean };
+export type GateSession = { unlocked?: boolean; staffId?: string; role?: string };
 
 export function sessionConfig() {
   return {
