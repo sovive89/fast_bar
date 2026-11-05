@@ -11,7 +11,7 @@ decisões já tomadas. Legenda: **Feito** = está no código; **Decidido** = o d
 | 1 | **Empresa** | `/caixa/empresa` | **Novo (04/11).** Abas: Visão geral, Configurações, Conexões, Inventário, Gestão, Documentos (as três últimas **preparadas**, ainda sem função) |
 | 2 | Comandas | `/caixa` | Tem as quatro abas abaixo |
 | 3 | Cardápio | `/caixa/cardapio` | |
-| 4 | Estoque | `/caixa/estoque` | Abas: Bebidas, Ingredientes, Fornecedores, Relatórios |
+| 4 | Estoque | `/caixa/estoque` | Abas: Bebidas, Ingredientes, **Materiais e utensílios** (setor bar/cozinha/geral; tipo material de consumo ou utensílio; baixa manual com motivo), Fornecedores, Relatórios |
 | 5 | Produção | `/caixa/producao` | Fichas técnicas, ordens, itens produzidos |
 | 6 | CRM | `/caixa/crm` | Clientes, análises |
 | 7 | Relatórios Vendas | `/caixa/relatorios` | |

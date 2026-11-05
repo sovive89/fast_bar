@@ -5,6 +5,7 @@ import { useServerFn } from "@tanstack/react-start";
 import { PasswordConfirm } from "@/components/shared/PasswordConfirm";
 import { NotaFiscalImport } from "@/components/stock/NotaFiscalImport";
 import { LotEntryForm } from "@/components/stock/LotEntryForm";
+import { ConsumablesTab } from "@/components/stock/ConsumablesTab";
 import { PrimaryButton, SectionCard, TextField } from "@/components/stock/SharedFormFields";
 import { brl, parseAmount } from "@/lib/format";
 import { Package, UtensilsCrossed, Wine } from "lucide-react";
@@ -36,14 +37,14 @@ export const Route = createFileRoute("/caixa/estoque")({
       { title: "Estoque | FastBar" },
       {
         name: "description",
-        content: "Bebidas, ingredientes e fornecedores.",
+        content: "Bebidas, ingredientes, materiais, utensílios e fornecedores.",
       },
     ],
   }),
   component: StockOverview,
 });
 
-type Tab = "bebidas" | "ingredientes" | "fornecedores" | "relatorios";
+type Tab = "bebidas" | "ingredientes" | "materiais" | "fornecedores" | "relatorios";
 
 /**
  * Duas listas de estoque, divididas por COMPORTAMENTO, não por tabela do banco:
@@ -61,6 +62,7 @@ type Tab = "bebidas" | "ingredientes" | "fornecedores" | "relatorios";
 const TABS: Array<{ id: Tab; label: string }> = [
   { id: "bebidas", label: "Bebidas" },
   { id: "ingredientes", label: "Ingredientes" },
+  { id: "materiais", label: "Materiais e utensílios" },
   { id: "fornecedores", label: "Fornecedores" },
   { id: "relatorios", label: "Relatórios" },
 ];
@@ -130,6 +132,7 @@ function StockOverview() {
       <div className="mt-6">
         {tab === "bebidas" && <BebidasBaseTab />}
         {tab === "ingredientes" && <IngredientesTab />}
+        {tab === "materiais" && <ConsumablesTab />}
         {tab === "fornecedores" && <FornecedoresTab />}
         {tab === "relatorios" && <RelatoriosTab />}
       </div>

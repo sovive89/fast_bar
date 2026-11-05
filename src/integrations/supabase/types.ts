@@ -195,6 +195,7 @@ export type Database = {
         Row: {
           active: boolean
           average_cost: number
+          category: string
           content_amount: number
           created_at: string
           current_stock: number
@@ -204,6 +205,7 @@ export type Database = {
           min_stock: number
           name: string
           purchase_unit: string | null
+          sector: string
           tenant_id: string
           unit: string
           units_per_pack: number
@@ -212,6 +214,7 @@ export type Database = {
         Insert: {
           active?: boolean
           average_cost?: number
+          category?: string
           content_amount?: number
           created_at?: string
           current_stock?: number
@@ -221,6 +224,7 @@ export type Database = {
           min_stock?: number
           name: string
           purchase_unit?: string | null
+          sector?: string
           tenant_id?: string
           unit?: string
           units_per_pack?: number
@@ -229,6 +233,7 @@ export type Database = {
         Update: {
           active?: boolean
           average_cost?: number
+          category?: string
           content_amount?: number
           created_at?: string
           current_stock?: number
@@ -238,6 +243,7 @@ export type Database = {
           min_stock?: number
           name?: string
           purchase_unit?: string | null
+          sector?: string
           tenant_id?: string
           unit?: string
           units_per_pack?: number
