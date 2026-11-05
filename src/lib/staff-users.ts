@@ -17,7 +17,13 @@ export const SELF_REGISTER_ROLES: readonly StaffRole[] = ["atendimento", "cozinh
 export const STAFF_STATUSES = ["pendente", "ativo", "inativo"] as const;
 export type StaffStatus = (typeof STAFF_STATUSES)[number];
 
-export const PASSWORD_MIN = 6;
+/**
+ * Piloto: o admin cadastra a equipe livremente, com qualquer tipo de senha (sem exigir maiúscula
+ * ou caractere especial). A senha é guardada só como hash e o login bloqueia após tentativas
+ * erradas. Para endurecer depois, ligue REQUIRE_PASSWORD_COMPLEXITY (6+ com maiúscula e especial).
+ */
+export const PASSWORD_MIN = 4;
+export const REQUIRE_PASSWORD_COMPLEXITY = false;
 export const PASSWORD_MAX = 72;
 
 /** Vínculo: funcionário fixo tem regras trabalhistas e documentos; freelancer não. */
@@ -32,6 +38,7 @@ export const STAFF_EMPLOYMENT_LABELS: Record<StaffEmployment, string> = {
 export function passwordProblem(password: string): string | null {
   if (password.length < PASSWORD_MIN || password.length > PASSWORD_MAX)
     return `A senha precisa ter de ${PASSWORD_MIN} a ${PASSWORD_MAX} caracteres.`;
+  if (!REQUIRE_PASSWORD_COMPLEXITY) return null;
   if (!/\p{Lu}/u.test(password)) return "A senha precisa de pelo menos 1 letra maiúscula.";
   if (!/[^\p{L}\p{N}\s]/u.test(password))
     return "A senha precisa de pelo menos 1 caractere especial (por exemplo ! @ # $ %).";

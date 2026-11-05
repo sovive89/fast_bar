@@ -55,10 +55,9 @@ describe("regras de cadastro", () => {
     expect(bad({ cpf: "529.982.247-26" })).toBe(false);
     expect(bad({ email: "sem-arroba" })).toBe(false);
     expect(bad({ phone: "123" })).toBe(false);
-    expect(bad({ password: "Ab@1" })).toBe(false);
-    expect(bad({ password: "senha@123" })).toBe(false);
-    expect(bad({ password: "Senha1234" })).toBe(false);
-    expect(bad({ password: "Ab@cde" })).toBe(true);
+    expect(bad({ password: "abc" })).toBe(false); // curta demais
+    expect(bad({ password: "abcd" })).toBe(true); // piloto: qualquer tipo de senha
+    expect(bad({ password: "senha1234" })).toBe(true);
     expect(bad({ role: "dono" })).toBe(false);
   });
   it("normaliza CPF, telefone e e-mail", () => {

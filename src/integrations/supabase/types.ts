@@ -945,6 +945,30 @@ export type Database = {
           },
         ]
       }
+      fastbar_units: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          name: string
+          tenant_id: string
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          tenant_id: string
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       fastbar_staff_audit: {
         Row: {
           action: string
@@ -979,6 +1003,7 @@ export type Database = {
           on_bar_network: boolean | null
           staff_id: string
           tenant_id: string
+          unit_id: string | null
         }
         Insert: {
           id?: string
@@ -986,6 +1011,7 @@ export type Database = {
           on_bar_network?: boolean | null
           staff_id: string
           tenant_id: string
+          unit_id?: string | null
         }
         Update: {
           id?: string
@@ -993,6 +1019,7 @@ export type Database = {
           on_bar_network?: boolean | null
           staff_id?: string
           tenant_id?: string
+          unit_id?: string | null
         }
         Relationships: []
       }
@@ -1014,6 +1041,7 @@ export type Database = {
           role: string
           status: string
           tenant_id: string
+          unit_id: string | null
         }
         Insert: {
           approved_at?: string | null
@@ -1032,6 +1060,7 @@ export type Database = {
           role: string
           status?: string
           tenant_id: string
+          unit_id?: string | null
         }
         Update: {
           approved_at?: string | null
@@ -1050,6 +1079,7 @@ export type Database = {
           role?: string
           status?: string
           tenant_id?: string
+          unit_id?: string | null
         }
         Relationships: []
       }
@@ -1946,6 +1976,7 @@ export type Database = {
           slug: string
           status: string
           trade_name: string | null
+          valid_until: string | null
         }
         Insert: {
           cnpj?: string | null
@@ -1957,6 +1988,7 @@ export type Database = {
           slug: string
           status?: string
           trade_name?: string | null
+          valid_until?: string | null
         }
         Update: {
           cnpj?: string | null
@@ -1968,6 +2000,7 @@ export type Database = {
           slug?: string
           status?: string
           trade_name?: string | null
+          valid_until?: string | null
         }
         Relationships: []
       }
