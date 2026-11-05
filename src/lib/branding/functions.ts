@@ -1,7 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 import { DEFAULT_BRAND_NAME, HEX_COLOR_PATTERN } from "./constants";
 import { sanitizeInstagramUser, sanitizeWhatsappNumber } from "./social";
-import { sanitizeBrandBackground, sanitizeCardOpacity } from "./background";
+import {
+  sanitizeBrandBackground,
+  sanitizeCardOpacity,
+  sanitizeCardShape,
+  sanitizeCategoryShape,
+} from "./background";
 import type { TenantBranding } from "./types";
 
 /**
@@ -37,6 +42,8 @@ export const getPublicBranding = createServerFn({ method: "GET" }).handler(
       whatsappNumber,
       backgroundUrl: sanitizeBrandBackground(config["backgroundUrl"]),
       cardOpacity: sanitizeCardOpacity(config["cardOpacity"]),
+      cardShape: sanitizeCardShape(config["cardShape"]),
+      categoryShape: sanitizeCategoryShape(config["categoryShape"]),
       supportPolicy: config["supportPolicy"]?.trim().slice(0, 2000) || null,
     };
   },

@@ -15,6 +15,8 @@ export interface TenantBranding {
   supportPolicy?: string | null;
   backgroundUrl?: string | null;
   cardOpacity?: number | null;
+  cardShape?: "rounded" | "square" | "pill" | "oval";
+  categoryShape?: "pill" | "square" | "rounded" | "outline";
   brandName: string;
   logoUrl: string | null;
   primaryColor: string | null;
