@@ -485,14 +485,20 @@ export async function getSupportOccurrence(
 }
 
 /**
- * Apaga um atendimento de apoio e as mensagens dele (cascata). Só administrador. Deixa uma linha
+ * Apaga um atendimento de apoio e as mensagens dele (cascata). Só administrador, mediante senha. Deixa uma linha
  * de auditoria SEM dados da pessoa (quem apagou, quando, id do registro); se a auditoria falhar,
  * a exclusão vale mesmo assim, para um registro de teste nunca ficar preso.
  */
-export async function deleteSupportRequest(requestId: string): Promise<SupportResult> {
+export async function deleteSupportRequest(
+  requestId: string,
+  password: unknown,
+): Promise<SupportResult> {
   const { assertRole } = await import("./staff-users.server");
   const actor = await assertRole("admin");
   if (!validId(requestId)) return { ok: false, message: "Atendimento inválido." };
+  // Apagar é irreversível: exige a senha, como as outras ações destrutivas do caixa.
+  const { teamPasswordMatches } = await import("./bar-gate.server");
+  if (!(await teamPasswordMatches(password))) return { ok: false, message: "Senha incorreta." };
   const { db, tenantId } = await context();
   const { data, error } = await db
     .from("fastbar_support_requests")
