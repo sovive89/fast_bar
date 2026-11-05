@@ -184,3 +184,16 @@ o NØUS Motion é exatamente; esta é a leitura proposta, **não implementada**:
 - O botão de apoio ativado fica na barra inferior da comanda. A logo pequena e as categorias
   permanecem na barra superior. Cards têm transparência ajustável para mostrar o fundo da marca,
   cuja imagem também pode ser configurada em Marca. Essa aparência se aplica à PWA do cliente.
+
+### Identificação da comanda (etiqueta, cor e observação)
+
+- A equipe marca uma comanda com **etiqueta curta (24 car.)**, **cor** de uma paleta fechada de 8 e
+  **observação (500 car.)**. Aparece como borda e etiqueta colorida no cartão da lista e no topo da
+  comanda; a observação aparece no tooltip (e para leitor de tela) e na comanda.
+- **Só a equipe vê**: fica numa tabela própria (`fastbar_session_marks`), nunca lida pela PWA do
+  cliente (há teste que varre o código). Não mexe em pedido, pagamento nem estoque, por isso não
+  pede senha.
+- Texto grande demais é recusado, nunca cortado em silêncio.
+- **Pendente:** juntar comandas só na tela (agrupamento visual, cada pessoa abrindo a sua). Exige
+  decidir se o agrupamento vale para todos os aparelhos da equipe (precisa de tabela) ou só no
+  aparelho de quem agrupou.

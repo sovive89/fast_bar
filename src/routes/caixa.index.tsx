@@ -20,6 +20,9 @@ import {
 } from "@/lib/register.functions";
 import type { BarSession } from "@/types/fastbar";
 import { VIEW_TABS, bucketOf, type ListView } from "@/lib/comanda-views";
+import { SessionMarkChip } from "@/components/comanda/SessionMarkChip";
+import { SessionMarkEditor } from "@/components/comanda/SessionMarkEditor";
+import { MARK_COLORS, type SessionMark } from "@/lib/session-marks";
 import {
   applyCustomerDocumentLookup,
   applyCustomerPhoneLookup,
@@ -78,6 +81,7 @@ function RegisterList() {
   const [currentOperationId, setCurrentOperationId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [marks, setMarks] = useState<Record<string, SessionMark>>({});
   const [confirming, setConfirming] = useState<{
     kind: string;
     sessionId?: string;
@@ -126,6 +130,7 @@ function RegisterList() {
     setSessions(result.sessions as BarSession[]);
     setItems(result.items as OverviewItem[]);
     setCurrentOperationId(result.currentOperationId);
+    setMarks((result.marks ?? {}) as Record<string, SessionMark>);
   }
 
   useEffect(() => {
@@ -498,10 +503,27 @@ function RegisterList() {
             // servidor trata a repetição como retomada, não como novo cancelamento.
             const cancelStalled = isCancelled && sessionItems.length > 0;
             const canCancel = !isArchived && (isOpen || isClosed || cancelStalled);
+            const mark = marks[session.id] ?? null;
+            const markColor = mark?.color ? MARK_COLORS[mark.color] : null;
 
             return (
               <li key={session.id} className={isExpanded ? "col-span-3 sm:col-span-4" : ""}>
-                <div className="relative rounded-2xl border border-border bg-card">
+                <div
+                  className={`relative rounded-2xl border bg-card ${markColor ? `border-2 ${markColor.border} ${markColor.soft}` : "border-border"}`}
+                >
+                  <SessionMarkEditor
+                    sessionId={session.id}
+                    mark={mark}
+                    onSaved={(next) =>
+                      setMarks((current) => {
+                        const copy = { ...current };
+                        if (next) copy[session.id] = next;
+                        else delete copy[session.id];
+                        return copy;
+                      })
+                    }
+                    className="absolute left-0 top-0 z-10 h-9 w-9"
+                  />
                   {session.pos_order_id && (
                     <span
                       title="Aguardando pagamento na maquininha"
@@ -535,6 +557,11 @@ function RegisterList() {
                             {session.started_at ? ` · abertura ${hhmm(session.started_at)}` : ""} ·{" "}
                             {elapsed(session.started_at, session.closed_at ?? session.paid_at, now)}
                           </p>
+                          {mark && (
+                            <div className="mt-1">
+                              <SessionMarkChip mark={mark} />
+                            </div>
+                          )}
                           {session.pos_order_id ? (
                             <p className="mt-0.5 flex items-center gap-1.5 text-xs font-medium text-primary">
                               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-primary" />
@@ -579,6 +606,7 @@ function RegisterList() {
                       {code && (
                         <p className="font-mono text-[10px] text-muted-foreground">#{code}</p>
                       )}
+                      <SessionMarkChip mark={mark} compact />
                       <p className="text-xs font-bold">{brl(totals.get(session.id) ?? 0)}</p>
                       <StatusBadge status={session.status} />
                     </button>
@@ -596,6 +624,7 @@ function RegisterList() {
                       {code && (
                         <p className="font-mono text-[10px] text-muted-foreground">#{code}</p>
                       )}
+                      <SessionMarkChip mark={mark} compact />
                       <p className="text-xs font-bold">{brl(totals.get(session.id) ?? 0)}</p>
                       <StatusBadge status={session.status} />
                     </Link>
