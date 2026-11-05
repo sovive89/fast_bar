@@ -40,6 +40,8 @@ export function SupportRequestAlerts() {
   const [requests, setRequests] = useState<Requests>([]);
   const [loadFailed, setLoadFailed] = useState(false);
   const [muted, setMuted] = useState(false);
+  const [expanded, setExpanded] = useState(false);
+  const lastRank = useRef(0);
   const [now, setNow] = useState(() => Date.now());
   const [announcement, setAnnouncement] = useState("");
   const [staffName, setStaffName] = useState("");
@@ -200,6 +202,28 @@ export function SupportRequestAlerts() {
     }
   }
 
+  const highestPriority = requests
+    .map((request) => supportPriority(request, now))
+    .reduce<SupportPriorityLevel>(
+      (highest, level) => (PRIORITY_RANK[level] > PRIORITY_RANK[highest] ? level : highest),
+      "attending",
+    );
+
+  // Progressivo: o cartão abre sozinho quando chega um pedido e de novo cada vez que a urgência
+  // sobe (prioritário → urgente → máxima), mesmo que a equipe tenha recolhido.
+  const rank = PRIORITY_RANK[highestPriority];
+  useEffect(() => {
+    if (rank > lastRank.current) setExpanded(true);
+    lastRank.current = rank;
+  }, [rank]);
+
+  const oldestWaiting = requests
+    .filter((request) => request.status === "requested")
+    .reduce<string | null>(
+      (oldest, request) => (!oldest || request.createdAt < oldest ? request.createdAt : oldest),
+      null,
+    );
+
   if (requests.length === 0) {
     return loadFailed ? (
       <p role="status" className="px-4 pb-2 text-xs text-muted-foreground">
@@ -208,32 +232,41 @@ export function SupportRequestAlerts() {
     ) : null;
   }
 
-  const highestPriority = requests
-    .map((request) => supportPriority(request, now))
-    .reduce<SupportPriorityLevel>(
-      (highest, level) => (PRIORITY_RANK[level] > PRIORITY_RANK[highest] ? level : highest),
-      "attending",
-    );
   return (
-    <section aria-label="Pedidos de apoio" className="px-3 pb-2">
+    <section aria-label="Pedidos de apoio" className="sticky top-0 z-50 px-3 pb-2 pt-2">
       <span role="alert" aria-live="assertive" className="sr-only">
         {announcement}
       </span>
       <details
         data-support-priority={highestPriority}
-        className={`mx-auto max-w-2xl rounded-xl border-2 bg-card ${highestPriority === "critical" ? "border-red-600 shadow-lg ring-2 ring-red-500/30" : highestPriority === "urgent" ? "border-red-600 shadow-md" : highestPriority === "priority" ? "border-red-500/80" : "border-border"}`}
+        open={expanded}
+        onToggle={(event) => setExpanded(event.currentTarget.open)}
+        className={`mx-auto max-w-2xl overflow-hidden rounded-2xl border-4 shadow-xl ${
+          highestPriority === "critical"
+            ? "alert-pulse-border border-red-600 bg-red-700 text-white"
+            : highestPriority === "urgent"
+              ? "border-red-600 bg-red-600 text-white"
+              : highestPriority === "priority"
+                ? "border-red-500 bg-red-100 text-red-950 dark:bg-red-950 dark:text-red-50"
+                : "border-border bg-card text-foreground"
+        }`}
       >
-        <summary className="min-h-12 cursor-pointer px-3 py-2 text-sm font-semibold text-foreground">
-          <span className="inline-flex items-center gap-2">
-            <ShieldAlert className="h-5 w-5 shrink-0 text-red-500" aria-hidden="true" />
-            <span>
+        <summary className="flex min-h-16 cursor-pointer items-center gap-3 px-4 py-3">
+          <ShieldAlert className="h-8 w-8 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1">
+            <span className="block text-lg font-bold leading-tight">
               {requests.length === 1 ? "1 pedido de apoio" : `${requests.length} pedidos de apoio`}
-              <span className="block text-xs">{PRIORITY_LABEL[highestPriority]}</span>
+            </span>
+            <span className="block text-sm font-semibold">
+              {PRIORITY_LABEL[highestPriority]}
+              {oldestWaiting ? ` · ${waitingLabel(oldestWaiting, now)}` : ""}
             </span>
           </span>
-          <span className="ml-2 text-xs font-normal text-muted-foreground">Abrir atendimento</span>
+          <span className="shrink-0 text-xs font-medium underline underline-offset-4">
+            {expanded ? "Recolher" : "Atender"}
+          </span>
         </summary>
-        <div className="max-h-[50dvh] space-y-3 overflow-y-auto overscroll-contain px-3 pb-3">
+        <div className="max-h-[60dvh] space-y-3 overflow-y-auto overscroll-contain bg-card px-3 pb-3 pt-1 text-card-foreground">
           <div className="flex items-center justify-between gap-2 border-t border-border pt-2">
             <p className="text-xs text-muted-foreground">
               Atenda com discrição e siga o protocolo de proteção do bar.
