@@ -10,10 +10,16 @@ import { DEFAULT_SUPPORT_POLICY } from "@/lib/support-policy";
 import {
   getMySupportMessages,
   getMySupportStatus,
+  presumeMySupportResolved,
   requestMySupport,
   sendMySupportMessage,
 } from "@/lib/support-requests.functions";
-import { CUSTOMER_SUPPORT_PRESETS } from "@/lib/support-presets";
+import {
+  CUSTOMER_SUPPORT_PRESETS,
+  nextSupportStep,
+  PLACE_PREFIX,
+  STEP_ANSWERS,
+} from "@/lib/support-presets";
 import type { PublicSupportRequest } from "@/lib/support-requests.types";
 
 const HOLD_MS = 2000;
@@ -58,6 +64,9 @@ export function SupportWidget({
   const makeRequest = useServerFn(requestMySupport);
   const loadMessages = useServerFn(getMySupportMessages);
   const sendMessage = useServerFn(sendMySupportMessage);
+  const presume = useServerFn(presumeMySupportResolved);
+  const [reasks, setReasks] = useState(0);
+  const presumed = useRef(false);
   const helpId = useId();
 
   useEffect(() => {
@@ -188,6 +197,43 @@ export function SupportWidget({
       void askForSupport();
     }, HOLD_MS);
   }
+
+  const places = branding.supportPlaces ?? [];
+  const step = request
+    ? nextSupportStep(
+        messages.filter((m) => m.sender === "customer").map((m) => m.body),
+        places.length > 0,
+      )
+    : null;
+  const waiting =
+    !!request &&
+    request.status === "requested" &&
+    step !== null &&
+    step !== "done" &&
+    step !== "falseAlarm";
+
+  // Sem resposta: repete a pergunta a cada 2 min (até 3 vezes) e então presume resolvido.
+  useEffect(() => {
+    setReasks(0);
+  }, [messages.length, request?.id]);
+  useEffect(() => {
+    if (!waiting || !conversationOpen) return;
+    const id = setTimeout(() => setReasks((n) => n + 1), 120_000);
+    return () => clearTimeout(id);
+  }, [waiting, conversationOpen, reasks, messages.length]);
+  useEffect(() => {
+    if (!request || request.status !== "requested") {
+      presumed.current = false;
+      return;
+    }
+    const reason =
+      step === "falseAlarm" ? "false_alarm" : waiting && reasks >= 3 ? "no_answer" : null;
+    if (!reason || presumed.current) return;
+    presumed.current = true;
+    void presume({ data: { sessionId, requestId: request.id, reason } }).catch(() => {
+      presumed.current = false;
+    });
+  }, [request, step, waiting, reasks, presume, sessionId]);
 
   async function submitMessage(text: string) {
     if (!request || sendingRef.current) return;
@@ -431,6 +477,55 @@ export function SupportWidget({
               </ol>
               {request.status !== "completed" ? (
                 <div className="space-y-2">
+                  {waiting && step && (
+                    <div role="group" aria-label="Pergunta da equipe" className="space-y-2">
+                      <p className="text-sm font-medium" aria-live="polite">
+                        {reasks > 0 ? "Ainda precisamos saber: " : ""}
+                        {
+                          {
+                            happening: "Está acontecendo alguma coisa?",
+                            needHelp: "Você precisa de ajuda?",
+                            counter: "Você pode ir até o balcão?",
+                            place: "Perto de que lugar você está?",
+                          }[step as "happening" | "needHelp" | "counter" | "place"]
+                        }
+                      </p>
+                      <div className="flex flex-col gap-2">
+                        {(
+                          {
+                            happening: [
+                              ["Sim", STEP_ANSWERS.happening],
+                              ["Não, foi engano", STEP_ANSWERS.falseAlarm],
+                            ],
+                            needHelp: [
+                              ["Sim, preciso de ajuda", STEP_ANSWERS.needHelp],
+                              ["Não agora", STEP_ANSWERS.noHelp],
+                            ],
+                            counter: [
+                              ["Sim, posso ir ao balcão", STEP_ANSWERS.canCounter],
+                              ["Não posso", STEP_ANSWERS.cannotCounter],
+                            ],
+                            place: places.map((place) => [place, `${PLACE_PREFIX}${place}`]),
+                          }[step as "happening" | "needHelp" | "counter" | "place"] as string[][]
+                        ).map(([label, text]) => (
+                          <button
+                            key={text}
+                            type="button"
+                            disabled={sending}
+                            onClick={() => void submitMessage(text!)}
+                            className={`${buttonClass} bg-primary text-primary-foreground`}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {step === "done" && request.status === "requested" && (
+                    <p role="status" className="text-sm">
+                      A equipe vai até você.
+                    </p>
+                  )}
                   <div role="group" aria-label="Mensagens prontas" className="flex flex-col gap-2">
                     {CUSTOMER_MESSAGES.map((text) => (
                       <button

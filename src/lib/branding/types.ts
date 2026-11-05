@@ -15,6 +15,8 @@ export interface TenantBranding {
   supportPolicy?: string | null;
   backgroundUrl?: string | null;
   cardOpacity?: number | null;
+  /** Lugares do bar que a pessoa pode indicar ao pedir apoio (cadastrados pelo gestor). */
+  supportPlaces?: string[];
   cardShape?: "rounded" | "square" | "pill" | "oval";
   categoryShape?: "pill" | "square" | "rounded" | "outline";
   brandName: string;

@@ -22,6 +22,7 @@ import {
   HEX_COLOR_PATTERN,
 } from "@/lib/branding";
 
+import { sanitizeSupportPlaces, MAX_SUPPORT_PLACES, MAX_PLACE_LENGTH } from "@/lib/support-presets";
 import { DEFAULT_SUPPORT_POLICY } from "@/lib/support-policy";
 
 const DEFAULT_PRIMARY_COLOR = "#f97316";
@@ -66,6 +67,9 @@ export function BrandingModule({
   const [primaryColor, setPrimaryColor] = useState(config["primaryColor"] ?? "");
   const [instagramUser, setInstagramUser] = useState(config["instagramUser"] ?? "");
   const [whatsappNumber, setWhatsappNumber] = useState(config["whatsappNumber"] ?? "");
+  const [supportPlaces, setSupportPlaces] = useState(
+    sanitizeSupportPlaces(config["supportPlaces"]).join("\n"),
+  );
   const [supportPolicy, setSupportPolicy] = useState(config["supportPolicy"] ?? "");
   const [backgroundUrl, setBackgroundUrl] = useState(config["backgroundUrl"] ?? "");
   const [cardOpacity, setCardOpacity] = useState(sanitizeCardOpacity(config["cardOpacity"]));
@@ -146,6 +150,7 @@ export function BrandingModule({
       await onSave(row?.enabled ?? true, {
         ...config,
         supportPolicy: supportPolicy.trim().slice(0, 2000),
+        supportPlaces: sanitizeSupportPlaces(supportPlaces).join("\n"),
         backgroundUrl: sanitizeBrandBackground(backgroundUrl) ?? "",
         cardOpacity: String(cardOpacity),
         cardShape,
@@ -445,6 +450,21 @@ export function BrandingModule({
         />
         <p className="text-xs text-muted-foreground">
           Em branco, usa o texto padrão de acolhimento. A adesão não pergunta gênero.
+        </p>
+        <label htmlFor="support-places" className="mt-4 block text-sm font-medium">
+          Lugares do bar (um por linha)
+        </label>
+        <textarea
+          id="support-places"
+          value={supportPlaces}
+          onChange={(event) => setSupportPlaces(event.target.value)}
+          rows={4}
+          placeholder={"Perto do balcão\nPerto do banheiro\nMesa de sinuca\nÁrea externa"}
+          className="mt-1 w-full rounded-xl border border-border bg-background p-3 text-sm"
+        />
+        <p className="text-xs text-muted-foreground">
+          A pessoa escolhe um destes lugares por botão, sem digitar. Até {MAX_SUPPORT_PLACES}{" "}
+          lugares de {MAX_PLACE_LENGTH} caracteres.
         </p>
       </div>
 

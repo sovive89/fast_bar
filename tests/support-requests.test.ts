@@ -21,6 +21,7 @@ const {
   getCustomerSupportMessages,
   getStaffSupportMessages,
   sendSupportChat,
+  presumeSupportResolved,
   listSupportOccurrences,
   getSupportOccurrence,
 } = await import("../src/lib/support-requests.server");
@@ -390,5 +391,78 @@ describe("histórico privado e manutenção", () => {
     const detail = await getSupportOccurrence(REQUEST);
     expect(detail?.request).toEqual(history[0]);
     expect(await getSupportOccurrence(OTHER)).toBeNull();
+  });
+});
+
+describe("apoio: roteiro guiado, lugares e presunção de resolvido", () => {
+  const seedRequest = (createdAt: string, status = "requested") =>
+    holder.db.seed("fastbar_support_requests", [
+      { ...row(), status, created_at: createdAt, completion_note: null },
+    ]);
+  const seedMessage = (body: string, createdAt: string) =>
+    holder.db.seed("fastbar_support_messages", [
+      {
+        id: `m-${createdAt}`,
+        tenant_id: TENANT,
+        request_id: REQUEST,
+        sender: "customer",
+        body,
+        created_at: createdAt,
+      },
+    ]);
+
+  it("aceita lugar só se estiver cadastrado pelo gestor", async () => {
+    holder.db.rpcHandlers.set("fastbar_send_support_message", () => ({ ok: true }));
+    holder.db.seed("fastbar_integrations", [
+      { key: "branding", config: { supportPlaces: "Perto do balcão\nMesa de sinuca" } },
+    ]);
+    const send = (body: string) =>
+      sendSupportChat({ requestId: REQUEST, sessionId: SESSION, body }, "customer");
+    expect((await send("Estou perto de: Mesa de sinuca")).ok).toBe(true);
+    expect((await send("Estou perto de: Cofre")).ok).toBe(false);
+  });
+
+  it("não presume resolvido antes de 5 minutos sem resposta", async () => {
+    seedRequest(new Date(Date.now() - 60_000).toISOString());
+    const result = await presumeSupportResolved({
+      sessionId: SESSION,
+      requestId: REQUEST,
+      reason: "no_answer",
+    });
+    expect(result.ok).toBe(false);
+  });
+
+  it("presume resolvido após inércia, registrado como Sistema", async () => {
+    seedRequest(new Date(Date.now() - 10 * 60_000).toISOString());
+    const result = await presumeSupportResolved({
+      sessionId: SESSION,
+      requestId: REQUEST,
+      reason: "no_answer",
+    });
+    expect(result.ok).toBe(true);
+    const saved = holder.db.table("fastbar_support_requests")[0];
+    expect(saved).toMatchObject({
+      status: "completed",
+      attended_by: "Sistema",
+      completed_by: "Sistema",
+    });
+  });
+
+  it("engano só encerra se a pessoa realmente disse que foi engano", async () => {
+    seedRequest(new Date().toISOString());
+    const input = { sessionId: SESSION, requestId: REQUEST, reason: "false_alarm" as const };
+    expect((await presumeSupportResolved(input)).ok).toBe(false);
+    seedMessage("Foi engano, está tudo bem.", new Date().toISOString());
+    expect((await presumeSupportResolved(input)).ok).toBe(true);
+  });
+
+  it("não encerra atendimento já assumido pela equipe", async () => {
+    seedRequest(new Date(Date.now() - 10 * 60_000).toISOString(), "attending");
+    const result = await presumeSupportResolved({
+      sessionId: SESSION,
+      requestId: REQUEST,
+      reason: "no_answer",
+    });
+    expect(result.ok).toBe(false);
   });
 });
