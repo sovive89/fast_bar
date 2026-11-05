@@ -945,6 +945,87 @@ export type Database = {
           },
         ]
       }
+      fastbar_staff_audit: {
+        Row: {
+          action: string
+          actor: string
+          created_at: string
+          id: string
+          target_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor: string
+          created_at?: string
+          id?: string
+          target_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor?: string
+          created_at?: string
+          id?: string
+          target_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      fastbar_staff_users: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          cpf: string
+          created_at: string
+          email: string
+          failed_logins: number
+          full_name: string
+          id: string
+          last_login_at: string | null
+          locked_until: string | null
+          password_hash: string
+          phone: string
+          role: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          cpf: string
+          created_at?: string
+          email: string
+          failed_logins?: number
+          full_name: string
+          id?: string
+          last_login_at?: string | null
+          locked_until?: string | null
+          password_hash: string
+          phone: string
+          role: string
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          cpf?: string
+          created_at?: string
+          email?: string
+          failed_logins?: number
+          full_name?: string
+          id?: string
+          last_login_at?: string | null
+          locked_until?: string | null
+          password_hash?: string
+          phone?: string
+          role?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       fastbar_session_marks: {
         Row: {
           color: string | null
