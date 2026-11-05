@@ -483,3 +483,34 @@ export async function getSupportOccurrence(
     messages: await messages(db, tenantId, requestId),
   };
 }
+
+/**
+ * Apaga um atendimento de apoio e as mensagens dele (cascata). Só administrador. Deixa uma linha
+ * de auditoria SEM dados da pessoa (quem apagou, quando, id do registro); se a auditoria falhar,
+ * a exclusão vale mesmo assim, para um registro de teste nunca ficar preso.
+ */
+export async function deleteSupportRequest(requestId: string): Promise<SupportResult> {
+  const { assertRole } = await import("./staff-users.server");
+  const actor = await assertRole("admin");
+  if (!validId(requestId)) return { ok: false, message: "Atendimento inválido." };
+  const { db, tenantId } = await context();
+  const { data, error } = await db
+    .from("fastbar_support_requests")
+    .delete()
+    .eq("tenant_id", tenantId)
+    .eq("id", requestId)
+    .select("id");
+  if (error) return { ok: false, message: "Não foi possível apagar o atendimento." };
+  if (!data?.length) return { ok: false, message: "Esse atendimento já não existe." };
+  try {
+    await db.from("fastbar_staff_audit").insert({
+      tenant_id: tenantId,
+      actor: actor.staffId ?? "legado",
+      action: "apoio_apagado",
+      target_id: requestId,
+    });
+  } catch {
+    /* A exclusão já foi feita. */
+  }
+  return { ok: true };
+}

@@ -9,6 +9,7 @@ import {
   isStaffRole,
   normalizeEmail,
   validateStaffRegistration,
+  type StaffEmployment,
   type StaffRole,
   type StaffStatus,
 } from "./staff-users";
@@ -21,7 +22,12 @@ export type StaffSummary = {
   createdAt: string;
   lastLoginAt: string | null;
 };
-export type StaffDetail = StaffSummary & { cpf: string; email: string; phone: string };
+export type StaffDetail = StaffSummary & {
+  cpf: string;
+  email: string;
+  phone: string;
+  employment: StaffEmployment;
+};
 export type StaffResult = { ok: true } | { ok: false; message: string };
 
 const MAX_PENDING = 50;
@@ -305,7 +311,7 @@ export async function listStaff(): Promise<StaffDetail[]> {
   const { db, tenantId } = await ctx();
   const { data, error } = await db
     .from("fastbar_staff_users")
-    .select("id,full_name,role,status,cpf,email,phone,created_at,last_login_at")
+    .select("id,full_name,role,status,employment,cpf,email,phone,created_at,last_login_at")
     .eq("tenant_id", tenantId)
     .order("created_at", { ascending: true })
     .limit(500);
@@ -318,6 +324,9 @@ export async function listStaff(): Promise<StaffDetail[]> {
             fullName: row.full_name,
             role: row.role,
             status: row.status as StaffStatus,
+            employment: (row.employment === "freelancer"
+              ? "freelancer"
+              : "fixo") as StaffEmployment,
             cpf: row.cpf,
             email: row.email,
             phone: row.phone,

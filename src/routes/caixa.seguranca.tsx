@@ -4,6 +4,7 @@ import { Camera, ClipboardList, RefreshCw, Shield } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loading } from "@/components/motion/Loading";
+import { DeleteSupportButton } from "@/components/shared/DeleteSupportButton";
 import {
   getSupportOccurrences,
   getSupportOccurrenceDetail,
@@ -191,13 +192,25 @@ function SupportHistorySection() {
             document.getElementById(`support-history-${selectedId}`)?.focus();
             setSelectedId(null);
           }}
+          onDeleted={() => {
+            setSelectedId(null);
+            setRefreshKey((current) => current + 1);
+          }}
         />
       )}
     </section>
   );
 }
 
-function SupportDetailPanel({ requestId, onClose }: { requestId: string; onClose: () => void }) {
+function SupportDetailPanel({
+  requestId,
+  onClose,
+  onDeleted,
+}: {
+  requestId: string;
+  onClose: () => void;
+  onDeleted: () => void;
+}) {
   const load = useServerFn(getSupportOccurrenceDetail);
   const [detail, setDetail] = useState<SupportDetail>(null);
   const [loading, setLoading] = useState(true);
@@ -338,6 +351,7 @@ function SupportDetailPanel({ requestId, onClose }: { requestId: string; onClose
           >
             Abrir comanda relacionada
           </Link>
+          <DeleteSupportButton requestId={requestId} onDeleted={onDeleted} />
         </div>
       )}
     </div>

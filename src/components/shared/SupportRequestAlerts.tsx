@@ -11,6 +11,7 @@ import {
 import { playSupportAlert, unlockAlertSound, vibrateSupportAlert } from "@/lib/alert-sound";
 import { supportPriority, type SupportPriorityLevel } from "@/lib/support-priority";
 import { STAFF_SUPPORT_PRESETS } from "@/lib/support-presets";
+import { DeleteSupportButton } from "./DeleteSupportButton";
 import { hhmm } from "@/lib/format";
 
 const POLL_MS = 5000;
@@ -343,6 +344,11 @@ export function SupportRequestAlerts() {
                     </button>
                   </div>
                 )}
+                <DeleteSupportButton
+                  requestId={request.id}
+                  onDeleted={() => void refresh()}
+                  className="mt-3"
+                />
               </li>
             ))}
           </ul>
