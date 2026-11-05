@@ -19,17 +19,19 @@ export function DeleteSupportButton({
   const [confirming, setConfirming] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [password, setPassword] = useState("");
 
   async function confirm() {
     if (busy) return;
     setBusy(true);
     setError("");
     try {
-      const result = await remove({ data: { requestId } });
+      const result = await remove({ data: { requestId, password } });
       if (!result.ok) {
         setError(result.message);
         return;
       }
+      setPassword("");
       onDeleted();
     } catch {
       setError("Não foi possível apagar agora. Tente de novo.");
@@ -55,11 +57,25 @@ export function DeleteSupportButton({
       <p role="alert" className="text-sm">
         Apagar definitivamente o registro e as mensagens deste alerta? Não dá para desfazer.
       </p>
-      {error && <p className="text-sm text-destructive">{error}</p>}
+      <label className="block text-sm font-medium">
+        Senha
+        <input
+          type="password"
+          value={password}
+          onChange={(event) => setPassword(event.target.value)}
+          autoComplete="off"
+          className="mt-1 h-11 w-full rounded-lg border border-border bg-background px-3 text-base outline-none focus:border-ring"
+        />
+      </label>
+      {error && (
+        <p role="alert" className="text-sm text-destructive">
+          {error}
+        </p>
+      )}
       <div className="flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={busy}
+          disabled={busy || !password}
           onClick={() => void confirm()}
           className="min-h-11 flex-1 rounded-lg bg-destructive px-3 text-sm font-semibold text-destructive-foreground disabled:opacity-60"
         >
@@ -68,7 +84,11 @@ export function DeleteSupportButton({
         <button
           type="button"
           disabled={busy}
-          onClick={() => setConfirming(false)}
+          onClick={() => {
+            setConfirming(false);
+            setPassword("");
+            setError("");
+          }}
           className="min-h-11 flex-1 rounded-lg border border-border px-3 text-sm"
         >
           Cancelar

@@ -83,8 +83,8 @@ export const presumeMySupportResolved = createServerFn({ method: "POST" })
     return presumeSupportResolved(data);
   });
 export const deleteSupportRequestFn = createServerFn({ method: "POST" })
-  .inputValidator(z.object({ requestId: z.string().uuid() }))
+  .inputValidator(z.object({ requestId: z.string().uuid(), password: z.string().max(200) }))
   .handler(async ({ data }) => {
     const { deleteSupportRequest } = await import("./support-requests.server");
-    return deleteSupportRequest(data.requestId);
+    return deleteSupportRequest(data.requestId, data.password);
   });

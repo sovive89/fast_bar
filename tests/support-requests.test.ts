@@ -16,6 +16,10 @@ const roleGate = vi.fn(async (..._roles: string[]) => ({ role: "admin", staffId:
 vi.mock("../src/lib/staff-users.server", () => ({
   assertRole: (...roles: string[]) => roleGate(...roles),
 }));
+const passwordOk = vi.fn(async (_input: unknown) => true);
+vi.mock("../src/lib/bar-gate.server", () => ({
+  teamPasswordMatches: (input: unknown) => passwordOk(input),
+}));
 vi.mock("../src/lib/push.server", () => ({ notifyStaff: (p: unknown) => notify(p) }));
 const {
   requestSupport,
@@ -481,14 +485,26 @@ describe("apoio: apagar atendimento", () => {
   it("só admin apaga; sem permissão nada é apagado", async () => {
     seed();
     roleGate.mockRejectedValueOnce(new Error("Seu perfil não tem permissão para esta ação."));
-    await expect(deleteSupportRequest(REQUEST)).rejects.toThrow("permissão");
+    await expect(deleteSupportRequest(REQUEST, "senha")).rejects.toThrow("permissão");
     expect(holder.db.table("fastbar_support_requests")).toHaveLength(1);
     expect(roleGate).toHaveBeenCalledWith("admin");
   });
 
+  it("sem a senha certa não apaga nada", async () => {
+    seed();
+    passwordOk.mockResolvedValueOnce(false);
+    expect(await deleteSupportRequest(REQUEST, "errada")).toEqual({
+      ok: false,
+      message: "Senha incorreta.",
+    });
+    expect(passwordOk).toHaveBeenCalledWith("errada");
+    expect(holder.db.table("fastbar_support_requests")).toHaveLength(1);
+    expect(holder.db.table("fastbar_staff_audit")).toHaveLength(0);
+  });
+
   it("apaga o atendimento e deixa auditoria sem dados da pessoa", async () => {
     seed();
-    expect(await deleteSupportRequest(REQUEST)).toEqual({ ok: true });
+    expect(await deleteSupportRequest(REQUEST, "senha")).toEqual({ ok: true });
     expect(holder.db.table("fastbar_support_requests")).toHaveLength(0);
     const audit = holder.db.table("fastbar_staff_audit");
     expect(audit).toHaveLength(1);
@@ -500,15 +516,17 @@ describe("apoio: apagar atendimento", () => {
 
   it("id inválido ou registro inexistente não apaga nada", async () => {
     seed();
-    expect((await deleteSupportRequest("bad")).ok).toBe(false);
-    expect((await deleteSupportRequest("00000000-0000-4000-8000-0000000000ff")).ok).toBe(false);
+    expect((await deleteSupportRequest("bad", "senha")).ok).toBe(false);
+    expect((await deleteSupportRequest("00000000-0000-4000-8000-0000000000ff", "senha")).ok).toBe(
+      false,
+    );
     expect(holder.db.table("fastbar_support_requests")).toHaveLength(1);
   });
 
   it("falha na auditoria não desfaz a exclusão", async () => {
     seed();
     holder.db.failNext.set("fastbar_staff_audit:insert", "constraint");
-    expect(await deleteSupportRequest(REQUEST)).toEqual({ ok: true });
+    expect(await deleteSupportRequest(REQUEST, "senha")).toEqual({ ok: true });
     expect(holder.db.table("fastbar_support_requests")).toHaveLength(0);
   });
 });
